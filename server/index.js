@@ -8,12 +8,7 @@ app.use(express.json());
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/contacts', require('./routes/contacts'));
-
-app.get('/', (req, res) => {
-  res.json({ message: 'VenueFlow CRM API is running!' });
-});
+app.use('/api/emails', require('./routes/emails'));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

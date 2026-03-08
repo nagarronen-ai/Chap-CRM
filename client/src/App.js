@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import Contacts from './pages/Contacts';
 import CompanyProfile from './pages/CompanyProfile';
 import Import from './pages/Import';
+import Emails from './pages/Emails';
 
 function PrivateRoute({ children }) {
   const token = localStorage.getItem('token');
@@ -19,6 +20,7 @@ function App() {
         <Route path="/contacts" element={<PrivateRoute><Contacts /></PrivateRoute>} />
         <Route path="/companies/:id" element={<PrivateRoute><CompanyProfile /></PrivateRoute>} />
         <Route path="/import" element={<PrivateRoute><Import /></PrivateRoute>} />
+        <Route path="/emails" element={<PrivateRoute><Emails /></PrivateRoute>} />
       </Routes>
     </BrowserRouter>
   );

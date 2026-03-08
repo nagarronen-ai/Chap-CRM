@@ -25,7 +25,7 @@ function Sidebar() {
   };
 
   return (
-    <div style={{ width: 240, minHeight: '100vh', background: '#FFFFFF', borderRight: '1px solid rgba(62,66,61,0.1)', display: 'flex', flexDirection: 'column', padding: '24px 16px', fontFamily: "'Inter', sans-serif", position: 'fixed', top: 0, left: 0 }}>
+    <div style={{ width: 240, height: '100vh', background: '#FFFFFF', borderRight: '1px solid rgba(62,66,61,0.1)', display: 'flex', flexDirection: 'column', padding: '24px 16px', fontFamily: "'Inter', sans-serif", position: 'fixed', top: 0, left: 0, boxSizing: 'border-box' }}>
       <div style={{ marginBottom: 32 }}>
         <p style={{ color: '#8E9B8B', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px', paddingLeft: 16 }}>Planfor</p>
         <h2 style={{ color: '#3E423D', fontSize: 20, fontWeight: 600, fontStyle: 'italic', fontFamily: "'Playfair Display', Georgia, serif", margin: 0, paddingLeft: 16 }}>CRM</h2>
@@ -36,9 +36,10 @@ function Sidebar() {
         {navItem('Dashboard', '/dashboard', '📊')}
         {navItem('Contacts', '/contacts', '👥')}
         {navItem('Import', '/import', '📥')}
+        {navItem('Emails', '/emails', '📧')}
       </nav>
 
-      <div style={{ borderTop: '1px solid rgba(62,66,61,0.1)', paddingTop: 16 }}>
+      <div style={{ borderTop: '1px solid rgba(62,66,61,0.1)', paddingTop: 16, flexShrink: 0 }}>
         <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 500, margin: '0 0 4px', paddingLeft: 16 }}>{user.name || 'User'}</p>
         <p style={{ color: '#717182', fontSize: 12, margin: '0 0 12px', paddingLeft: 16 }}>{user.email || ''}</p>
         <div onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderRadius: 8, cursor: 'pointer', color: '#D4183D', fontSize: 14 }}
