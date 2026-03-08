@@ -1,34 +1,63 @@
+// server/routes/auth.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const supabase = require('../db');
 
-router.post('/register', async (req, res) => {
-  const { email, password, name } = req.body;
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const { data, error } = await supabase.from('crm_users').insert([{ email, password: hashedPassword, name }]).select().single();
-    if (error) return res.status(400).json({ error: 'Email already exists' });
-    const token = jwt.sign({ id: data.id, email: data.email }, 'venueflow_secret', { expiresIn: '7d' });
-    res.json({ token, user: { id: data.id, email: data.email, name: data.name } });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+const JWT_SECRET = process.env.JWT_SECRET || 'venueflow_secret';
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
-  try {
-    const { data, error } = await supabase.from('crm_users').select('*').eq('email', email).single();
-    if (error || !data) return res.status(400).json({ error: 'Invalid credentials' });
-    const valid = await bcrypt.compare(password, data.password);
-    if (!valid) return res.status(400).json({ error: 'Invalid credentials' });
-    const token = jwt.sign({ id: data.id, email: data.email }, 'venueflow_secret', { expiresIn: '7d' });
-    res.json({ token, user: { id: data.id, email: data.email, name: data.name } });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  const { data: user, error } = await supabase
+    .from('crm_users')
+    .select('id, email, name, password, role')
+    .eq('email', email.toLowerCase())
+    .single();
+
+  if (error || !user) return res.status(401).json({ error: 'Invalid credentials' });
+
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+
+  await supabase
+    .from('crm_users')
+    .update({ last_login: new Date().toISOString() })
+    .eq('id', user.id);
+
+  const token = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  res.json({
+    token,
+    user: { id: user.id, email: user.email, name: user.name, role: user.role }
+  });
+});
+
+router.post('/register', async (req, res) => {
+  const { email, password, name, role = 'admin' } = req.body;
+  if (!email || !password || !name) return res.status(400).json({ error: 'All fields required' });
+
+  const hash = await bcrypt.hash(password, 10);
+  const { data, error } = await supabase
+    .from('crm_users')
+    .insert([{ email: email.toLowerCase(), password: hash, name, role }])
+    .select('id, email, name, role')
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const token = jwt.sign(
+    { id: data.id, email: data.email, role: data.role },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+  res.json({ token, user: { id: data.id, email: data.email, name: data.name, role: data.role } });
 });
 
 module.exports = router;
