@@ -1,26 +1,20 @@
+// server/routes/contacts.js
 const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
-const jwt = require('jsonwebtoken');
+const auth = require('../middleware/auth');
+const { checkPermission, getCompanyFilter } = require('../middleware/rbac');
 
-const auth = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token' });
-  try {
-    req.user = jwt.verify(token, 'venueflow_secret');
-    next();
-  } catch {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
+// ─── COMPANIES ───────────────────────────────────────────────────────────────
 
-// --- COMPANIES ---
 router.get('/companies', auth, async (req, res) => {
-  const { data, error } = await supabase
+  const filter = getCompanyFilter(req.user.id, req.user.role);
+  let query = supabase
     .from('crm_companies')
-    .select('*, crm_people(id, first_name, last_name, title, email, work_phone)')
-    .eq('user_id', req.user.id)
+    .select('*, crm_people(*), crm_users!crm_companies_assigned_to_fkey(id, name)')
     .order('created_at', { ascending: false });
+  if (filter.assigned_to) query = query.eq('assigned_to', filter.assigned_to);
+  const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
@@ -29,120 +23,176 @@ router.post('/companies', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_companies')
     .insert([{ ...req.body, user_id: req.user.id }])
-    .select().single();
+    .select('*')
+    .single();
   if (error) return res.status(500).json({ error: error.message });
-  await supabase.from('crm_activity_log').insert([{
-    company_id: data.id, user_id: req.user.id,
-    action: 'Company Created', details: `${data.company_name} added to CRM`
-  }]);
   res.json(data);
 });
 
 router.get('/companies/:id', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_companies')
-    .select('*, crm_people(*)')
+    .select('*, crm_people(*), crm_users!crm_companies_assigned_to_fkey(id, name)')
     .eq('id', req.params.id)
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  if (['sales', 'csm'].includes(req.user.role) && data.assigned_to !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  res.json(data);
+});
+
+router.put('/companies/:id', auth, checkPermission('company:edit'), async (req, res) => {
+  const updates = { ...req.body, updated_at: new Date() };
+  const { data, error } = await supabase
+    .from('crm_companies')
+    .update(updates)
+    .eq('id', req.params.id)
+    .select('*')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  const changed = Object.keys(req.body).filter(k => k !== 'updated_at');
+  if (changed.length) {
+    await supabase.from('crm_activity_log').insert([{
+      company_id: req.params.id,
+      user_id: req.user.id,
+      action: 'Field Updated',
+      details: `Updated: ${changed.join(', ')}`
+    }]);
+  }
+  res.json(data);
+});
+
+router.delete('/companies/:id', auth, checkPermission('company:delete'), async (req, res) => {
+  const { error } = await supabase.from('crm_companies').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+router.put('/companies/:id/assign', auth, checkPermission('company:assign'), async (req, res) => {
+  const { assigned_to } = req.body;
+  const { data, error } = await supabase
+    .from('crm_companies')
+    .update({ assigned_to, updated_at: new Date() })
+    .eq('id', req.params.id)
+    .select('*')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  await supabase.from('crm_activity_log').insert([{
+    company_id: req.params.id,
+    user_id: req.user.id,
+    action: 'Assigned',
+    details: `Company assigned to user ${assigned_to}`
+  }]);
+  res.json(data);
+});
+
+router.put('/companies/:id/stage', auth, checkPermission('pipeline:move'), async (req, res) => {
+  const { stage } = req.body;
+  const { data, error } = await supabase
+    .from('crm_companies')
+    .update({ stage, updated_at: new Date() })
+    .eq('id', req.params.id)
+    .select('*')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  await supabase.from('crm_activity_log').insert([{
+    company_id: req.params.id,
+    user_id: req.user.id,
+    action: 'Stage Changed',
+    details: `Stage changed to: ${stage}`
+  }]);
+  res.json(data);
+});
+
+// ─── PEOPLE ──────────────────────────────────────────────────────────────────
+
+router.post('/companies/:id/people', auth, checkPermission('people:edit'), async (req, res) => {
+  const { data, error } = await supabase
+    .from('crm_people')
+    .insert([{ ...req.body, company_id: req.params.id, user_id: req.user.id }])
+    .select('*')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  await supabase.from('crm_activity_log').insert([{
+    company_id: req.params.id,
+    user_id: req.user.id,
+    action: 'Contact Added',
+    details: `Added: ${req.body.first_name} ${req.body.last_name}`
+  }]);
+  res.json(data);
+});
+
+router.put('/people/:id', auth, checkPermission('people:edit'), async (req, res) => {
+  const { data, error } = await supabase
+    .from('crm_people')
+    .update(req.body)
+    .eq('id', req.params.id)
+    .select('*')
     .single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-router.put('/companies/:id', auth, async (req, res) => {
-  const { data: old } = await supabase.from('crm_companies').select('stage').eq('id', req.params.id).single();
-  const { data, error } = await supabase
-    .from('crm_companies')
-    .update(req.body)
-    .eq('id', req.params.id)
-    .eq('user_id', req.user.id)
-    .select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  if (old && req.body.stage && old.stage !== req.body.stage) {
-    await supabase.from('crm_activity_log').insert([{
-      company_id: data.id, user_id: req.user.id,
-      action: 'Stage Changed',
-      details: `Stage changed from "${old.stage}" to "${req.body.stage}"`
-    }]);
-  }
-  res.json(data);
-});
-
-router.delete('/companies/:id', auth, async (req, res) => {
-  const { error } = await supabase.from('crm_companies').delete().eq('id', req.params.id).eq('user_id', req.user.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
-});
-
-// --- PEOPLE ---
-router.post('/companies/:id/people', auth, async (req, res) => {
-  const { data, error } = await supabase
-    .from('crm_people')
-    .insert([{ ...req.body, company_id: req.params.id, user_id: req.user.id }])
-    .select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  await supabase.from('crm_activity_log').insert([{
-    company_id: req.params.id, person_id: data.id, user_id: req.user.id,
-    action: 'Person Added',
-    details: `${data.first_name} ${data.last_name} added as contact`
-  }]);
-  res.json(data);
-});
-
-router.put('/people/:id', auth, async (req, res) => {
-  const { data, error } = await supabase
-    .from('crm_people').update(req.body).eq('id', req.params.id).select().single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
-router.delete('/people/:id', auth, async (req, res) => {
-  const { data } = await supabase.from('crm_people').select('company_id, first_name, last_name').eq('id', req.params.id).single();
+router.delete('/people/:id', auth, checkPermission('people:delete'), async (req, res) => {
   const { error } = await supabase.from('crm_people').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
-  if (data) {
-    await supabase.from('crm_activity_log').insert([{
-      company_id: data.company_id, user_id: req.user.id,
-      action: 'Person Removed',
-      details: `${data.first_name} ${data.last_name} removed`
-    }]);
-  }
   res.json({ success: true });
 });
 
-// --- ACTIVITY LOG ---
+// ─── ACTIVITY ────────────────────────────────────────────────────────────────
+
 router.get('/companies/:id/activity', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_activity_log')
-    .select('*, crm_people(first_name, last_name)')
+    .select('*, crm_people(first_name, last_name), crm_users(name)')
     .eq('company_id', req.params.id)
     .order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-router.post('/companies/:id/note', auth, async (req, res) => {
+router.post('/companies/:id/note', auth, checkPermission('activity:write'), async (req, res) => {
   const { note, person_id } = req.body;
-  const { data, error } = await supabase.from('crm_activity_log').insert([{
-    company_id: req.params.id,
-    person_id: person_id || null,
-    user_id: req.user.id,
-    action: 'Note Added',
-    details: note
-  }]).select().single();
+  const { data, error } = await supabase
+    .from('crm_activity_log')
+    .insert([{
+      company_id: req.params.id,
+      user_id: req.user.id,
+      person_id: person_id || null,
+      action: 'Note Added',
+      details: note
+    }])
+    .select('*')
+    .single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-router.delete('/activity/:id', auth, async (req, res) => {
-  const { data } = await supabase.from('crm_activity_log').select('company_id, details').eq('id', req.params.id).single();
+router.get('/activity/recent', auth, async (req, res) => {
+  const filter = getCompanyFilter(req.user.id, req.user.role);
+  let query = supabase
+    .from('crm_activity_log')
+    .select('*, crm_companies(company_name, assigned_to)')
+    .order('created_at', { ascending: false })
+    .limit(15);
+  if (filter.assigned_to) {
+    const { data: myCompanies } = await supabase
+      .from('crm_companies')
+      .select('id')
+      .eq('assigned_to', filter.assigned_to);
+    const ids = (myCompanies || []).map(c => c.id);
+    if (ids.length === 0) return res.json([]);
+    query = query.in('company_id', ids);
+  }
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.delete('/activity/:id', auth, checkPermission('activity:delete'), async (req, res) => {
   const { error } = await supabase.from('crm_activity_log').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
-  if (data) {
-    await supabase.from('crm_activity_log').insert([{
-      company_id: data.company_id, user_id: req.user.id,
-      action: 'Note Deleted', details: `Deleted note: "${data.details?.substring(0, 50)}..."`
-    }]);
-  }
   res.json({ success: true });
 });
 

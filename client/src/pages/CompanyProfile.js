@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
+import { useRole } from '../hooks/useRole';
 
 const STAGES = ['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'];
 const ORIGINS = ['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'];
@@ -95,6 +96,8 @@ export default function CompanyProfile() {
   const [editingNextAction, setEditingNextAction] = useState(false);
   const [quickNote, setQuickNote] = useState('');
   const [savingQuickNote, setSavingQuickNote] = useState(false);
+  const [teamUsers, setTeamUsers] = useState([]);
+  const { can } = useRole();
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
@@ -112,6 +115,14 @@ export default function CompanyProfile() {
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
   useEffect(() => { fetchCompany(); fetchActivity(); fetchTemplates(); }, [id]);
+  const fetchTeamUsers = async () => {
+    try {
+      const res = await axios.get(`${API}/users`, { headers: getHeaders() });
+      setTeamUsers(res.data);
+    } catch (err) {} // non-admins will get 403, that's fine
+  };
+
+  useEffect(() => { fetchTeamUsers(); }, []);
 
   const fetchCompany = async () => {
     try {
@@ -346,7 +357,7 @@ export default function CompanyProfile() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h1 style={{ color: '#3E423D', fontSize: 32, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>{company.company_name}</h1>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={openEmailComposer} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>📧 Send Email</button>
+            {can('email:send') && <button onClick={openEmailComposer} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>📧 Send Email</button>}
               {company.website && <a href={company.website} target="_blank" rel="noreferrer" style={{ background: '#F5F3EF', color: '#94B0BC', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 12, textDecoration: 'none' }}>🌐 Website</a>}
               {company.company_linkedin && <a href={company.company_linkedin} target="_blank" rel="noreferrer" style={{ background: '#F5F3EF', color: '#94B0BC', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 12, textDecoration: 'none' }}>in LinkedIn</a>}
             </div>
@@ -362,8 +373,8 @@ export default function CompanyProfile() {
               const isLost = ['Closed Lost', 'Not Interested'].includes(stage);
               const isWon = stage === 'Closed Won';
               return (
-                <button key={stage} onClick={() => updateStage(stage)}
-                  style={{ background: isActive ? STAGE_COLORS[stage] : isPast ? STAGE_COLORS[stage] + '33' : '#F5F3EF', color: isActive ? '#fff' : isPast ? STAGE_COLORS[stage] : '#717182', border: isActive ? `2px solid ${STAGE_COLORS[stage]}` : '2px solid transparent', borderRadius: 20, padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontWeight: isActive ? 600 : 400, whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}>
+                <button key={stage} onClick={() => can('pipeline:move') ? updateStage(stage) : null}
+                  style={{ cursor: can('pipeline:move') ? 'pointer' : 'default', background: isActive ? STAGE_COLORS[stage] : isPast ? STAGE_COLORS[stage] + '33' : '#F5F3EF', color: isActive ? '#fff' : isPast ? STAGE_COLORS[stage] : '#717182', border: isActive ? `2px solid ${STAGE_COLORS[stage]}` : '2px solid transparent', borderRadius: 20, padding: '4px 12px', fontSize: 11, fontWeight: isActive ? 600 : 400, whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}>
                   {isWon ? '🎉 ' : isLost ? '✗ ' : ''}{stage}
                 </button>
               );
@@ -372,7 +383,7 @@ export default function CompanyProfile() {
         </div>
 
         {/* Status Bar */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
           <div style={{ background: '#fff', borderRadius: 10, padding: 16, border: '1px solid rgba(62,66,61,0.1)' }}>
             <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', margin: '0 0 6px' }}>Last Activity</p>
             {lastActivity ? (
@@ -398,6 +409,25 @@ export default function CompanyProfile() {
             <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', margin: '0 0 6px' }}>Origin</p>
             <span style={{ background: '#E5E1D8', color: '#5A6059', fontSize: 12, borderRadius: 20, padding: '4px 12px' }}>{company.origin || '—'}</span>
             <span style={{ color: '#717182', fontSize: 12, marginLeft: 8 }}>{company.city}{company.state ? `, ${company.state}` : ''}</span>
+          </div>
+
+          <div style={{ background: '#fff', borderRadius: 10, padding: 16, border: '1px solid rgba(62,66,61,0.1)' }}>
+            <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', margin: '0 0 6px' }}>Assigned To</p>
+            {can('company:assign') ? (
+              <select
+                value={company.assigned_to || ''}
+                onChange={e => updateField('assigned_to', e.target.value || null)}
+                style={{ background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 6, padding: '4px 8px', fontSize: 13, color: '#3E423D', outline: 'none', width: '100%' }}>
+                <option value="">— Unassigned —</option>
+                {teamUsers.map(u => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                ))}
+              </select>
+            ) : (
+              <span style={{ color: '#3E423D', fontSize: 13 }}>
+                {company.crm_users?.name || '— Unassigned —'}
+              </span>
+            )}
           </div>
         </div>
 
@@ -461,8 +491,8 @@ export default function CompanyProfile() {
                         {person.mobile_phone && <p style={{ color: '#5A6059', fontSize: 12, margin: 0 }}>📱 {person.mobile_phone}</p>}
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => setEditingPerson({ ...person })} style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059' }}>✏️</button>
-                        <button onClick={() => deletePerson(person.id)} style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>✕</button>
+                      {can('people:edit') && <button onClick={() => setEditingPerson({ ...person })} style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059' }}>✏️</button>}
+                      {can('people:delete') && <button onClick={() => deletePerson(person.id)} style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>✕</button>}
                       </div>
                     </div>
                   </div>
