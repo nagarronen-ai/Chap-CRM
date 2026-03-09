@@ -54,7 +54,7 @@ export default function Contacts() {
   useEffect(() => { fetchCompanies(); }, []);
 
   useEffect(() => {
-    try { axios.get(`${API}/users`, { headers }).then(r => setTeamUsers(r.data)); } catch {}
+    axios.get(`${API}/users`, { headers }).then(r => setTeamUsers(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {

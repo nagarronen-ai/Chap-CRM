@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
+import { useRole } from '../hooks/useRole';
 
 const API = 'http://localhost:5000/api';
 const CATEGORIES = ['Outreach', 'Follow-up', 'Proposal', 'Meeting Confirmation', 'General'];
@@ -36,7 +37,7 @@ export default function Emails() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [activeTab, setActiveTab] = useState('html');
   const [activeField, setActiveField] = useState('body');
-  const [form, setForm] = useState({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: DEFAULT_SIGNATURE });
+  const [form, setForm] = useState({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: DEFAULT_SIGNATURE, visibility: 'team' });
   const [formErrors, setFormErrors] = useState([]);
   const [saving, setSaving] = useState(false);
   const [showSignatureEditor, setShowSignatureEditor] = useState(false);
@@ -45,6 +46,23 @@ export default function Emails() {
   const [previewMode, setPreviewMode] = useState(false);
   const editorRef = useRef(null);
   const subjectRef = useRef(null);
+
+  const { role } = useRole();
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+  // Can this user create templates?
+  const canCreate = ['admin', 'marketing', 'sales', 'csm', 'support', 'finance'].includes(role);
+
+  // Can this user edit/delete a specific template?
+  const canEditTemplate = (t) => {
+    if (role === 'admin') return true;
+    if (role === 'marketing' && (t.visibility === 'team' || t.created_by === currentUser.id)) return true;
+    if (t.created_by === currentUser.id) return true;
+    return false;
+  };
+
+  // Can this user set visibility to 'team'?
+  const canSetTeamVisibility = ['admin', 'marketing'].includes(role);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -60,7 +78,7 @@ export default function Emails() {
 
   const openNew = () => {
     setEditingTemplate(null);
-    setForm({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: signature });
+    setForm({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: signature, visibility: canSetTeamVisibility ? 'team' : 'private' });
     setFormErrors([]);
     setShowEditor(true);
     setPreviewMode(false);
@@ -69,7 +87,7 @@ export default function Emails() {
 
   const openEdit = (template) => {
     setEditingTemplate(template);
-    setForm({ name: template.name, category: template.category, subject: template.subject, body_html: template.body_html, signature_html: template.signature_html || signature });
+    setForm({ name: template.name, category: template.category, subject: template.subject, body_html: template.body_html, signature_html: template.signature_html || signature, visibility: template.visibility || 'private' });
     setFormErrors([]);
     setShowEditor(true);
     setPreviewMode(false);
@@ -177,10 +195,12 @@ export default function Emails() {
               style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 18px', fontSize: 13, cursor: 'pointer' }}>
               ✍️ Edit Signature
             </button>
-            <button onClick={openNew}
-              style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 13, cursor: 'pointer' }}>
-              + New Template
-            </button>
+            {canCreate && (
+              <button onClick={openNew}
+                style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 13, cursor: 'pointer' }}>
+                + New Template
+              </button>
+            )}
           </div>
         </div>
 
@@ -191,21 +211,33 @@ export default function Emails() {
             <div style={{ fontSize: 48, marginBottom: 16 }}>✉️</div>
             <p style={{ color: '#3E423D', fontSize: 16, fontWeight: 500, margin: '0 0 8px' }}>No templates yet</p>
             <p style={{ color: '#717182', fontSize: 13, margin: '0 0 24px' }}>Create your first email template to get started</p>
-            <button onClick={openNew} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>+ New Template</button>
+            {canCreate && <button onClick={openNew} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>+ New Template</button>}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
             {templates.map(t => (
               <div key={t.id} style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)', boxShadow: '0 2px 8px rgba(62,66,61,0.06)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                  <span style={{ background: CATEGORY_COLORS[t.category] + '22', color: CATEGORY_COLORS[t.category], fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 500 }}>{t.category}</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => openEdit(t)} style={{ background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059' }}>✏️ Edit</button>
-                    <button onClick={() => deleteTemplate(t.id)} style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ background: CATEGORY_COLORS[t.category] + '22', color: CATEGORY_COLORS[t.category], fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 500 }}>{t.category}</span>
+                    <span style={{
+                      background: t.visibility === 'team' ? '#E5F0FF' : '#F5F3EF',
+                      color: t.visibility === 'team' ? '#4A7CC7' : '#717182',
+                      fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5
+                    }}>
+                      {t.visibility === 'team' ? '🌐 Team' : '🔒 Private'}
+                    </span>
                   </div>
+                  {canEditTemplate(t) && (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => openEdit(t)} style={{ background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059' }}>✏️ Edit</button>
+                      <button onClick={() => deleteTemplate(t.id)} style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
+                    </div>
+                  )}
                 </div>
                 <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 6px' }}>{t.name}</h3>
-                <p style={{ color: '#717182', fontSize: 13, margin: '0 0 12px' }}>Subject: {t.subject}</p>
+                <p style={{ color: '#717182', fontSize: 13, margin: '0 0 6px' }}>Subject: {t.subject}</p>
+                {t.crm_users?.name && <p style={{ color: '#CBCED4', fontSize: 11, margin: '0 0 6px' }}>By {t.crm_users.name}</p>}
                 <p style={{ color: '#CBCED4', fontSize: 11, margin: 0 }}>Updated {new Date(t.updated_at || t.created_at).toLocaleDateString()}</p>
               </div>
             ))}
@@ -238,7 +270,7 @@ export default function Emails() {
 
               {/* Error Banner */}
               {formErrors.length > 0 && (
-                <div style={{ background: '#fdf0f0', border: 'none', borderBottom: '1px solid #D4183D', padding: '10px 28px', flexShrink: 0 }}>
+                <div style={{ background: '#fdf0f0', borderBottom: '1px solid #D4183D', padding: '10px 28px', flexShrink: 0 }}>
                   <p style={{ color: '#D4183D', fontSize: 13, margin: 0 }}>
                     ⚠️ Please fill in: <strong>{formErrors.map(f => f === 'name' ? 'Template Name' : f === 'subject' ? 'Subject Line' : 'Email Body').join(', ')}</strong>
                   </p>
@@ -249,7 +281,7 @@ export default function Emails() {
                 <div style={{ flex: 1, padding: 28, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                   {/* Meta Fields */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 14 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: canSetTeamVisibility ? '1fr 1fr 1fr 2fr' : '1fr 1fr 2fr', gap: 14 }}>
                     <div>
                       <label style={labelStyle}>Template Name *</label>
                       <input
@@ -266,6 +298,15 @@ export default function Emails() {
                         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
+                    {canSetTeamVisibility && (
+                      <div>
+                        <label style={labelStyle}>Visibility</label>
+                        <select value={form.visibility} onChange={e => setForm({ ...form, visibility: e.target.value })} style={inputStyle}>
+                          <option value="team">🌐 Team — visible to all</option>
+                          <option value="private">🔒 Private — only me</option>
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <label style={labelStyle}>
                         Subject Line * {activeField === 'subject' && !formErrors.includes('subject') && <span style={{ color: '#8E9B8B', fontSize: 10, marginLeft: 4 }}>← inserting here</span>}
@@ -324,9 +365,8 @@ export default function Emails() {
                           e.preventDefault();
                           const tag = e.dataTransfer.getData('text/plain');
                           let range;
-                          if (document.caretRangeFromPoint) {
-                            range = document.caretRangeFromPoint(e.clientX, e.clientY);
-                          } else if (document.caretPositionFromPoint) {
+                          if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                          else if (document.caretPositionFromPoint) {
                             const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
                             range = document.createRange();
                             range.setStart(pos.offsetNode, pos.offset);
