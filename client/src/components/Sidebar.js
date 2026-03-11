@@ -23,7 +23,7 @@ export default function Sidebar() {
     { path: '/emails', label: 'Email Templates', icon: '✉️', show: can('email:templates') },
     { path: '/import', label: 'Import CSV', icon: '📥', show: can('import:run') },
     { path: '/team', label: 'Team', icon: '👥', show: can('users:manage') },
-  ];
+    { path: '/marketing', label: 'Marketing', icon: '📣', show: can('marketing:view') },  ];
 
   const handleLogout = () => {
     localStorage.removeItem('token');

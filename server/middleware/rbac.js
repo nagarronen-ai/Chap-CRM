@@ -10,7 +10,7 @@ const PERMISSIONS = {
     'pipeline:move':       ['admin', 'sales'],
     'activity:write':      ['admin', 'sales', 'csm', 'support'],
     'activity:delete':     ['admin'],
-    'email:send':      ['admin', 'sales', 'marketing', 'csm', 'support', 'finance'],
+    'email:send':          ['admin', 'sales', 'marketing', 'csm', 'support', 'finance'],
     'email:templates':     ['admin', 'sales', 'marketing', 'csm', 'support', 'finance'],
     'import:run':          ['admin', 'sales', 'marketing'],
     'finance:general':     ['admin', 'finance'],

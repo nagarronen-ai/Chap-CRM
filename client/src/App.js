@@ -7,6 +7,8 @@ import CompanyProfile from './pages/CompanyProfile';
 import Import from './pages/Import';
 import Emails from './pages/Emails';
 import Team from './pages/Team';
+import Marketing from './pages/Marketing';
+
 
 const PrivateRoute = ({ children }) => {
   return localStorage.getItem('token') ? children : <Navigate to="/login" />;
@@ -23,6 +25,7 @@ export default function App() {
         <Route path="/import" element={<PrivateRoute><Import /></PrivateRoute>} />
         <Route path="/emails" element={<PrivateRoute><Emails /></PrivateRoute>} />
         <Route path="/team" element={<PrivateRoute><Team /></PrivateRoute>} />
+        <Route path="/marketing" element={<PrivateRoute><Marketing /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
     </Router>

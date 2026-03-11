@@ -15,12 +15,14 @@ export function useRole() {
         'pipeline:move':   ['admin', 'sales'],
         'activity:write':  ['admin', 'sales', 'csm', 'support'],
         'activity:delete': ['admin'],
-        'email:send': ['admin', 'sales', 'marketing', 'csm', 'support', 'finance'],
+        'email:send':      ['admin', 'sales', 'marketing', 'csm', 'support', 'finance'],
         'email:templates': ['admin', 'sales', 'marketing', 'csm', 'support', 'finance'],
         'import:run':      ['admin', 'sales', 'marketing'],
         'finance:general': ['admin', 'finance'],
         'finance:company': ['admin', 'csm', 'support', 'finance'],
         'users:manage':    ['admin'],
+        'marketing:send':  ['admin', 'marketing'],
+        'marketing:view':  ['admin', 'sales', 'marketing', 'csm', 'support', 'finance'],
       };
       return (PERMISSIONS[permission] || []).includes(role);
     };
