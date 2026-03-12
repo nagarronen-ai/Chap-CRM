@@ -98,6 +98,7 @@ export default function CompanyProfile() {
   const [savingQuickNote, setSavingQuickNote] = useState(false);
   const [teamUsers, setTeamUsers] = useState([]);
   const { can } = useRole();
+  const [marketingData, setMarketingData] = useState([]);
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
@@ -114,7 +115,7 @@ export default function CompanyProfile() {
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
-  useEffect(() => { fetchCompany(); fetchActivity(); fetchTemplates(); }, [id]);
+  useEffect(() => { fetchCompany(); fetchActivity(); fetchTemplates(); fetchMarketingData(); }, [id]);
   const fetchTeamUsers = async () => {
     try {
       const res = await axios.get(`${API}/users`, { headers: getHeaders() });
@@ -144,6 +145,13 @@ export default function CompanyProfile() {
     try {
       const res = await axios.get(`${API}/emails/templates`, { headers: getHeaders() });
       setTemplates(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchMarketingData = async () => {
+    try {
+      const res = await axios.get(`${API}/marketing/company/${id}`, { headers: getHeaders() });
+      setMarketingData(res.data);
     } catch (err) { console.error(err); }
   };
 
@@ -433,10 +441,10 @@ export default function CompanyProfile() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid rgba(62,66,61,0.1)' }}>
-          {['overview', 'people', 'activity'].map(tab => (
+          {['overview', 'people', 'activity', 'marketing'].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ background: 'none', border: 'none', padding: '10px 20px', fontSize: 13, cursor: 'pointer', color: activeTab === tab ? '#3E423D' : '#717182', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #8E9B8B' : '2px solid transparent', textTransform: 'capitalize', fontFamily: 'Inter, sans-serif' }}>
-              {tab} {tab === 'people' ? `(${company.crm_people?.length || 0})` : tab === 'activity' ? `(${activity.length})` : ''}
+              {tab} {tab === 'people' ? `(${company.crm_people?.length || 0})` : tab === 'activity' ? `(${activity.length})` : tab === 'marketing' ? `(${marketingData.length})` : ''}
             </button>
           ))}
         </div>
@@ -602,6 +610,60 @@ export default function CompanyProfile() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+
+        {/* MARKETING TAB */}
+        {activeTab === 'marketing' && (
+          <div>
+            {company.marketing_unsubscribed && (
+              <div style={{ background: '#FFE5D0', borderRadius: 10, padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 18 }}>🚫</span>
+                <div>
+                  <p style={{ color: '#856404', fontSize: 13, fontWeight: 600, margin: 0 }}>Unsubscribed from Marketing</p>
+                  <p style={{ color: '#856404', fontSize: 12, margin: 0 }}>
+                    Opted out {company.marketing_unsubscribed_at ? new Date(company.marketing_unsubscribed_at).toLocaleDateString() : ''}. This contact will be excluded from all future campaigns.
+                  </p>
+                </div>
+              </div>
+            )}
+            {marketingData.length === 0 ? (
+              <div style={{ background: '#fff', borderRadius: 12, padding: 60, textAlign: 'center', border: '1px solid rgba(62,66,61,0.1)' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
+                <p style={{ color: '#3E423D', fontSize: 15, fontWeight: 500, margin: '0 0 6px' }}>No campaign activity yet</p>
+                <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>This contact hasn't been included in any campaigns yet.</p>
+              </div>
+            ) : (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#F5F3EF' }}>
+                      {['Campaign', 'Sent', 'Status', 'Opened', 'Clicked'].map(h => (
+                        <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {marketingData.map((r, i) => (
+                      <tr key={r.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{r.crm_campaigns?.name}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.crm_campaigns?.sent_at ? new Date(r.crm_campaigns.sent_at).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: r.status === 'opened' || r.status === 'clicked' ? '#D4EDDA' : r.status === 'bounced' ? '#F8D7DA' : r.status === 'unsubscribed' ? '#FFE5D0' : '#F5F3EF',
+                            color: r.status === 'opened' || r.status === 'clicked' ? '#155724' : r.status === 'bounced' ? '#721C24' : r.status === 'unsubscribed' ? '#856404' : '#717182',
+                            borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize'
+                          }}>{r.status}</span>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.opened_at ? new Date(r.opened_at).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.clicked_at ? new Date(r.clicked_at).toLocaleDateString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

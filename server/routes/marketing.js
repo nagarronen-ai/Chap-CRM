@@ -324,4 +324,15 @@ router.get('/stats', auth, async (req, res) => {
   });
 });
 
+// GET /api/marketing/company/:companyId — marketing history for a company
+router.get('/company/:companyId', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('crm_campaign_recipients')
+    .select('*, crm_campaigns(name, sent_at, status)')
+    .eq('company_id', req.params.companyId)
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 module.exports = router;
