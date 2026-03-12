@@ -99,6 +99,10 @@ export default function CompanyProfile() {
   const [teamUsers, setTeamUsers] = useState([]);
   const { can } = useRole();
   const [marketingData, setMarketingData] = useState([]);
+  const [expandedActivity, setExpandedActivity] = useState({});
+  const [emailBodies, setEmailBodies] = useState({});
+  const [activityPage, setActivityPage] = useState(1);
+  const [activityPageSize, setActivityPageSize] = useState(5);
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
@@ -152,6 +156,14 @@ export default function CompanyProfile() {
     try {
       const res = await axios.get(`${API}/marketing/company/${id}`, { headers: getHeaders() });
       setMarketingData(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchEmailBody = async (activityId, companyId) => {
+    if (emailBodies[activityId]) return;
+    try {
+      const res = await axios.get(`${API}/emails/sent/company/${companyId}`, { headers: getHeaders() });
+      setEmailBodies(prev => ({ ...prev, [activityId]: res.data }));
     } catch (err) { console.error(err); }
   };
 
@@ -283,7 +295,12 @@ export default function CompanyProfile() {
 
   const getSelectedPerson = () => company?.crm_people?.find(p => p.id === emailForm.person_id) || null;
   const resolvedSubject = () => resolveTags(emailForm.subject, getSelectedPerson());
-  const resolvedBody = () => resolveTags(emailForm.body_html + (emailForm.signature_html || ''), getSelectedPerson());
+  const resolvedBody = () => {
+    const body = resolveTags(emailForm.body_html, getSelectedPerson());
+    const sig = resolveTags(emailForm.signature_html || '', getSelectedPerson());
+    if (!sig) return body;
+    return body + '<br><br><div style="margin-top:16px;padding-top:12px;border-top:1px solid #e0e0e0;">' + sig + '</div>';
+  };
 
   const insertEmailTag = (tag) => {
     if (emailActiveField === 'subject') {
@@ -310,21 +327,23 @@ export default function CompanyProfile() {
     }
   };
 
-  const saveEmailDraft = async () => {
+  const sendEmail = async () => {
     if (!emailForm.subject || !emailForm.body_html) return;
     setSavingEmail(true);
+    const person = getSelectedPerson();
     try {
-      await axios.post(`${API}/emails/send`, {
+      const res = await axios.post(`${API}/emails/send`, {
         company_id: id,
         person_id: emailForm.person_id || null,
         template_id: selectedTemplate?.id || null,
         subject: resolvedSubject(),
         body_html: resolvedBody(),
-        status: 'draft',
+        recipient_email: person?.email || null,
+        recipient_name: person ? `${person.first_name} ${person.last_name}` : null,
       }, { headers: getHeaders() });
       fetchActivity();
-      setEmailSuccess(true);
-      setTimeout(() => { setShowEmailStep2(false); setEmailSuccess(false); }, 2000);
+      setEmailSuccess(res.data.sendGridSuccess ? 'sent' : 'draft');
+      setTimeout(() => { setShowEmailStep2(false); setEmailSuccess(false); }, 2500);
     } catch (err) { console.error(err); }
     setSavingEmail(false);
   };
@@ -582,34 +601,100 @@ export default function CompanyProfile() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-              <button onClick={() => setFilterPerson('')} style={{ background: filterPerson === '' ? '#8E9B8B' : '#F5F3EF', color: filterPerson === '' ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>All</button>
-              <button onClick={() => setFilterPerson('company')} style={{ background: filterPerson === 'company' ? '#8E9B8B' : '#F5F3EF', color: filterPerson === 'company' ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>🏢 Company</button>
+              <button onClick={() => { setFilterPerson(''); setActivityPage(1); }} style={{ background: filterPerson === '' ? '#8E9B8B' : '#F5F3EF', color: filterPerson === '' ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>All</button>
+              <button onClick={() => { setFilterPerson('company'); setActivityPage(1); }} style={{ background: filterPerson === 'company' ? '#8E9B8B' : '#F5F3EF', color: filterPerson === 'company' ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>🏢 Company</button>
               {company.crm_people?.map(p => (
-                <button key={p.id} onClick={() => setFilterPerson(p.id)} style={{ background: filterPerson === p.id ? '#8E9B8B' : '#F5F3EF', color: filterPerson === p.id ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
+                <button key={p.id} onClick={() => { setFilterPerson(p.id); setActivityPage(1); }} style={{ background: filterPerson === p.id ? '#8E9B8B' : '#F5F3EF', color: filterPerson === p.id ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
                   👤 {p.first_name} {p.last_name}
                 </button>
               ))}
             </div>
+            {/* Pagination controls */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>
+                {filteredActivity.length} total · showing {Math.min(activityPageSize, filteredActivity.length)} per page
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#717182', fontSize: 12 }}>Per page:</span>
+                {[5, 10, 25, 50].map(size => (
+                  <button key={size} onClick={() => { setActivityPageSize(size); setActivityPage(1); }}
+                    style={{ background: activityPageSize === size ? '#8E9B8B' : '#F5F3EF', color: activityPageSize === size ? '#fff' : '#5A6059', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {filteredActivity.length === 0 ? (
                 <div style={{ background: '#fff', borderRadius: 12, padding: 40, textAlign: 'center', color: '#CBCED4', border: '1px solid rgba(62,66,61,0.1)' }}>No activity yet</div>
-              ) : filteredActivity.map(a => (
-                <div key={a.id} style={{ background: '#fff', borderRadius: 10, padding: 16, border: '1px solid rgba(62,66,61,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ background: a.action === 'Note Added' ? '#E5E1D8' : '#F5F3EF', color: '#5A6059', fontSize: 11, borderRadius: 20, padding: '2px 10px' }}>{a.action}</span>
-                      {a.crm_people && <span style={{ color: '#8E9B8B', fontSize: 12 }}>👤 {a.crm_people.first_name} {a.crm_people.last_name}</span>}
-                      {!a.person_id && a.action === 'Note Added' && <span style={{ color: '#94B0BC', fontSize: 12 }}>🏢 Company</span>}
+              ) : filteredActivity.slice((activityPage - 1) * activityPageSize, activityPage * activityPageSize).map(a => {
+                const isEmail = a.action === 'Email Sent' || a.action === 'Email Draft Saved';
+                const isExpanded = expandedActivity[a.id];
+                const bodies = emailBodies[a.id] || [];
+                return (
+                  <div key={a.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
+                    <div style={{ padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ background: a.action === 'Note Added' ? '#E5E1D8' : isEmail ? '#EBF4FF' : '#F5F3EF', color: a.action === 'Note Added' ? '#5A6059' : isEmail ? '#1a6fad' : '#5A6059', fontSize: 11, borderRadius: 20, padding: '2px 10px' }}>{a.action}</span>
+                          {a.crm_people && <span style={{ color: '#8E9B8B', fontSize: 12 }}>👤 {a.crm_people.first_name} {a.crm_people.last_name}</span>}
+                          {!a.person_id && a.action === 'Note Added' && <span style={{ color: '#94B0BC', fontSize: 12 }}>🏢 Company</span>}
+                        </div>
+                        <p style={{ color: '#3E423D', fontSize: 14, margin: '0 0 4px' }}>{a.details}</p>
+                        <p style={{ color: '#CBCED4', fontSize: 11, margin: 0 }}>{new Date(a.created_at).toLocaleString()}</p>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 12 }}>
+                        {isEmail && (
+                          <button onClick={() => {
+                            setExpandedActivity(prev => ({ ...prev, [a.id]: !prev[a.id] }));
+                            if (!emailBodies[a.id]) fetchEmailBody(a.id, id);
+                          }} style={{ background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', color: '#5A6059', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {isExpanded ? '▲ Hide' : '▼ View Email'}
+                          </button>
+                        )}
+                        {a.action === 'Note Added' && (
+                          <button onClick={() => deleteActivity(a.id)} style={{ background: 'none', border: 'none', color: '#D4183D', fontSize: 12, cursor: 'pointer' }}>Delete</button>
+                        )}
+                      </div>
                     </div>
-                    <p style={{ color: '#3E423D', fontSize: 14, margin: '0 0 4px' }}>{a.details}</p>
-                    <p style={{ color: '#CBCED4', fontSize: 11, margin: 0 }}>{new Date(a.created_at).toLocaleString()}</p>
+                    {isEmail && isExpanded && (
+                      <div style={{ borderTop: '1px solid rgba(62,66,61,0.08)', background: '#FAFAF9', padding: 20 }}>
+                        {bodies.length === 0 ? (
+                          <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>Loading email content...</p>
+                        ) : (() => {
+                          const subjectMatch = a.details.includes(': "') ? a.details.split(': "')[1]?.replace(/"$/, '') : '';
+                          const match = bodies.find(e => e.subject === subjectMatch) || bodies[0];
+                          return match ? (
+                            <div>
+                              <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 10px', fontWeight: 600 }}>
+                                {match.status === 'sent' ? '📤 Sent' : '💾 Draft'} · {match.subject}
+                              </p>
+                              <div dangerouslySetInnerHTML={{ __html: match.body_html }} style={{ fontSize: 13, lineHeight: 1.7, color: '#3E423D' }} />
+                            </div>
+                          ) : <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>Email content not found.</p>;
+                        })()}
+                      </div>
+                    )}
                   </div>
-                  {a.action === 'Note Added' && (
-                    <button onClick={() => deleteActivity(a.id)} style={{ background: 'none', border: 'none', color: '#D4183D', fontSize: 12, cursor: 'pointer', marginLeft: 12 }}>Delete</button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+            {filteredActivity.length > activityPageSize && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 16 }}>
+                <button onClick={() => setActivityPage(p => Math.max(1, p - 1))} disabled={activityPage === 1}
+                  style={{ background: activityPage === 1 ? '#F5F3EF' : '#8E9B8B', color: activityPage === 1 ? '#CBCED4' : '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: activityPage === 1 ? 'default' : 'pointer' }}>← Prev</button>
+                {Array.from({ length: Math.ceil(filteredActivity.length / activityPageSize) }, (_, i) => i + 1).map(page => (
+                  <button key={page} onClick={() => setActivityPage(page)}
+                    style={{ background: activityPage === page ? '#3E423D' : '#F5F3EF', color: activityPage === page ? '#fff' : '#5A6059', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                    {page}
+                  </button>
+                ))}
+                <button onClick={() => setActivityPage(p => Math.min(Math.ceil(filteredActivity.length / activityPageSize), p + 1))} disabled={activityPage === Math.ceil(filteredActivity.length / activityPageSize)}
+                  style={{ background: activityPage === Math.ceil(filteredActivity.length / activityPageSize) ? '#F5F3EF' : '#8E9B8B', color: activityPage === Math.ceil(filteredActivity.length / activityPageSize) ? '#CBCED4' : '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Next →</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -729,11 +814,13 @@ export default function CompanyProfile() {
                   <button onClick={() => { setShowEmailStep2(false); setShowEmailStep1(true); }}
                     style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>← Back</button>
                   {emailSuccess ? (
-                    <button style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13 }}>✅ Saved!</button>
+                    <button style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13 }}>
+                      {emailSuccess === 'sent' ? '✅ Email Sent!' : '💾 Saved as Draft'}
+                    </button>
                   ) : (
-                    <button onClick={saveEmailDraft} disabled={savingEmail || !emailForm.subject || !emailForm.body_html}
+                    <button onClick={sendEmail} disabled={savingEmail || !emailForm.subject || !emailForm.body_html}
                       style={{ background: savingEmail ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, cursor: 'pointer' }}>
-                      {savingEmail ? '⏳ Saving...' : '💾 Save Draft'}
+                      {savingEmail ? '⏳ Sending...' : getSelectedPerson()?.email ? '📤 Send Email' : '💾 Save Draft'}
                     </button>
                   )}
                   <button onClick={() => setShowEmailStep2(false)}

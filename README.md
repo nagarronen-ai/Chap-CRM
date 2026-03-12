@@ -1,6 +1,6 @@
 # Planfor CRM
 
-Internal sales CRM built for the Planfor.io team to manage wedding vendor outreach, track leads through a pipeline, and send templated emails — all in one place.
+Internal sales CRM built for the Planfor.io team to manage wedding vendor outreach, track leads through a pipeline, send emails via SendGrid, run marketing campaigns, and track internal company finances — all in one place.
 
 ---
 
@@ -11,10 +11,14 @@ Internal sales CRM built for the Planfor.io team to manage wedding vendor outrea
 - [Features](#features)
 - [Project Structure](#project-structure)
 - [Database Schema](#database-schema)
+- [Roles & Permissions](#roles--permissions)
 - [Environment Variables](#environment-variables)
 - [Getting Started](#getting-started)
 - [API Reference](#api-reference)
 - [Email System](#email-system)
+- [Marketing & Campaigns](#marketing--campaigns)
+- [Finance Module](#finance-module)
+- [Design System](#design-system)
 - [Roadmap](#roadmap)
 
 ---
@@ -26,7 +30,10 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 - Import wedding vendor leads from Apollo CSV exports
 - Track companies and contacts through a visual sales pipeline
 - Log all activity and notes against each company
-- Compose and save email drafts using reusable templates with merge tags
+- Compose and send emails via SendGrid using reusable templates with merge tags
+- Run bulk marketing campaigns with open/click tracking
+- View per-contact campaign history on each company profile
+- Track internal company expenses (servers, domains, tools, etc.)
 - Monitor pipeline health from a real-time dashboard
 
 ---
@@ -39,6 +46,7 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 | Backend | Node.js, Express |
 | Database | Supabase (PostgreSQL) |
 | Auth | JWT (stored in localStorage) |
+| Email Delivery | SendGrid (@sendgrid/mail) |
 | Styling | Inline styles with custom design system |
 | Fonts | Playfair Display (serif), Inter (sans-serif) |
 | Deployment | Local / to be configured |
@@ -64,13 +72,15 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 ### Company Profile
 - Pipeline stepper — click any stage to update instantly
 - Status bar: Last Activity, Next Action (inline editable), Origin + Location
-- **Overview tab** — inline editable company fields (click any field to edit, blur/Enter to save), all changes logged to activity
+- **Overview tab** — inline editable company fields, all changes logged to activity
 - **People tab** — full contact list with add/edit/remove
-- **Activity tab** — full audit timeline with notes, field changes, email logs; filterable by person
+- **Activity tab** — paginated audit timeline (5/10/25/50 per page), filterable by person, expandable email view inline
+- **Marketing tab** — per-contact campaign history (campaign name, sent date, status, opens, clicks), unsubscribe banner if applicable
 - Quick Note box with last 3 notes preview
 
 ### Email Templates
 - Create, edit, delete reusable email templates
+- Team or private visibility per template
 - Categories: Outreach, Follow-up, Proposal, Meeting Confirmation, General
 - Visual editor (contentEditable with B/I/U/List toolbar) and raw HTML editor
 - Merge tags sidebar — click to insert at cursor or drag & drop into subject or body
@@ -81,8 +91,31 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 - 2-step flow: pick recipient + template → full editor
 - Merge tags auto-resolved with real company/person data
 - Visual and HTML editing modes
-- Saves as draft to database, logs to company activity timeline
-- Gmail send integration: **pending (Task 4)**
+- Sends live via SendGrid if recipient has an email address
+- Falls back to draft if no email address available
+- Logs `Email Sent` or `Email Draft Saved` to activity timeline
+- Expandable email view in activity — click ▼ to read the full email inline
+
+### Marketing Campaigns
+- Campaign builder with subject, body, from name/email
+- Recipient selection — filter by stage, origin, category; excludes unsubscribed contacts
+- SendGrid bulk send with custom args per recipient for webhook tracking
+- Real-time campaign analytics: delivered, opened, clicked, bounced, unsubscribed
+- SendGrid event webhook handler (`/api/marketing/webhook`) — processes open, click, bounce, unsubscribe events
+- Per-contact marketing history visible on Company Profile → Marketing tab
+- Unsubscribe handling — sets `marketing_unsubscribed` flag on company record
+
+### Finance Module *(in development)*
+- Internal company expense tracker (servers, domains, software, legal, etc.)
+- Add/edit/delete expenses — admin only
+- Summary cards: total this month, total this year, pending, overdue
+- Filter by category, status, date range
+- Stripe foundation — *(pending API key)*
+
+### Team Management
+- View and manage CRM users
+- Assign roles: admin, sales, marketing, csm, support, finance
+- Admin-only access
 
 ---
 
@@ -94,20 +127,29 @@ venueflow-crm/
 │   ├── routes/
 │   │   ├── auth.js          # Login, JWT generation
 │   │   ├── contacts.js      # Companies, people, activity, notes
-│   │   └── emails.js        # Templates, sent emails, drafts
+│   │   ├── emails.js        # Templates, sent emails, SendGrid direct send
+│   │   ├── marketing.js     # Campaigns, SendGrid bulk send, webhook, stats
+│   │   ├── finance.js       # Company expenses (in development)
+│   │   └── users.js         # Team management
 │   ├── middleware/
-│   │   └── auth.js          # JWT verification middleware
+│   │   ├── auth.js          # JWT verification middleware
+│   │   └── rbac.js          # Role-based access control
 │   ├── db.js                # Supabase client
 │   └── index.js             # Express app entry point
 ├── client/
 │   └── src/
+│       ├── hooks/
+│       │   └── useRole.js   # Frontend permission hook
 │       ├── pages/
 │       │   ├── Login.js
 │       │   ├── Dashboard.js
 │       │   ├── Contacts.js
 │       │   ├── CompanyProfile.js
 │       │   ├── Import.js
-│       │   └── Emails.js
+│       │   ├── Emails.js
+│       │   ├── Marketing.js
+│       │   ├── Finance.js
+│       │   └── Team.js
 │       ├── components/
 │       │   └── Sidebar.js
 │       └── App.js
@@ -125,8 +167,10 @@ venueflow-crm/
 |---|---|---|
 | id | uuid | Primary key |
 | email | text | Unique |
-| password_hash | text | bcrypt |
-| full_name | text | |
+| password | text | bcrypt |
+| name | text | Full name |
+| role | text | admin / sales / marketing / csm / support / finance |
+| last_login | timestamp | |
 | created_at | timestamp | |
 
 ### `crm_companies`
@@ -134,6 +178,7 @@ venueflow-crm/
 |---|---|---|
 | id | uuid | Primary key |
 | user_id | uuid | FK → crm_users |
+| assigned_to | uuid | FK → crm_users (optional) |
 | company_name | text | |
 | website | text | |
 | category | text | e.g. Venue & Spaces |
@@ -153,6 +198,8 @@ venueflow-crm/
 | keywords | text | |
 | apollo_account_id | text | |
 | next_action | text | Inline editable next step |
+| marketing_unsubscribed | boolean | Default false |
+| marketing_unsubscribed_at | timestamp | |
 | created_at | timestamp | |
 | updated_at | timestamp | Auto-updated via trigger |
 
@@ -177,7 +224,7 @@ venueflow-crm/
 | company_id | uuid | FK → crm_companies |
 | user_id | uuid | FK → crm_users |
 | person_id | uuid | FK → crm_people (optional) |
-| action | text | e.g. Note Added, Stage Changed, Email Draft Saved |
+| action | text | e.g. Note Added, Stage Changed, Email Sent |
 | details | text | Full log message |
 | created_at | timestamp | |
 
@@ -185,12 +232,13 @@ venueflow-crm/
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | Primary key |
-| user_id | uuid | FK → crm_users |
+| user_id | uuid | FK → crm_users (created_by) |
 | name | text | Template display name |
 | category | text | Outreach / Follow-up / Proposal etc. |
 | subject | text | Supports merge tags |
 | body_html | text | HTML body, supports merge tags |
 | signature_html | text | HTML signature |
+| visibility | text | team / private |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 
@@ -208,6 +256,79 @@ venueflow-crm/
 | sent_at | timestamp | |
 | created_at | timestamp | |
 
+### `crm_campaigns`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | Primary key |
+| name | text | Campaign display name |
+| subject | text | Email subject |
+| body_html | text | Email body HTML |
+| template_id | uuid | FK → crm_email_templates (optional) |
+| from_name | text | Sender display name |
+| from_email | text | Sender email address |
+| status | text | draft / sending / sent |
+| recipients_count | integer | Total recipients |
+| created_by | uuid | FK → crm_users |
+| sent_at | timestamp | |
+| created_at | timestamp | |
+
+### `crm_campaign_recipients`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | Primary key |
+| campaign_id | uuid | FK → crm_campaigns |
+| company_id | uuid | FK → crm_companies |
+| person_id | uuid | FK → crm_people (optional) |
+| email | text | Recipient email address |
+| status | text | pending / delivered / opened / clicked / bounced / unsubscribed |
+| opened_at | timestamp | |
+| clicked_at | timestamp | |
+| bounced_at | timestamp | |
+| unsubscribed_at | timestamp | |
+| sendgrid_message_id | text | |
+| created_at | timestamp | |
+
+### `crm_expenses` *(in development)*
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | Primary key |
+| title | text | Expense name |
+| amount | numeric | Amount in USD |
+| date | date | Expense date |
+| category | text | Server / Domain / Software / Marketing / Legal / Office / Salaries / Other |
+| vendor | text | Supplier name (optional) |
+| paid_by | uuid | FK → crm_users (admin only) |
+| status | text | pending / paid / overdue |
+| recurring | boolean | Default false |
+| notes | text | Optional notes |
+| receipt_url | text | Link to receipt (optional) |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+---
+
+## Roles & Permissions
+
+| Permission | admin | sales | marketing | csm | support | finance |
+|---|---|---|---|---|---|---|
+| company:edit | ✅ | | | | | |
+| company:delete | ✅ | | | | | |
+| company:assign | ✅ | | | | | |
+| company:export | ✅ | | ✅ | | | ✅ |
+| people:edit | ✅ | ✅ | | | | |
+| people:delete | ✅ | | | | | |
+| pipeline:move | ✅ | ✅ | | | | |
+| activity:write | ✅ | ✅ | | ✅ | ✅ | |
+| activity:delete | ✅ | | | | | |
+| email:send | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| email:templates | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| import:run | ✅ | ✅ | ✅ | | | |
+| marketing:send | ✅ | | ✅ | | | |
+| marketing:view | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| finance:general | ✅ | | | | | ✅ |
+| finance:company | ✅ | | | ✅ | ✅ | ✅ |
+| users:manage | ✅ | | | | | |
+
 ---
 
 ## Environment Variables
@@ -215,10 +336,13 @@ venueflow-crm/
 Create a `.env` file in the root of the project:
 
 ```env
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_KEY=your_supabase_anon_key
-JWT_SECRET=your_jwt_secret_string
 PORT=5000
+JWT_SECRET=your_jwt_secret_string
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
+SENDGRID_API_KEY=your_sendgrid_api_key
+SENDGRID_FROM_EMAIL=marketing@yourdomain.com
+SENDGRID_FROM_NAME=Your Company Name
 ```
 
 > ⚠️ Never commit `.env` to GitHub. It is listed in `.gitignore`.
@@ -230,6 +354,7 @@ PORT=5000
 ### Prerequisites
 - Node.js v18+
 - A Supabase project with the schema above applied
+- A SendGrid account with a verified sender domain
 
 ### Installation
 
@@ -255,7 +380,7 @@ node server/index.js
 cd client && npm start
 ```
 
-Frontend runs on `http://localhost:3000`  
+Frontend runs on `http://localhost:3000`
 Backend runs on `http://localhost:5000`
 
 ---
@@ -292,8 +417,35 @@ Backend runs on `http://localhost:5000`
 | DELETE | `/api/emails/templates/:id` | Delete template |
 | GET | `/api/emails/sent` | List all sent/draft emails |
 | GET | `/api/emails/sent/company/:id` | Emails for a company |
-| POST | `/api/emails/send` | Save draft / send email |
+| POST | `/api/emails/send` | Send via SendGrid or save draft |
 | DELETE | `/api/emails/sent/:id` | Delete email record |
+
+### Marketing
+| Method | Route | Description |
+|---|---|---|
+| GET | `/api/marketing/campaigns` | List all campaigns |
+| POST | `/api/marketing/campaigns` | Create campaign |
+| GET | `/api/marketing/campaigns/:id` | Get campaign + stats |
+| POST | `/api/marketing/campaigns/:id/send` | Send campaign via SendGrid |
+| GET | `/api/marketing/recipients` | List recipients with filters |
+| POST | `/api/marketing/webhook` | SendGrid event webhook (opens, clicks, bounces) |
+| GET | `/api/marketing/company/:companyId` | Campaign history for a company |
+
+### Finance *(in development)*
+| Method | Route | Description |
+|---|---|---|
+| GET | `/api/finance/expenses` | List all expenses (admin + finance) |
+| POST | `/api/finance/expenses` | Create expense (admin only) |
+| PUT | `/api/finance/expenses/:id` | Update expense (admin only) |
+| DELETE | `/api/finance/expenses/:id` | Delete expense (admin only) |
+
+### Users
+| Method | Route | Description |
+|---|---|---|
+| GET | `/api/users` | List all users (admin only) |
+| POST | `/api/users` | Create user (admin only) |
+| PUT | `/api/users/:id` | Update user (admin only) |
+| DELETE | `/api/users/:id` | Delete user (admin only) |
 
 All routes require `Authorization: Bearer <token>` header.
 
@@ -302,8 +454,6 @@ All routes require `Authorization: Bearer <token>` header.
 ## Email System
 
 ### Merge Tags
-The following tags are supported in both subject and body:
-
 | Tag | Resolves To |
 |---|---|
 | `{{first_name}}` | Recipient first name |
@@ -314,31 +464,45 @@ The following tags are supported in both subject and body:
 | `{{city}}` | Company city |
 | `{{stage}}` | Current pipeline stage |
 
-Tags are resolved at send/save time using real data from the company and selected person.
-
-### Flow
+### Direct Email Flow
 1. Sales rep clicks **📧 Send Email** on a company profile
 2. Selects recipient (person) and template (or blank)
-3. Edits in Visual or HTML mode, inserts merge tags via click or drag & drop
-4. Saves as draft → stored in `crm_emails_sent`, logged in activity timeline
-5. **Gmail send**: pending Task 4 (Gmail OAuth integration)
+3. Edits in Visual or HTML mode, inserts merge tags
+4. Clicks Send — email delivered via SendGrid from the rep's own @planfor.io address
+5. Activity log shows `Email Sent` — expandable inline to read full email
+6. Falls back to `Email Draft Saved` if recipient has no email address
 
 ---
 
-## Roadmap
+## Marketing & Campaigns
 
-| Task | Status |
-|---|---|
-| Database schema | ✅ In Production |
-| Contacts list with filters | ✅ In Production |
-| Company Profile page | ✅ In Production |
-| CSV import (Apollo) | ✅ In Production |
-| Activity timeline & audit log | ✅ In Production |
-| Dashboard | ✅ In Production |
-| Email Templates Manager | ✅ In Production |
-| Email Composer (Company Profile) | ✅ In Production |
-| Email Database & Backend | ✅ In Production |
-| Gmail OAuth Integration | 🔵 Pending |
+### Campaign Flow
+1. Marketing user creates a campaign (name, subject, body, from details)
+2. Selects recipients — filtered by stage, origin, category; unsubscribed contacts excluded automatically
+3. Sends via SendGrid bulk API — each recipient gets a unique message with custom args for tracking
+4. SendGrid webhook posts events (open, click, bounce, unsubscribe) back to `/api/marketing/webhook`
+5. Events update `crm_campaign_recipients` status and timestamps in real time
+6. Campaign analytics page shows delivered / opened / clicked / bounced / unsubscribed counts
+7. Per-contact history visible on Company Profile → Marketing tab
+
+> ⚠️ Webhook requires a public URL. Use ngrok for local development or deploy to production.
+
+---
+
+## Finance Module
+
+Internal expense tracker for Planfor founders (admin role only for write access).
+
+### Expense Categories
+Server, Domain, Software, Marketing, Legal, Office, Salaries, Other
+
+### Status Types
+- **Pending** — expense logged, not yet paid
+- **Paid** — payment confirmed
+- **Overdue** — past due date, unpaid
+
+### Stripe Integration
+Stripe foundation is planned for future PlanMe marketplace payment flows. Pending API key setup.
 
 ---
 
@@ -358,6 +522,36 @@ Tags are resolved at send/save time using real data from the company and selecte
 | Lavender | `#B4A5D6` | Meeting Scheduled stage |
 | Gold | `#D4A574` | Follow-up stage |
 | Red | `#D4183D` | Destructive actions, Closed Lost |
+
+---
+
+## Roadmap
+
+| Feature | Status |
+|---|---|
+| Database schema | ✅ Done |
+| Contacts list with filters | ✅ Done |
+| Company Profile page | ✅ Done |
+| CSV import (Apollo) | ✅ Done |
+| Activity timeline & audit log | ✅ Done |
+| Activity tab pagination | ✅ Done |
+| Activity tab inline email expand | ✅ Done |
+| Dashboard | ✅ Done |
+| Email Templates Manager | ✅ Done |
+| Email Composer with SendGrid send | ✅ Done |
+| Roles & Permissions (RBAC) | ✅ Done |
+| Team Management page | ✅ Done |
+| Marketing Campaigns module | ✅ Done |
+| SendGrid campaign webhook | ✅ Done |
+| Company Profile — Marketing tab | ✅ Done |
+| Finance Module — Expenses tracker | 🔧 In Development |
+| SendGrid webhook for direct emails | 🔵 Pending (needs public URL) |
+| Gmail OAuth + inbox sync | 🔵 Pending |
+| Two-way conversation view | 🔵 Pending |
+| Google Calendar + Meeting Scheduler | 🔵 Pending |
+| Stripe integration | 🔵 Pending (waiting for API key) |
+| Production deployment | 🔵 Pending |
+| Open source public version | 🔵 Pending |
 
 ---
 

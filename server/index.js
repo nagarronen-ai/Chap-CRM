@@ -12,6 +12,7 @@ app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/emails', require('./routes/emails'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/marketing', require('./routes/marketing'));
+app.use('/api/finance', require('./routes/finance'));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -3,6 +3,8 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
 const auth = require('../middleware/auth');
+const sgMail = require('@sendgrid/mail');
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // ─── TEMPLATES ───────────────────────────────────────────────────────────────
 
@@ -140,17 +142,52 @@ router.get('/sent/company/:companyId', auth, async (req, res) => {
 });
 
 router.post('/send', auth, async (req, res) => {
-  const { role } = req.user;
+  const { role, id: userId } = req.user;
   if (role === 'finance') return res.status(403).json({ error: 'Forbidden' });
 
-  const { company_id, person_id, template_id, subject, body_html } = req.body;
+  const { company_id, person_id, template_id, subject, body_html, recipient_email, recipient_name } = req.body;
+
+  // Fetch sender info
+  const { data: sender } = await supabase
+    .from('crm_users')
+    .select('name, email')
+    .eq('id', userId)
+    .single();
+
+  let sendGridSuccess = false;
+
+ // Send via SendGrid if we have a recipient email
+ if (recipient_email) {
+  try {
+    console.log('TO:', recipient_email, '| FROM:', sender?.email, '| SENDER:', JSON.stringify(sender));
+    await sgMail.send({
+      to: { email: recipient_email, name: recipient_name || '' },
+      from: { email: sender.email, name: sender.name },
+      subject,
+      html: body_html,
+      customArgs: {
+        email_type: 'direct',
+        company_id,
+        user_id: userId,
+      }
+    });
+    sendGridSuccess = true;
+  } catch (err) {
+    console.error('SendGrid error:', err.response?.body || err.message);
+  }
+}
+
+  const status = sendGridSuccess ? 'sent' : 'draft';
+
+  // Save to DB
   const { data, error } = await supabase
     .from('crm_emails_sent')
     .insert([{
-      user_id: req.user.id,
+      user_id: userId,
       company_id, person_id, template_id,
       subject, body_html,
-      status: 'draft',
+      status,
+      sent_at: sendGridSuccess ? new Date() : null,
       created_at: new Date()
     }])
     .select().single();
@@ -159,12 +196,14 @@ router.post('/send', auth, async (req, res) => {
   await supabase.from('crm_activity_log').insert([{
     company_id,
     person_id: person_id || null,
-    user_id: req.user.id,
-    action: 'Email Draft Saved',
-    details: `Draft saved: "${subject}"`
+    user_id: userId,
+    action: sendGridSuccess ? 'Email Sent' : 'Email Draft Saved',
+    details: sendGridSuccess
+      ? `Email sent to ${recipient_email}: "${subject}"`
+      : `Draft saved: "${subject}"`
   }]);
 
-  res.json(data);
+  res.json({ ...data, sendGridSuccess });
 });
 
 router.delete('/sent/:id', auth, async (req, res) => {
