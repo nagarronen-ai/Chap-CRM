@@ -243,9 +243,31 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
 
 // ─── SENDGRID WEBHOOK ─────────────────────────────────────────────────────────
 
+const { EventWebhook } = require('@sendgrid/eventwebhook');
+
 // POST /api/marketing/webhook — no auth, called by SendGrid
-router.post('/webhook', async (req, res) => {
-  const events = req.body;
+router.post('/webhook', async (req, res) => {   
+   // Verify signature
+  const key = process.env.SENDGRID_WEBHOOK_KEY_MARKETING;
+  if (key) {
+    try {
+      const ew = new EventWebhook();
+      const ecPublicKey = ew.convertPublicKeyToECDSA(key);
+      const signature = req.headers['x-twilio-email-event-webhook-signature'];
+      const timestamp = req.headers['x-twilio-email-event-webhook-timestamp'];
+      const payload = req.body.toString();
+      const valid = ew.verifySignature(ecPublicKey, payload, signature, timestamp);
+      if (!valid) {
+        console.error('SendGrid webhook signature verification failed (marketing)');
+        return res.sendStatus(403);
+      }
+    } catch (err) {
+      console.error('SendGrid webhook verification error:', err.message);
+      return res.sendStatus(403);
+    }
+  }
+
+  const events = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
   if (!Array.isArray(events)) return res.sendStatus(200);
 
   for (const event of events) {
@@ -254,7 +276,6 @@ router.post('/webhook', async (req, res) => {
 
     const eventTime = new Date(timestamp * 1000).toISOString();
 
-    // Map SendGrid event to our status
     const statusMap = {
       delivered: 'delivered',
       open: 'opened',
@@ -267,7 +288,6 @@ router.post('/webhook', async (req, res) => {
     const newStatus = statusMap[eventType];
     if (!newStatus) continue;
 
-    // Update recipient status
     const updateData = { status: newStatus };
     if (eventType === 'open') updateData.opened_at = eventTime;
     if (eventType === 'click') updateData.clicked_at = eventTime;
@@ -280,7 +300,6 @@ router.post('/webhook', async (req, res) => {
       .eq('campaign_id', campaign_id)
       .eq('email', email);
 
-    // On unsubscribe — mark company
     if (eventType === 'unsubscribe' && company_id) {
       await supabase
         .from('crm_companies')
