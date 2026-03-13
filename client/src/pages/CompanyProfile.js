@@ -23,7 +23,7 @@ const STAGE_COLORS = {
   'Closed Won': '#4CAF50', 'Closed Lost': '#D4183D', 'Not Interested': '#CBCED4',
 };
 
-const API = 'http://localhost:5000/api';
+const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
 const MERGE_TAGS = [
   { tag: '{{first_name}}', label: 'First Name' },

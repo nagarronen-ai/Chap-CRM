@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 
-const API = 'http://localhost:5000/api';
+const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
 const FIELD_MAP = {
   'Company Name': 'company_name',

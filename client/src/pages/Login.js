@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API = 'http://localhost:5000/api';
+const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
 export default function Login() {
   const [email, setEmail] = useState('');

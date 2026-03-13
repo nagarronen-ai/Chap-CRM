@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 
-const API = 'http://localhost:5000/api';
+const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
 const STAGE_COLORS = {
   'New': '#94B0BC', 'Contacted': '#8E9B8B', 'No Reply': '#717182',

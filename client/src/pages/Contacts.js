@@ -27,7 +27,7 @@ const ROLE_COLORS = {
   csm: '#D4A574', support: '#717182', finance: '#4CAF50',
 };
 
-const API = 'http://localhost:5000/api';
+const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 const EMPTY_FORM = { company_name: '', website: '', category: '', business_type: '', city: '', state: '', country: '', stage: 'New', origin: 'Upload', first_name: '', last_name: '', title: '', email: '', work_phone: '' };
 
 export default function Contacts() {

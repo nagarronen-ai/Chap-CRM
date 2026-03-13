@@ -3,7 +3,7 @@ import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 
-const API = 'http://localhost:5000/api';
+const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 const CATEGORIES = ['Outreach', 'Follow-up', 'Proposal', 'Meeting Confirmation', 'General'];
 const MERGE_TAGS = [
   { tag: '{{first_name}}', label: 'First Name' },
