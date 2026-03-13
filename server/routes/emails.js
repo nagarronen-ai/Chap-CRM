@@ -216,4 +216,73 @@ router.delete('/sent/:id', auth, async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── SENDGRID WEBHOOK FOR DIRECT EMAILS ──────────────────────────────────────
+
+// POST /api/emails/webhook — no auth, called by SendGrid
+router.post('/webhook', async (req, res) => {
+  const events = req.body;
+  if (!Array.isArray(events)) return res.sendStatus(200);
+
+  for (const event of events) {
+    const { email_type, company_id, user_id, email, event: eventType, timestamp, sg_message_id } = event;
+
+    // Only process direct emails — campaigns are handled by /api/marketing/webhook
+    if (email_type !== 'direct') continue;
+
+    const eventTime = new Date(timestamp * 1000).toISOString();
+
+    // Find the most recent email sent to this company by this user
+    const { data: emailRecord } = await supabase
+      .from('crm_emails_sent')
+      .select('id')
+      .eq('company_id', company_id)
+      .eq('user_id', user_id)
+      .eq('status', 'sent')
+      .order('sent_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!emailRecord) continue;
+
+    const updateData = {};
+
+    if (eventType === 'delivered') {
+      updateData.email_status = 'delivered';
+    }
+    if (eventType === 'open') {
+      updateData.email_status = 'opened';
+      updateData.opened_at = eventTime;
+    }
+    if (eventType === 'click') {
+      updateData.email_status = 'clicked';
+      updateData.clicked_at = eventTime;
+    }
+    if (eventType === 'bounce') {
+      updateData.email_status = 'bounced';
+      updateData.bounced_at = eventTime;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      if (sg_message_id) updateData.sendgrid_message_id = sg_message_id;
+
+      await supabase
+        .from('crm_emails_sent')
+        .update(updateData)
+        .eq('id', emailRecord.id);
+
+      // Log to activity
+      if (['open', 'click', 'bounce'].includes(eventType)) {
+        await supabase.from('crm_activity_log').insert([{
+          company_id,
+          user_id,
+          action: `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`,
+          details: `Recipient ${eventType === 'bounce' ? 'bounced' : eventType + 'ed'} the email`
+        }]);
+      }
+    }
+  }
+
+  res.sendStatus(200);
+});
+
 module.exports = router;
