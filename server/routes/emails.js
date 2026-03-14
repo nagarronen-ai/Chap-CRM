@@ -250,15 +250,6 @@ router.post('/webhook', async (req, res) => {
         .from('crm_emails_sent')
         .update(updateData)
         .eq('id', emailRecord.id);
-
-      if (['open', 'click', 'bounce'].includes(eventType)) {
-        await supabase.from('crm_activity_log').insert([{
-          company_id,
-          user_id,
-          action: `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`,
-          details: `Recipient ${eventType === 'bounce' ? 'bounced' : eventType + 'ed'} the email`
-        }]);
-      }
     }
   }
 
