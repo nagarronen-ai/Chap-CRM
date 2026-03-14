@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
+import TiptapEditor from '../components/TiptapEditor';
 
 const STAGES = ['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'];
 const ORIGINS = ['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'];
@@ -336,8 +337,14 @@ export default function CompanyProfile() {
         setEmailForm(prev => ({ ...prev, body_html: newVal }));
         setTimeout(() => { textarea.focus(); textarea.selectionStart = textarea.selectionEnd = start + tag.length; }, 0);
       } else {
-        // visual mode — insert at cursor via execCommand
-        document.execCommand('insertText', false, tag);
+        // Tiptap visual mode — append to content
+        setEmailForm(prev => {
+          const current = prev.body_html || '';
+          const updated = current.replace(/<\/p>\s*$/, tag + '</p>') !== current
+            ? current.replace(/<\/p>\s*$/, tag + '</p>')
+            : current + tag;
+          return { ...prev, body_html: updated };
+        });
       }
     }
   };
@@ -984,53 +991,13 @@ export default function CompanyProfile() {
                         placeholder="Email body HTML..."
                       />
                     ) : (
-                      <div
-                        style={{ border: emailActiveField === 'body' ? '1px solid #8E9B8B' : '1px solid rgba(62,66,61,0.1)', borderRadius: 8, overflow: 'hidden', minHeight: 320 }}
+                      <TiptapEditor
+                        content={emailForm.body_html}
+                        onChange={html => setEmailForm(prev => ({ ...prev, body_html: html }))}
                         onFocus={() => setEmailActiveField('body')}
-                        onDragOver={e => e.preventDefault()}
-                        onDrop={e => {
-                          e.preventDefault();
-                          const tag = e.dataTransfer.getData('text/plain');
-                          let range;
-                          if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(e.clientX, e.clientY);
-                          else if (document.caretPositionFromPoint) {
-                            const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
-                            range = document.createRange();
-                            range.setStart(pos.offsetNode, pos.offset);
-                          }
-                          if (range) {
-                            const sel = window.getSelection();
-                            sel.removeAllRanges();
-                            sel.addRange(range);
-                            document.execCommand('insertText', false, tag);
-                            const el = e.currentTarget.querySelector('[contenteditable]');
-                            if (el) setEmailForm(prev => ({ ...prev, body_html: el.innerHTML }));
-                          }
-                        }}
-                      >
-                        {/* Toolbar */}
-                        <div style={{ background: '#F5F3EF', padding: '8px 12px', borderBottom: '1px solid rgba(62,66,61,0.1)', display: 'flex', gap: 8 }}>
-                          {[
-                            { cmd: 'bold', label: '<b>B</b>' },
-                            { cmd: 'italic', label: '<i>I</i>' },
-                            { cmd: 'underline', label: '<u>U</u>' },
-                            { cmd: 'insertUnorderedList', label: '• List' },
-                            { cmd: 'insertOrderedList', label: '1. List' },
-                          ].map(({ cmd, label }) => (
-                            <button key={cmd} onMouseDown={e => { e.preventDefault(); document.execCommand(cmd); }}
-                              style={{ background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 4, padding: '3px 10px', fontSize: 13, cursor: 'pointer' }}
-                              dangerouslySetInnerHTML={{ __html: label }} />
-                          ))}
-                        </div>
-                        {/* Editable area */}
-                        <div
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={e => setEmailForm(prev => ({ ...prev, body_html: e.target.innerHTML }))}
-                          dangerouslySetInnerHTML={{ __html: emailForm.body_html }}
-                          style={{ padding: 16, minHeight: 280, outline: 'none', fontSize: 14, lineHeight: 1.7, color: '#3E423D' }}
-                        />
-                      </div>
+                        placeholder="Write your email..."
+                        minHeight={280}
+                      />
                     )}
                   </div>
 
