@@ -152,7 +152,21 @@ router.post('/send', auth, async (req, res) => {
         to: { email: recipient_email, name: recipient_name || '' },
         from: { email: sender.email, name: sender.name },
         subject,
-        html: body_html,
+        html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;padding:20px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
+<tr><td style="padding:32px 40px;font-size:15px;line-height:1.6;color:#222222;">
+${body_html}
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`,
         trackingSettings: {
           clickTracking: { enable: true, enableText: true },
           openTracking: { enable: true },
