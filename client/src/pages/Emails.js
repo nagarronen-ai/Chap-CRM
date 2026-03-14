@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
+import TiptapEditor from '../components/TiptapEditor';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 const CATEGORIES = ['Outreach', 'Follow-up', 'Proposal', 'Meeting Confirmation', 'General'];
@@ -132,13 +133,23 @@ export default function Emails() {
       setForm(prev => ({ ...prev, subject: newVal }));
       setTimeout(() => { input.focus(); input.selectionStart = input.selectionEnd = start + tag.length; }, 0);
     } else {
-      const textarea = editorRef.current;
-      if (!textarea) return;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const newVal = form.body_html.substring(0, start) + tag + form.body_html.substring(end);
-      setForm(prev => ({ ...prev, body_html: newVal }));
-      setTimeout(() => { textarea.focus(); textarea.selectionStart = textarea.selectionEnd = start + tag.length; }, 0);
+      if (activeTab === 'html') {
+        const textarea = editorRef.current;
+        if (!textarea) return;
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const newVal = form.body_html.substring(0, start) + tag + form.body_html.substring(end);
+        setForm(prev => ({ ...prev, body_html: newVal }));
+        setTimeout(() => { textarea.focus(); textarea.selectionStart = textarea.selectionEnd = start + tag.length; }, 0);
+      } else {
+        setForm(prev => {
+          const current = prev.body_html || '';
+          const updated = current.replace(/<\/p>\s*$/, tag + '</p>') !== current
+            ? current.replace(/<\/p>\s*$/, tag + '</p>')
+            : current + tag;
+          return { ...prev, body_html: updated };
+        });
+      }
     }
   };
 
@@ -357,45 +368,13 @@ export default function Emails() {
                         style={{ ...inputStyle, minHeight: 340, fontFamily: 'monospace', fontSize: 12, resize: 'vertical', lineHeight: 1.6, border: formErrors.includes('body_html') ? '1px solid #D4183D' : activeField === 'body' ? '1px solid #8E9B8B' : '1px solid rgba(62,66,61,0.1)' }}
                       />
                     ) : (
-                      <div
-                        style={{ border: formErrors.includes('body_html') ? '1px solid #D4183D' : activeField === 'body' ? '1px solid #8E9B8B' : '1px solid rgba(62,66,61,0.1)', borderRadius: 8, overflow: 'hidden', minHeight: 340 }}
+                      <TiptapEditor
+                        content={form.body_html}
+                        onChange={html => { setForm(prev => ({ ...prev, body_html: html })); setFormErrors(prev => prev.filter(f => f !== 'body_html')); }}
                         onFocus={() => setActiveField('body')}
-                        onDragOver={e => e.preventDefault()}
-                        onDrop={e => {
-                          e.preventDefault();
-                          const tag = e.dataTransfer.getData('text/plain');
-                          let range;
-                          if (document.caretRangeFromPoint) range = document.caretRangeFromPoint(e.clientX, e.clientY);
-                          else if (document.caretPositionFromPoint) {
-                            const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
-                            range = document.createRange();
-                            range.setStart(pos.offsetNode, pos.offset);
-                          }
-                          if (range) {
-                            const sel = window.getSelection();
-                            sel.removeAllRanges();
-                            sel.addRange(range);
-                            document.execCommand('insertText', false, tag);
-                            const el = e.currentTarget.querySelector('[contenteditable]');
-                            if (el) setForm(prev => ({ ...prev, body_html: el.innerHTML }));
-                          }
-                        }}
-                      >
-                        <div style={{ background: '#F5F3EF', padding: '8px 12px', borderBottom: '1px solid rgba(62,66,61,0.1)', display: 'flex', gap: 8 }}>
-                          {[{ cmd: 'bold', label: '<b>B</b>' }, { cmd: 'italic', label: '<i>I</i>' }, { cmd: 'underline', label: '<u>U</u>' }].map(({ cmd, label }) => (
-                            <button key={cmd} onMouseDown={e => { e.preventDefault(); document.execCommand(cmd); }}
-                              style={{ background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 4, padding: '3px 10px', fontSize: 13, cursor: 'pointer' }}
-                              dangerouslySetInnerHTML={{ __html: label }} />
-                          ))}
-                        </div>
-                        <div
-                          contentEditable
-                          suppressContentEditableWarning
-                          onBlur={e => setForm({ ...form, body_html: e.target.innerHTML })}
-                          dangerouslySetInnerHTML={{ __html: form.body_html }}
-                          style={{ padding: 16, minHeight: 280, outline: 'none', fontSize: 14, lineHeight: 1.7, color: '#3E423D' }}
-                        />
-                      </div>
+                        placeholder="Write your email template..."
+                        minHeight={340}
+                      />
                     )}
                   </div>
 
