@@ -246,7 +246,8 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
 const { EventWebhook } = require('@sendgrid/eventwebhook');
 
 // POST /api/marketing/webhook — no auth, called by SendGrid
-router.post('/webhook', async (req, res) => {   
+router.post('/webhook', async (req, res) => {  
+  console.log('📣 Marketing webhook hit:', typeof req.body, Array.isArray(req.body), req.body?.length || 'not array'); 
    // Verify signature
   const key = process.env.SENDGRID_WEBHOOK_KEY_MARKETING;
   if (key) {
