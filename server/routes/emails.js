@@ -206,7 +206,7 @@ router.delete('/sent/:id', auth, async (req, res) => {
 // ─── SENDGRID WEBHOOK FOR DIRECT EMAILS ──────────────────────────────────────
 
 router.post('/webhook', async (req, res) => {
-  console.log('📨 Direct email webhook hit:', JSON.stringify(req.body).slice(0, 200));
+  console.log('📨 Direct email webhook hit - full payload:', JSON.stringify(req.body).slice(0, 500));
 
   let events = req.body;
   if (Buffer.isBuffer(events)) events = JSON.parse(events.toString());
