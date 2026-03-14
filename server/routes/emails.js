@@ -8,11 +8,9 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // ─── TEMPLATES ───────────────────────────────────────────────────────────────
 
-// GET templates — each role sees team templates + their own private
 router.get('/templates', auth, async (req, res) => {
   const { id: userId, role } = req.user;
 
-  // Finance sees only their own private
   if (role === 'finance') {
     const { data, error } = await supabase
       .from('crm_email_templates')
@@ -24,7 +22,6 @@ router.get('/templates', auth, async (req, res) => {
     return res.json(data);
   }
 
-  // Admin sees everything
   if (role === 'admin') {
     const { data, error } = await supabase
       .from('crm_email_templates')
@@ -34,7 +31,6 @@ router.get('/templates', auth, async (req, res) => {
     return res.json(data);
   }
 
-  // Everyone else: team templates + their own private
   const { data, error } = await supabase
     .from('crm_email_templates')
     .select('*, crm_users!crm_email_templates_created_by_fkey(name)')
@@ -44,12 +40,10 @@ router.get('/templates', auth, async (req, res) => {
   res.json(data);
 });
 
-// POST create template
 router.post('/templates', auth, async (req, res) => {
   const { role, id: userId } = req.user;
   let { visibility } = req.body;
 
-  // Sales/CSM/Support/Finance can only create private
   if (['sales', 'csm', 'support', 'finance'].includes(role)) {
     visibility = 'private';
   }
@@ -62,11 +56,9 @@ router.post('/templates', auth, async (req, res) => {
   res.json(data);
 });
 
-// PUT update template
 router.put('/templates/:id', auth, async (req, res) => {
   const { role, id: userId } = req.user;
 
-  // Fetch template first to check ownership
   const { data: existing } = await supabase
     .from('crm_email_templates')
     .select('*')
@@ -75,7 +67,6 @@ router.put('/templates/:id', auth, async (req, res) => {
 
   if (!existing) return res.status(404).json({ error: 'Template not found' });
 
-  // Permission check
   const canEdit =
     role === 'admin' ||
     (role === 'marketing' && (existing.visibility === 'team' || existing.created_by === userId)) ||
@@ -92,7 +83,6 @@ router.put('/templates/:id', auth, async (req, res) => {
   res.json(data);
 });
 
-// DELETE template
 router.delete('/templates/:id', auth, async (req, res) => {
   const { role, id: userId } = req.user;
 
@@ -147,7 +137,6 @@ router.post('/send', auth, async (req, res) => {
 
   const { company_id, person_id, template_id, subject, body_html, recipient_email, recipient_name } = req.body;
 
-  // Fetch sender info
   const { data: sender } = await supabase
     .from('crm_users')
     .select('name, email')
@@ -156,30 +145,28 @@ router.post('/send', auth, async (req, res) => {
 
   let sendGridSuccess = false;
 
- // Send via SendGrid if we have a recipient email
- if (recipient_email) {
-  try {
-    console.log('TO:', recipient_email, '| FROM:', sender?.email, '| SENDER:', JSON.stringify(sender));
-    await sgMail.send({
-      to: { email: recipient_email, name: recipient_name || '' },
-      from: { email: sender.email, name: sender.name },
-      subject,
-      html: body_html,
-      customArgs: {
-        email_type: 'direct',
-        company_id,
-        user_id: userId,
-      }
-    });
-    sendGridSuccess = true;
-  } catch (err) {
-    console.error('SendGrid error:', err.response?.body || err.message);
+  if (recipient_email) {
+    try {
+      console.log('TO:', recipient_email, '| FROM:', sender?.email, '| SENDER:', JSON.stringify(sender));
+      await sgMail.send({
+        to: { email: recipient_email, name: recipient_name || '' },
+        from: { email: sender.email, name: sender.name },
+        subject,
+        html: body_html,
+        customArgs: {
+          email_type: 'direct',
+          company_id,
+          user_id: userId,
+        }
+      });
+      sendGridSuccess = true;
+    } catch (err) {
+      console.error('SendGrid error:', err.response?.body || err.message);
+    }
   }
-}
 
   const status = sendGridSuccess ? 'sent' : 'draft';
 
-  // Save to DB
   const { data, error } = await supabase
     .from('crm_emails_sent')
     .insert([{
@@ -218,20 +205,21 @@ router.delete('/sent/:id', auth, async (req, res) => {
 
 // ─── SENDGRID WEBHOOK FOR DIRECT EMAILS ──────────────────────────────────────
 
-// POST /api/emails/webhook — no auth, called by SendGrid
 router.post('/webhook', async (req, res) => {
-  const events = req.body;
+  console.log('📨 Direct email webhook hit:', JSON.stringify(req.body).slice(0, 200));
+
+  let events = req.body;
+  if (Buffer.isBuffer(events)) events = JSON.parse(events.toString());
+  if (typeof events === 'string') events = JSON.parse(events);
   if (!Array.isArray(events)) return res.sendStatus(200);
 
   for (const event of events) {
-    const { email_type, company_id, user_id, email, event: eventType, timestamp, sg_message_id } = event;
+    const { email_type, company_id, user_id, event: eventType, timestamp, sg_message_id } = event;
 
-    // Only process direct emails — campaigns are handled by /api/marketing/webhook
     if (email_type !== 'direct') continue;
 
     const eventTime = new Date(timestamp * 1000).toISOString();
 
-    // Find the most recent email sent to this company by this user
     const { data: emailRecord } = await supabase
       .from('crm_emails_sent')
       .select('id')
@@ -246,21 +234,10 @@ router.post('/webhook', async (req, res) => {
 
     const updateData = {};
 
-    if (eventType === 'delivered') {
-      updateData.email_status = 'delivered';
-    }
-    if (eventType === 'open') {
-      updateData.email_status = 'opened';
-      updateData.opened_at = eventTime;
-    }
-    if (eventType === 'click') {
-      updateData.email_status = 'clicked';
-      updateData.clicked_at = eventTime;
-    }
-    if (eventType === 'bounce') {
-      updateData.email_status = 'bounced';
-      updateData.bounced_at = eventTime;
-    }
+    if (eventType === 'delivered') updateData.email_status = 'delivered';
+    if (eventType === 'open') { updateData.email_status = 'opened'; updateData.opened_at = eventTime; }
+    if (eventType === 'click') { updateData.email_status = 'clicked'; updateData.clicked_at = eventTime; }
+    if (eventType === 'bounce') { updateData.email_status = 'bounced'; updateData.bounced_at = eventTime; }
 
     if (Object.keys(updateData).length > 0) {
       if (sg_message_id) updateData.sendgrid_message_id = sg_message_id;
@@ -270,7 +247,6 @@ router.post('/webhook', async (req, res) => {
         .update(updateData)
         .eq('id', emailRecord.id);
 
-      // Log to activity
       if (['open', 'click', 'bounce'].includes(eventType)) {
         await supabase.from('crm_activity_log').insert([{
           company_id,
