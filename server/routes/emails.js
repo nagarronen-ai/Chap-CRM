@@ -153,6 +153,10 @@ router.post('/send', auth, async (req, res) => {
         from: { email: sender.email, name: sender.name },
         subject,
         html: body_html,
+        trackingSettings: {
+          clickTracking: { enable: true, enableText: true },
+          openTracking: { enable: true },
+        },
         customArgs: {
           email_type: 'direct',
           company_id,
