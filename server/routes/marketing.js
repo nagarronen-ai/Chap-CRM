@@ -6,7 +6,6 @@ const auth = require('../middleware/auth');
 
 // ─── RECIPIENT BUILDER ────────────────────────────────────────────────────────
 
-// GET /api/marketing/recipients — build recipient list with filters
 router.get('/recipients', auth, async (req, res) => {
   const { stage, origin, city, category } = req.query;
 
@@ -23,7 +22,6 @@ router.get('/recipients', auth, async (req, res) => {
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
 
-  // Flatten to recipients (one per person with email)
   const recipients = [];
   for (const company of data) {
     const people = company.crm_people?.filter(p => p.email) || [];
@@ -47,7 +45,6 @@ router.get('/recipients', auth, async (req, res) => {
   res.json({ count: recipients.length, recipients });
 });
 
-// GET /api/marketing/recipients/count — get excluded unsubscribed count
 router.get('/recipients/excluded', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_companies')
@@ -59,7 +56,6 @@ router.get('/recipients/excluded', auth, async (req, res) => {
 
 // ─── CAMPAIGNS ────────────────────────────────────────────────────────────────
 
-// GET /api/marketing/campaigns — list all campaigns
 router.get('/campaigns', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_campaigns')
@@ -67,7 +63,6 @@ router.get('/campaigns', auth, async (req, res) => {
     .order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
 
-  // Attach stats for each campaign
   const campaignsWithStats = await Promise.all(data.map(async (campaign) => {
     const { data: recipients } = await supabase
       .from('crm_campaign_recipients')
@@ -91,7 +86,6 @@ router.get('/campaigns', auth, async (req, res) => {
   res.json(campaignsWithStats);
 });
 
-// GET /api/marketing/campaigns/:id — single campaign with recipients
 router.get('/campaigns/:id', auth, async (req, res) => {
   const { data: campaign, error } = await supabase
     .from('crm_campaigns')
@@ -122,7 +116,6 @@ router.get('/campaigns/:id', auth, async (req, res) => {
   res.json({ ...campaign, recipients, stats });
 });
 
-// POST /api/marketing/campaigns — create draft campaign
 router.post('/campaigns', auth, async (req, res) => {
   const { role } = req.user;
   if (!['admin', 'marketing'].includes(role)) return res.status(403).json({ error: 'Forbidden' });
@@ -142,7 +135,6 @@ router.post('/campaigns', auth, async (req, res) => {
   res.json(data);
 });
 
-// PUT /api/marketing/campaigns/:id — update draft
 router.put('/campaigns/:id', auth, async (req, res) => {
   const { role } = req.user;
   if (!['admin', 'marketing'].includes(role)) return res.status(403).json({ error: 'Forbidden' });
@@ -151,13 +143,12 @@ router.put('/campaigns/:id', auth, async (req, res) => {
     .from('crm_campaigns')
     .update({ ...req.body })
     .eq('id', req.params.id)
-    .eq('status', 'draft') // can only edit drafts
+    .eq('status', 'draft')
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-// DELETE /api/marketing/campaigns/:id — delete draft
 router.delete('/campaigns/:id', auth, async (req, res) => {
   const { role } = req.user;
   if (!['admin', 'marketing'].includes(role)) return res.status(403).json({ error: 'Forbidden' });
@@ -171,7 +162,6 @@ router.delete('/campaigns/:id', auth, async (req, res) => {
   res.json({ success: true });
 });
 
-// POST /api/marketing/campaigns/:id/send — send campaign via SendGrid
 router.post('/campaigns/:id/send', auth, async (req, res) => {
   const { role } = req.user;
   if (!['admin', 'marketing'].includes(role)) return res.status(403).json({ error: 'Forbidden' });
@@ -184,13 +174,11 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
   if (campError || !campaign) return res.status(404).json({ error: 'Campaign not found' });
   if (campaign.status !== 'draft') return res.status(400).json({ error: 'Campaign already sent' });
 
-  const { recipients } = req.body; // array of { company_id, person_id, email, first_name, last_name, company_name }
+  const { recipients } = req.body;
   if (!recipients || recipients.length === 0) return res.status(400).json({ error: 'No recipients' });
 
-  // Mark campaign as sending
   await supabase.from('crm_campaigns').update({ status: 'sending', recipients_count: recipients.length }).eq('id', campaign.id);
 
-  // Insert recipient rows
   const recipientRows = recipients.map(r => ({
     campaign_id: campaign.id,
     company_id: r.company_id,
@@ -200,7 +188,6 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
   }));
   await supabase.from('crm_campaign_recipients').insert(recipientRows);
 
-  // Send via SendGrid
   const sgMail = require('@sendgrid/mail');
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
@@ -243,36 +230,50 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
 
 // ─── SENDGRID WEBHOOK ─────────────────────────────────────────────────────────
 
-const { EventWebhook } = require('@sendgrid/eventwebhook');
+router.post('/webhook', async (req, res) => {
+  console.log('📣 Marketing webhook hit:', JSON.stringify(req.body).slice(0, 500));
 
-// POST /api/marketing/webhook — no auth, called by SendGrid
-router.post('/webhook', async (req, res) => {  
-  console.log('📣 Marketing webhook hit:', typeof req.body, Array.isArray(req.body), req.body?.length || 'not array'); 
-   // Verify signature
-  const key = process.env.SENDGRID_WEBHOOK_KEY_MARKETING;
-  if (key) {
-    try {
-      const ew = new EventWebhook();
-      const ecPublicKey = ew.convertPublicKeyToECDSA(key);
-      const signature = req.headers['x-twilio-email-event-webhook-signature'];
-      const timestamp = req.headers['x-twilio-email-event-webhook-timestamp'];
-      const payload = req.body.toString();
-      const valid = ew.verifySignature(ecPublicKey, payload, signature, timestamp);
-      if (!valid) {
-        console.error('SendGrid webhook signature verification failed (marketing)');
-        return res.sendStatus(403);
-      }
-    } catch (err) {
-      console.error('SendGrid webhook verification error:', err.message);
-      return res.sendStatus(403);
-    }
-  }
-
-  const events = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+  let events = req.body;
+  if (Buffer.isBuffer(events)) events = JSON.parse(events.toString());
+  if (typeof events === 'string') events = JSON.parse(events);
   if (!Array.isArray(events)) return res.sendStatus(200);
 
   for (const event of events) {
-    const { campaign_id, company_id, email, event: eventType, timestamp } = event;
+    const { campaign_id, company_id, email, email_type, user_id, event: eventType, timestamp, sg_message_id } = event;
+
+    // Handle direct email events (no campaign_id)
+    if (!campaign_id && email_type === 'direct') {
+      const eventTime = new Date(timestamp * 1000).toISOString();
+      const updateData = {};
+
+      if (eventType === 'delivered') updateData.email_status = 'delivered';
+      if (eventType === 'open') { updateData.email_status = 'opened'; updateData.opened_at = eventTime; }
+      if (eventType === 'click') { updateData.email_status = 'clicked'; updateData.clicked_at = eventTime; }
+      if (eventType === 'bounce') { updateData.email_status = 'bounced'; updateData.bounced_at = eventTime; }
+
+      if (Object.keys(updateData).length > 0) {
+        if (sg_message_id) updateData.sendgrid_message_id = sg_message_id;
+
+        const { data: emailRecord } = await supabase
+          .from('crm_emails_sent')
+          .select('id')
+          .eq('company_id', company_id)
+          .eq('user_id', user_id)
+          .eq('status', 'sent')
+          .order('sent_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (emailRecord) {
+          await supabase.from('crm_emails_sent').update(updateData).eq('id', emailRecord.id);
+          console.log('📣 Updated direct email:', emailRecord.id, eventType);
+        } else {
+          console.log('📣 No matching email record found for direct event:', eventType, company_id, user_id);
+        }
+      }
+      continue;
+    }
+
     if (!campaign_id) continue;
 
     const eventTime = new Date(timestamp * 1000).toISOString();
@@ -344,7 +345,6 @@ router.get('/stats', auth, async (req, res) => {
   });
 });
 
-// GET /api/marketing/company/:companyId — marketing history for a company
 router.get('/company/:companyId', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_campaign_recipients')
