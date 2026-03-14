@@ -240,7 +240,7 @@ router.post('/webhook', async (req, res) => {
 
     const { data: emailRecord } = await supabase
       .from('crm_emails_sent')
-      .select('id')
+      .select('id, email_status')
       .eq('company_id', company_id)
       .eq('user_id', user_id)
       .eq('status', 'sent')
@@ -260,10 +260,16 @@ router.post('/webhook', async (req, res) => {
     if (Object.keys(updateData).length > 0) {
       if (sg_message_id) updateData.sendgrid_message_id = sg_message_id;
 
-      await supabase
-        .from('crm_emails_sent')
-        .update(updateData)
-        .eq('id', emailRecord.id);
+      const priority = { sent: 0, delivered: 1, opened: 2, clicked: 3, bounced: 4 };
+      const currentPriority = priority[emailRecord.email_status] || 0;
+      const newPriority = priority[updateData.email_status] || 0;
+
+      if (newPriority >= currentPriority) {
+        await supabase
+          .from('crm_emails_sent')
+          .update(updateData)
+          .eq('id', emailRecord.id);
+      }
     }
   }
 

@@ -252,22 +252,66 @@ router.post('/webhook', async (req, res) => {
       if (eventType === 'bounce') { updateData.email_status = 'bounced'; updateData.bounced_at = eventTime; }
 
       if (Object.keys(updateData).length > 0) {
-        if (sg_message_id) updateData.sendgrid_message_id = sg_message_id;
+        if (sg_message_id) updateData.sendgrid_message_id = sg_message_id.split('.')[0];
 
-        const { data: emailRecord } = await supabase
-          .from('crm_emails_sent')
-          .select('id')
-          .eq('company_id', company_id)
-          .eq('user_id', user_id)
-          .eq('status', 'sent')
-          .order('sent_at', { ascending: false })
-          .limit(1)
-          .single();
+        let emailRecord = null;
+        
+        // Try matching by sendgrid_message_id first (most accurate)
+        if (sg_message_id) {
+          const { data } = await supabase
+            .from('crm_emails_sent')
+            .select('id')
+            .eq('sendgrid_message_id', sg_message_id.split('.')[0])
+            .single();
+          emailRecord = data;
+        }
+        
+        // Fallback: match by company + user + most recent
+        if (!emailRecord) {
+          const { data } = await supabase
+            .from('crm_emails_sent')
+            .select('id')
+            .eq('company_id', company_id)
+            .eq('user_id', user_id)
+            .eq('status', 'sent')
+            .order('sent_at', { ascending: false })
+            .limit(1)
+            .single();
+          emailRecord = data;
+        }
 
-        if (emailRecord) {
-          await supabase.from('crm_emails_sent').update(updateData).eq('id', emailRecord.id);
-          console.log('📣 Updated direct email:', emailRecord.id, eventType);
-        } else {
+          if (emailRecord) {
+            // Only update if it's a higher-priority status (avoid downgrading clicked → opened)
+            const priority = { sent: 0, delivered: 1, opened: 2, clicked: 3, bounced: 4 };
+            const { data: current } = await supabase.from('crm_emails_sent').select('email_status').eq('id', emailRecord.id).single();
+            const currentPriority = priority[current?.email_status] || 0;
+            const newPriority = priority[updateData.email_status] || 0;
+  
+            if (newPriority >= currentPriority) {
+              await supabase.from('crm_emails_sent').update(updateData).eq('id', emailRecord.id);
+            }
+  
+            // Only log activity once per event type per email
+            if (['open', 'click', 'bounce'].includes(eventType)) {
+              const { data: existingLog } = await supabase
+                .from('crm_activity_log')
+                .select('id')
+                .eq('company_id', company_id)
+                .ilike('action', `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`)
+                .limit(1);
+  
+              if (!existingLog || existingLog.length === 0) {
+                await supabase.from('crm_activity_log').insert([{
+                  company_id,
+                  user_id,
+                  action: `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`,
+                  details: `Recipient ${eventType === 'bounce' ? 'bounced' : eventType + 'ed'} the email`
+                }]);
+              }
+            }
+  
+            console.log('📣 Updated direct email:', emailRecord.id, eventType);
+          } else {
           console.log('📣 No matching email record found for direct event:', eventType, company_id, user_id);
         }
       }
