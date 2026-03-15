@@ -486,7 +486,7 @@ export default function CompanyProfile() {
         {['overview', 'people', 'activity', 'emails', 'marketing'].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ background: 'none', border: 'none', padding: '10px 20px', fontSize: 13, cursor: 'pointer', color: activeTab === tab ? '#3E423D' : '#717182', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #8E9B8B' : '2px solid transparent', textTransform: 'capitalize', fontFamily: 'Inter, sans-serif' }}>
-{tab} {tab === 'people' ? `(${company.crm_people?.length || 0})` : tab === 'activity' ? `(${activity.length})` : tab === 'emails' ? `(${emailTrackingData.length})` : tab === 'marketing' ? `(${marketingData.length})` : ''}
+{tab} {tab === 'people' ? `(${company.crm_people?.length || 0})` : tab === 'activity' ? `(${activity.length})` : tab === 'emails' ? `(${emailTrackingData.length + marketingData.length})` : tab === 'marketing' ? `(${marketingData.length})` : ''}
             </button>
           ))}
         </div>
@@ -732,7 +732,7 @@ export default function CompanyProfile() {
 {/* EMAILS TAB */}
 {activeTab === 'emails' && (
           <div>
-            {emailTrackingData.length === 0 ? (
+            {emailTrackingData.length === 0 && marketingData.length === 0 ? (
               <div style={{ background: '#fff', borderRadius: 12, padding: 60, textAlign: 'center', border: '1px solid rgba(62,66,61,0.1)' }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>📧</div>
                 <p style={{ color: '#3E423D', fontSize: 15, fontWeight: 500, margin: '0 0 6px' }}>No emails sent yet</p>
@@ -743,7 +743,7 @@ export default function CompanyProfile() {
                 {/* Summary cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 20 }}>
                   {[
-                    { label: 'Total Sent', count: emailTrackingData.length, color: '#717182' },
+                    { label: 'Total Sent', count: emailTrackingData.length + marketingData.length, color: '#717182' },
                     { label: 'Delivered', count: emailTrackingData.filter(e => ['delivered', 'opened', 'clicked'].includes(e.email_status)).length, color: '#1565C0' },
                     { label: 'Opened', count: emailTrackingData.filter(e => ['opened', 'clicked'].includes(e.email_status)).length, color: '#2E7D32' },
                     { label: 'Clicked', count: emailTrackingData.filter(e => e.email_status === 'clicked').length, color: '#E65100' },
@@ -760,8 +760,12 @@ export default function CompanyProfile() {
                 <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
+                    </thead>
+                    <tbody>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
                       <tr style={{ background: '#F5F3EF' }}>
-                        {['Subject', 'Recipient', 'Sent', 'Status', 'Opened', 'Clicked'].map(h => (
+                        {['Type', 'Subject', 'Recipient', 'Sent', 'Status', 'Opened', 'Clicked'].map(h => (
                           <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>
                         ))}
                       </tr>
@@ -770,8 +774,11 @@ export default function CompanyProfile() {
                       {emailTrackingData.map((email, i) => {
                         const st = EMAIL_STATUS_COLORS[email.email_status || 'sent'];
                         return (
-                          <tr key={email.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
-                            <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <tr key={`direct-${email.id}`} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                            <td style={{ padding: '12px 16px' }}>
+                              <span style={{ background: '#EBF4FF', color: '#1a6fad', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>Direct</span>
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {email.subject || '(no subject)'}
                             </td>
                             <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>
@@ -792,6 +799,37 @@ export default function CompanyProfile() {
                           </tr>
                         );
                       })}
+                      {marketingData.map((r, i) => (
+                        <tr key={`campaign-${r.id}`} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: (emailTrackingData.length + i) % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{ background: '#F3E8FF', color: '#7C3AED', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>Campaign</span>
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {r.crm_campaigns?.name || '—'}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>
+                            {r.email || '—'}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>
+                            {r.crm_campaigns?.sent_at ? new Date(r.crm_campaigns.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{
+                              background: r.status === 'opened' || r.status === 'clicked' ? '#E8F5E9' : r.status === 'bounced' ? '#FFEBEE' : '#F5F3EF',
+                              color: r.status === 'opened' || r.status === 'clicked' ? '#2E7D32' : r.status === 'bounced' ? '#C62828' : '#717182',
+                              borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize'
+                            }}>{r.status}</span>
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 12, color: r.opened_at ? '#2E7D32' : '#717182' }}>
+                            {r.opened_at ? new Date(r.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 12, color: r.clicked_at ? '#E65100' : '#717182' }}>
+                            {r.clicked_at ? new Date(r.clicked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                     </tbody>
                   </table>
                 </div>
@@ -803,13 +841,13 @@ export default function CompanyProfile() {
         {/* MARKETING TAB */}
         {activeTab === 'marketing' && (
           <div>
-            {company.marketing_unsubscribed && (
+            {company.crm_people?.some(p => p.marketing_unsubscribed) && (
               <div style={{ background: '#FFE5D0', borderRadius: 10, padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 18 }}>🚫</span>
                 <div>
-                  <p style={{ color: '#856404', fontSize: 13, fontWeight: 600, margin: 0 }}>Unsubscribed from Marketing</p>
+                  <p style={{ color: '#856404', fontSize: 13, fontWeight: 600, margin: 0 }}>Unsubscribed Contacts</p>
                   <p style={{ color: '#856404', fontSize: 12, margin: 0 }}>
-                    Opted out {company.marketing_unsubscribed_at ? new Date(company.marketing_unsubscribed_at).toLocaleDateString() : ''}. This contact will be excluded from all future campaigns.
+                    {company.crm_people.filter(p => p.marketing_unsubscribed).map(p => `${p.first_name} ${p.last_name}`).join(', ')} opted out of marketing emails.
                   </p>
                 </div>
               </div>

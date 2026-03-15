@@ -11,8 +11,7 @@ router.get('/recipients', auth, async (req, res) => {
 
   let query = supabase
     .from('crm_companies')
-    .select('id, company_name, city, state, stage, origin, category, marketing_unsubscribed, crm_people(id, first_name, last_name, email)')
-    .eq('marketing_unsubscribed', false);
+    .select('id, company_name, city, state, stage, origin, category, crm_people(id, first_name, last_name, email, marketing_unsubscribed)');
 
   if (stage) query = query.eq('stage', stage);
   if (origin) query = query.eq('origin', origin);
@@ -24,7 +23,7 @@ router.get('/recipients', auth, async (req, res) => {
 
   const recipients = [];
   for (const company of data) {
-    const people = company.crm_people?.filter(p => p.email) || [];
+    const people = company.crm_people?.filter(p => p.email && !p.marketing_unsubscribed) || [];
     if (people.length > 0) {
       for (const person of people) {
         recipients.push({
@@ -47,9 +46,9 @@ router.get('/recipients', auth, async (req, res) => {
 
 router.get('/recipients/excluded', auth, async (req, res) => {
   const { data, error } = await supabase
-    .from('crm_companies')
-    .select('id', { count: 'exact' })
-    .eq('marketing_unsubscribed', true);
+  .from('crm_people')
+  .select('id', { count: 'exact' })
+  .eq('marketing_unsubscribed', true);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ excluded_count: data?.length || 0 });
 });
@@ -346,12 +345,12 @@ router.post('/webhook', async (req, res) => {
       .eq('campaign_id', campaign_id)
       .eq('email', email);
 
-    if (eventType === 'unsubscribe' && company_id) {
-      await supabase
-        .from('crm_companies')
-        .update({ marketing_unsubscribed: true, marketing_unsubscribed_at: eventTime })
-        .eq('id', company_id);
-    }
+      if (eventType === 'unsubscribe' && email) {
+        await supabase
+          .from('crm_people')
+          .update({ marketing_unsubscribed: true, marketing_unsubscribed_at: eventTime })
+          .eq('email', email);
+      }
   }
 
   res.sendStatus(200);

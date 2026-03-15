@@ -205,6 +205,20 @@ export default function Marketing() {
             })}
           </div>
 
+{/* Email Preview */}
+<div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden', marginBottom: 24 }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>Email Content</h3>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#717182' }}>Subject:</span>
+                <span style={{ fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{selectedCampaign.subject}</span>
+              </div>
+            </div>
+            <div style={{ padding: 24, maxHeight: 400, overflowY: 'auto' }}>
+              <div dangerouslySetInnerHTML={{ __html: selectedCampaign.body_html }} style={{ fontSize: 14, lineHeight: 1.7, color: '#3E423D' }} />
+            </div>
+          </div>
+
           {/* Recipients Table */}
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)' }}>
