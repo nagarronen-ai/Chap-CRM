@@ -7,24 +7,25 @@ const auth = require('../middleware/auth');
 // ─── RECIPIENT BUILDER ────────────────────────────────────────────────────────
 
 router.get('/recipients', auth, async (req, res) => {
-  const { stage, origin, city, category } = req.query;
-
-  let query = supabase
-    .from('crm_companies')
-    .select('id, company_name, city, state, stage, origin, category, crm_people(id, first_name, last_name, email, marketing_unsubscribed)');
-
-  if (stage) query = query.eq('stage', stage);
-  if (origin) query = query.eq('origin', origin);
-  if (city) query = query.ilike('city', `%${city}%`);
-  if (category) query = query.eq('category', category);
-
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  const { stage, origin, city, category, source } = req.query;
 
   const recipients = [];
-  for (const company of data) {
-    const people = company.crm_people?.filter(p => p.email && !p.marketing_unsubscribed) || [];
-    if (people.length > 0) {
+
+  // Fetch from contacts (default or when source=contacts or source=all)
+  if (!source || source === 'contacts' || source === 'all') {
+    let query = supabase
+      .from('crm_companies')
+      .select('id, company_name, city, state, stage, origin, category, crm_people(id, first_name, last_name, email, marketing_unsubscribed)')
+      .neq('stage', 'Converted');
+
+    if (stage) query = query.eq('stage', stage);
+    if (origin) query = query.eq('origin', origin);
+    if (city) query = query.ilike('city', `%${city}%`);
+    if (category) query = query.eq('category', category);
+
+    const { data } = await query;
+    for (const company of (data || [])) {
+      const people = company.crm_people?.filter(p => p.email && !p.marketing_unsubscribed) || [];
       for (const person of people) {
         recipients.push({
           company_id: company.id,
@@ -36,6 +37,62 @@ router.get('/recipients', auth, async (req, res) => {
           city: company.city,
           stage: company.stage,
           origin: company.origin,
+          source: 'Contact',
+        });
+      }
+    }
+  }
+
+  // Fetch from clients (when source=clients or source=all)
+  if (source === 'clients' || source === 'all') {
+    let query = supabase
+      .from('crm_clients')
+      .select('id, business_name, contact_first_name, contact_last_name, contact_email, city, state, stage, category, converted_from');
+
+    if (stage) query = query.eq('stage', stage);
+    if (city) query = query.ilike('city', `%${city}%`);
+    if (category) query = query.eq('category', category);
+
+    const { data } = await query;
+    for (const client of (data || [])) {
+      // Get all people from the original company
+      if (client.converted_from) {
+        const { data: companyData } = await supabase
+          .from('crm_companies')
+          .select('crm_people(id, first_name, last_name, email, marketing_unsubscribed)')
+          .eq('id', client.converted_from)
+          .single();
+
+        const people = companyData?.crm_people?.filter(p => p.email && !p.marketing_unsubscribed) || [];
+        for (const person of people) {
+          recipients.push({
+            company_id: client.converted_from,
+            client_id: client.id,
+            company_name: client.business_name,
+            person_id: person.id,
+            first_name: person.first_name,
+            last_name: person.last_name,
+            email: person.email,
+            city: client.city,
+            stage: client.stage,
+            origin: 'Client',
+            source: 'Client',
+          });
+        }
+      } else if (client.contact_email) {
+        // Fallback: client without converted_from, use primary contact
+        recipients.push({
+          company_id: null,
+          client_id: client.id,
+          company_name: client.business_name,
+          person_id: null,
+          first_name: client.contact_first_name,
+          last_name: client.contact_last_name,
+          email: client.contact_email,
+          city: client.city,
+          stage: client.stage,
+          origin: 'Client',
+          source: 'Client',
         });
       }
     }

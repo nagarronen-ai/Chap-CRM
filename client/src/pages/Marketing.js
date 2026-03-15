@@ -57,8 +57,8 @@ export default function Marketing() {
   const [form, setForm] = useState({
     name: '', subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null,
   });
-  const [filters, setFilters] = useState({ stage: '', origin: '', city: '', category: '' });
-  const [recipients, setRecipients] = useState([]);
+  const [filters, setFilters] = useState({ stage: '', origin: '', city: '', category: '', source: 'all' });
+    const [recipients, setRecipients] = useState([]);
   const [selectedRecipients, setSelectedRecipients] = useState({});
   const [excludedCount, setExcludedCount] = useState(0);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
@@ -98,7 +98,7 @@ export default function Marketing() {
       if (filters.stage) params.stage = filters.stage;
       if (filters.origin) params.origin = filters.origin;
       if (filters.city) params.city = filters.city;
-      if (filters.category) params.category = filters.category;
+      if (filters.source) params.source = filters.source;
       const res = await axios.get(`${API}/marketing/recipients`, { headers: getHeaders(), params });
       const recs = res.data.recipients;
       setRecipients(recs);
@@ -409,29 +409,37 @@ export default function Marketing() {
           {step === 2 && (
             <div>
               <div style={{ background: '#fff', borderRadius: 12, padding: 32, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
-                <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 20px' }}>Filter Recipients</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
-                  <div>
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 20px' }}>Filter Recipients</h3>
+                <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Source</label>
+                    <select value={filters.source} onChange={e => setFilters({ ...filters, source: e.target.value })} style={inputStyle}>
+                      <option value="all">All (Contacts + Clients)</option>
+                      <option value="contacts">Contacts Only</option>
+                      <option value="clients">Clients Only</option>
+                    </select>
+                  </div>
+                  <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Stage</label>
                     <select value={filters.stage} onChange={e => setFilters({ ...filters, stage: e.target.value })} style={inputStyle}>
                       <option value="">All Stages</option>
                       {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Origin</label>
                     <select value={filters.origin} onChange={e => setFilters({ ...filters, origin: e.target.value })} style={inputStyle}>
                       <option value="">All Origins</option>
                       {ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <label style={labelStyle}>City</label>
                     <input value={filters.city} onChange={e => setFilters({ ...filters, city: e.target.value })} style={inputStyle} placeholder="e.g. Austin" />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                    <button onClick={fetchRecipients} style={{ width: '100%', background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontSize: 13, cursor: 'pointer' }}>
-                      🔍 Apply Filters
+                  <div>
+                    <button onClick={fetchRecipients} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      🔍 Apply
                     </button>
                   </div>
                 </div>
@@ -461,7 +469,7 @@ export default function Marketing() {
                               }}
                               style={{ accentColor: '#8E9B8B' }} />
                           </th>
-                          {['Company', 'Contact', 'Email', 'Stage'].map(h => (
+                          {['Source', 'Company', 'Contact', 'Email', 'Stage'].map(h => (
                             <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
                           ))}
                         </tr>
@@ -473,6 +481,9 @@ export default function Marketing() {
                               <input type="checkbox" checked={!!selectedRecipients[i]}
                                 onChange={e => setSelectedRecipients(prev => ({ ...prev, [i]: e.target.checked }))}
                                 style={{ accentColor: '#8E9B8B' }} />
+                            </td>
+                            <td style={{ padding: '8px 12px' }}>
+                              <span style={{ background: r.source === 'Client' ? '#D4EDDA' : '#EBF4FF', color: r.source === 'Client' ? '#155724' : '#1a6fad', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>{r.source || 'Contact'}</span>
                             </td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#3E423D' }}>{r.company_name}</td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#5A6059' }}>{r.first_name} {r.last_name}</td>
