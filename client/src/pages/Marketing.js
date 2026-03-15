@@ -25,6 +25,22 @@ const STAT_CONFIG = [
   { key: 'unsubscribed', label: 'Unsubscribed', icon: '🚫' },
 ];
 
+const prettifyHTML = (html) => {
+  if (!html) return '';
+  let formatted = '';
+  let indent = 0;
+  const tags = html.replace(/>\s*</g, '>\n<').split('\n');
+  tags.forEach(tag => {
+    const isClosing = tag.match(/^<\//);
+    const isSelfClosing = tag.match(/\/>/);
+    const isOpening = tag.match(/^<[^/]/) && !isSelfClosing;
+    if (isClosing) indent = Math.max(0, indent - 1);
+    formatted += '  '.repeat(indent) + tag.trim() + '\n';
+    if (isOpening && !tag.match(/^<(br|hr|img|input|meta|link)/i)) indent++;
+  });
+  return formatted.trim();
+};
+
 export default function Marketing() {
   const { role, can } = useRole();
   const canSend = can('marketing:send');
@@ -232,7 +248,7 @@ export default function Marketing() {
     return (
       <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
         <Sidebar />
-        <div style={{ marginLeft: 240, flex: 1, padding: 40, maxWidth: 900 }}>
+        <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
           <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 13, cursor: 'pointer', marginBottom: 16, padding: 0 }}>← Back to Campaigns</button>
           <h1 style={{ color: '#3E423D', fontSize: 28, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 32px' }}>New Campaign</h1>
 
@@ -284,27 +300,83 @@ export default function Marketing() {
                 <input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} style={inputStyle} placeholder="e.g. Quick Q re: {{company_name}}" />
               </div>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-                  <label style={{ ...labelStyle, marginBottom: 0, marginRight: 'auto' }}>Email Body *</label>
-                  {['visual', 'html'].map(tab => (
-                    <button key={tab} onClick={() => setEditorTab(tab)}
-                      style={{ background: editorTab === tab ? '#3E423D' : '#F5F3EF', color: editorTab === tab ? '#fff' : '#717182', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
-                      {tab === 'html' ? 'HTML' : '✨ Visual'}
+                <label style={labelStyle}>Email Body *</label>
+                <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
+                  {/* Visual Editor — Left Side */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: '#8E9B8B', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>✨ Visual Editor</span>
+                    </div>
+                    <TiptapEditor
+                      content={form.body_html}
+                      onChange={html => setForm(prev => ({ ...prev, body_html: html }))}
+                      placeholder="Write your campaign email..."
+                      minHeight={350}
+                    />
+                  </div>
+                  {/* HTML Code — Right Side */}
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: '#717182', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>HTML Code</span>
+                    </div>
+                    <textarea
+                      value={prettifyHTML(form.body_html)}
+                      onChange={e => setForm({ ...form, body_html: e.target.value })}
+                      style={{
+                        ...inputStyle,
+                        fontFamily: "'SF Mono', 'Fira Code', monospace",
+                        fontSize: 11,
+                        lineHeight: 1.5,
+                        resize: 'none',
+                        height: 'auto',
+                        minHeight: 392,
+                        flex: 1,
+                        background: '#1E1E2E',
+                        color: '#CDD6F4',
+                        border: '1px solid rgba(62,66,61,0.1)',
+                        borderRadius: 8,
+                        padding: 16,
+                      }}
+                      placeholder="HTML will appear here as you type..."
+                    />
+                  </div>
+                </div>
+                {/* Merge Tags Bar */}
+                <div style={{
+                  display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+                  marginTop: 12, padding: '12px 16px',
+                  background: '#F5F3EF', borderRadius: 8, border: '1px solid rgba(62,66,61,0.08)',
+                }}>
+                  <span style={{ fontSize: 11, color: '#717182', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', marginRight: 4 }}>Merge Tags:</span>
+                  {[
+                    { tag: '{{first_name}}', label: 'First Name' },
+                    { tag: '{{last_name}}', label: 'Last Name' },
+                    { tag: '{{company_name}}', label: 'Company' },
+                    { tag: '{{sender_name}}', label: 'Sender' },
+                    { tag: '{{sender_email}}', label: 'Sender Email' },
+                    { tag: '{{city}}', label: 'City' },
+                    { tag: '{{stage}}', label: 'Stage' },
+                  ].map(({ tag, label }) => (
+                    <button key={tag}
+                      onClick={() => setForm(prev => {
+                        const current = prev.body_html || '';
+                        const updated = current.replace(/<\/p>\s*$/, tag + '</p>') !== current
+                          ? current.replace(/<\/p>\s*$/, tag + '</p>')
+                          : current + tag;
+                        return { ...prev, body_html: updated };
+                      })}
+                      style={{
+                        background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6,
+                        padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059',
+                        fontFamily: "'Inter', sans-serif", transition: 'all 0.1s',
+                      }}
+                      onMouseOver={e => { e.currentTarget.style.background = '#8E9B8B'; e.currentTarget.style.color = '#fff'; }}
+                      onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#5A6059'; }}
+                    >
+                      {label} <span style={{ fontFamily: 'monospace', fontSize: 10, opacity: 0.7, marginLeft: 2 }}>{tag}</span>
                     </button>
                   ))}
                 </div>
-                {editorTab === 'html' ? (
-                  <textarea value={form.body_html} onChange={e => setForm({ ...form, body_html: e.target.value })} rows={12}
-                    style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
-                    placeholder="Write your email HTML here..." />
-                ) : (
-                  <TiptapEditor
-                    content={form.body_html}
-                    onChange={html => setForm(prev => ({ ...prev, body_html: html }))}
-                    placeholder="Write your campaign email..."
-                    minHeight={300}
-                  />
-                )}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
                 <button onClick={saveDraft} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>

@@ -2,6 +2,8 @@
 
 Internal sales CRM built for the Planfor.io team to manage wedding vendor outreach, track leads through a pipeline, send emails via SendGrid, run marketing campaigns, and track internal company finances — all in one place.
 
+**Live:** [crm.planfor.io](https://crm.planfor.io)
+
 ---
 
 ## Table of Contents
@@ -19,6 +21,8 @@ Internal sales CRM built for the Planfor.io team to manage wedding vendor outrea
 - [Marketing & Campaigns](#marketing--campaigns)
 - [Finance Module](#finance-module)
 - [Design System](#design-system)
+- [Deployment](#deployment)
+- [Versioning](#versioning)
 - [Roadmap](#roadmap)
 
 ---
@@ -30,10 +34,11 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 - Import wedding vendor leads from Apollo CSV exports
 - Track companies and contacts through a visual sales pipeline
 - Log all activity and notes against each company
-- Compose and send emails via SendGrid using reusable templates with merge tags
-- Run bulk marketing campaigns with open/click tracking
-- View per-contact campaign history on each company profile
-- Track internal company expenses (servers, domains, tools, etc.)
+- Compose and send emails via Tiptap rich text editor with SendGrid delivery
+- Track email engagement (delivered, opened, clicked, bounced) in real time
+- Run bulk marketing campaigns with side-by-side visual/HTML editor
+- View per-contact campaign history and email tracking on each company profile
+- Track internal company expenses with per-person spending breakdowns
 - Monitor pipeline health from a real-time dashboard
 
 ---
@@ -42,14 +47,17 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 
 | Layer | Technology |
 |---|---|
-| Frontend | React (Create React App), React Router, Axios |
+| Frontend | React 19, React Router, Axios |
+| Rich Text Editor | Tiptap v3 (with Link, Underline, TextAlign, Color extensions) |
 | Backend | Node.js, Express |
 | Database | Supabase (PostgreSQL) |
 | Auth | JWT (stored in localStorage) |
 | Email Delivery | SendGrid (@sendgrid/mail) |
+| Email Tracking | SendGrid Event Webhooks (delivered, opened, clicked, bounced) |
 | Styling | Inline styles with custom design system |
 | Fonts | Playfair Display (serif), Inter (sans-serif) |
-| Deployment | Local / to be configured |
+| Hosting | Render (Web Service + Static Site) |
+| DNS | Cloudflare (crm.planfor.io) |
 
 ---
 
@@ -71,10 +79,11 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 
 ### Company Profile
 - Pipeline stepper — click any stage to update instantly
-- Status bar: Last Activity, Next Action (inline editable), Origin + Location
+- Status bar: Last Activity, Next Action (inline editable), Origin + Location, Assigned To
 - **Overview tab** — inline editable company fields, all changes logged to activity
 - **People tab** — full contact list with add/edit/remove
-- **Activity tab** — paginated audit timeline (5/10/25/50 per page), filterable by person, expandable email view inline
+- **Activity tab** — paginated audit timeline (5/10/25/50 per page), filterable by person, expandable email view inline, email tracking status badges (Delivered/Opened/Clicked/Bounced)
+- **Emails tab** — dedicated email tracking dashboard with summary cards (Total Sent, Delivered, Opened, Clicked, Bounced) and full email table with status, opened/clicked timestamps
 - **Marketing tab** — per-contact campaign history (campaign name, sent date, status, opens, clicks), unsubscribe banner if applicable
 - Quick Note box with last 3 notes preview
 
@@ -82,34 +91,50 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 - Create, edit, delete reusable email templates
 - Team or private visibility per template
 - Categories: Outreach, Follow-up, Proposal, Meeting Confirmation, General
-- Visual editor (contentEditable with B/I/U/List toolbar) and raw HTML editor
+- **Tiptap rich text editor** with full toolbar (Bold, Italic, Underline, Lists, Alignment, Link, Undo/Redo)
+- Visual/HTML toggle — edit visually or in raw HTML
 - Merge tags sidebar — click to insert at cursor or drag & drop into subject or body
 - Live preview with sample data resolution
 - Custom HTML signature editor
 
 ### Email Composer (from Company Profile)
 - 2-step flow: pick recipient + template → full editor
+- **Tiptap rich text editor** with link insertion for click tracking
 - Merge tags auto-resolved with real company/person data
 - Visual and HTML editing modes
-- Sends live via SendGrid if recipient has an email address
+- Sends live via SendGrid with professional email-safe HTML wrapper
+- Click and open tracking enabled per email via SendGrid trackingSettings
 - Falls back to draft if no email address available
 - Logs `Email Sent` or `Email Draft Saved` to activity timeline
 - Expandable email view in activity — click ▼ to read the full email inline
 
+### Email Tracking
+- SendGrid Event Webhooks for both direct emails and marketing campaigns
+- Tracks: Delivered, Opened, Clicked, Bounced events
+- Status priority logic — prevents downgrade (e.g., Clicked won't revert to Opened)
+- Real-time status updates on Company Profile → Emails tab
+- Activity log entries for opens, clicks, and bounces
+- Webhook endpoints: `/api/emails/webhook` (direct) and `/api/marketing/webhook` (campaigns)
+
 ### Marketing Campaigns
-- Campaign builder with subject, body, from name/email
-- Recipient selection — filter by stage, origin, category; excludes unsubscribed contacts
+- **Side-by-side campaign builder** — visual Tiptap editor on the left, live prettified HTML code on the right
+- Merge tags bar below editors — click to insert {{first_name}}, {{company_name}}, etc.
+- Campaign wizard: Content → Recipients → Review & Send
+- **Individual recipient selection** — filter by stage, origin, category, then check/uncheck specific contacts
+- Select all / deselect all with checkbox header
+- Excludes unsubscribed contacts automatically
 - SendGrid bulk send with custom args per recipient for webhook tracking
-- Real-time campaign analytics: delivered, opened, clicked, bounced, unsubscribed
-- SendGrid event webhook handler (`/api/marketing/webhook`) — processes open, click, bounce, unsubscribe events
+- Real-time campaign analytics: delivered, opened, clicked, bounced, unsubscribed with percentage rates
 - Per-contact marketing history visible on Company Profile → Marketing tab
 - Unsubscribe handling — sets `marketing_unsubscribed` flag on company record
 
-### Finance Module *(in development)*
+### Finance Module
 - Internal company expense tracker (servers, domains, software, legal, etc.)
 - Add/edit/delete expenses — admin only
+- **Paid By** field — track which team member paid from their personal funds (admin-only dropdown)
 - Summary cards: total this month, total this year, pending, overdue
-- Filter by category, status, date range
+- **Spending by Person** — per-person spending breakdown with month/year filters, percentage bars, paid/pending/overdue splits
+- Filter by category, status
 - Stripe foundation — *(pending API key)*
 
 ### Team Management
@@ -127,9 +152,9 @@ venueflow-crm/
 │   ├── routes/
 │   │   ├── auth.js          # Login, JWT generation
 │   │   ├── contacts.js      # Companies, people, activity, notes
-│   │   ├── emails.js        # Templates, sent emails, SendGrid direct send
+│   │   ├── emails.js        # Templates, sent emails, SendGrid send, webhook
 │   │   ├── marketing.js     # Campaigns, SendGrid bulk send, webhook, stats
-│   │   ├── finance.js       # Company expenses (in development)
+│   │   ├── finance.js       # Company expenses, per-person breakdown
 │   │   └── users.js         # Team management
 │   ├── middleware/
 │   │   ├── auth.js          # JWT verification middleware
@@ -151,7 +176,8 @@ venueflow-crm/
 │       │   ├── Finance.js
 │       │   └── Team.js
 │       ├── components/
-│       │   └── Sidebar.js
+│       │   ├── Sidebar.js
+│       │   └── TiptapEditor.js  # Reusable rich text editor component
 │       └── App.js
 ├── .env                     # Never commit this
 ├── .gitignore
@@ -224,7 +250,7 @@ venueflow-crm/
 | company_id | uuid | FK → crm_companies |
 | user_id | uuid | FK → crm_users |
 | person_id | uuid | FK → crm_people (optional) |
-| action | text | e.g. Note Added, Stage Changed, Email Sent |
+| action | text | e.g. Note Added, Stage Changed, Email Sent, Email Opened |
 | details | text | Full log message |
 | created_at | timestamp | |
 
@@ -253,6 +279,11 @@ venueflow-crm/
 | subject | text | Resolved subject (tags replaced) |
 | body_html | text | Resolved body (tags replaced) |
 | status | text | draft / sent |
+| email_status | text | sent / delivered / opened / clicked / bounced |
+| sendgrid_message_id | text | SendGrid tracking ID |
+| opened_at | timestamp | When recipient opened |
+| clicked_at | timestamp | When recipient clicked a link |
+| bounced_at | timestamp | When email bounced |
 | sent_at | timestamp | |
 | created_at | timestamp | |
 
@@ -288,7 +319,7 @@ venueflow-crm/
 | sendgrid_message_id | text | |
 | created_at | timestamp | |
 
-### `crm_expenses` *(in development)*
+### `crm_expenses`
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | Primary key |
@@ -297,13 +328,13 @@ venueflow-crm/
 | date | date | Expense date |
 | category | text | Server / Domain / Software / Marketing / Legal / Office / Salaries / Other |
 | vendor | text | Supplier name (optional) |
-| paid_by | uuid | FK → crm_users (admin only) |
+| paid_by | uuid | FK → crm_users (who actually paid) |
 | status | text | pending / paid / overdue |
 | recurring | boolean | Default false |
 | notes | text | Optional notes |
 | receipt_url | text | Link to receipt (optional) |
 | created_at | timestamp | |
-| updated_at | timestamp | |
+| updated_at | timestamp | Auto-updated via trigger |
 
 ---
 
@@ -341,8 +372,8 @@ JWT_SECRET=your_jwt_secret_string
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 SENDGRID_API_KEY=your_sendgrid_api_key
-SENDGRID_FROM_EMAIL=marketing@yourdomain.com
-SENDGRID_FROM_NAME=Your Company Name
+SENDGRID_FROM_EMAIL=noreply@planfor.io
+SENDGRID_FROM_NAME=Planfor
 ```
 
 > ⚠️ Never commit `.env` to GitHub. It is listed in `.gitignore`.
@@ -391,6 +422,7 @@ Backend runs on `http://localhost:5000`
 | Method | Route | Description |
 |---|---|---|
 | POST | `/api/auth/login` | Login, returns JWT |
+| POST | `/api/auth/register` | Register new user |
 
 ### Contacts
 | Method | Route | Description |
@@ -416,25 +448,30 @@ Backend runs on `http://localhost:5000`
 | PUT | `/api/emails/templates/:id` | Update template |
 | DELETE | `/api/emails/templates/:id` | Delete template |
 | GET | `/api/emails/sent` | List all sent/draft emails |
-| GET | `/api/emails/sent/company/:id` | Emails for a company |
+| GET | `/api/emails/sent/company/:id` | Emails for a company (with tracking data) |
 | POST | `/api/emails/send` | Send via SendGrid or save draft |
 | DELETE | `/api/emails/sent/:id` | Delete email record |
+| POST | `/api/emails/webhook` | SendGrid event webhook (direct emails) |
 
 ### Marketing
 | Method | Route | Description |
 |---|---|---|
-| GET | `/api/marketing/campaigns` | List all campaigns |
+| GET | `/api/marketing/campaigns` | List all campaigns with stats |
 | POST | `/api/marketing/campaigns` | Create campaign |
-| GET | `/api/marketing/campaigns/:id` | Get campaign + stats |
+| GET | `/api/marketing/campaigns/:id` | Get campaign + recipients + stats |
 | POST | `/api/marketing/campaigns/:id/send` | Send campaign via SendGrid |
 | GET | `/api/marketing/recipients` | List recipients with filters |
-| POST | `/api/marketing/webhook` | SendGrid event webhook (opens, clicks, bounces) |
+| GET | `/api/marketing/recipients/excluded` | Count unsubscribed contacts |
+| POST | `/api/marketing/webhook` | SendGrid event webhook (campaigns + direct email fallback) |
+| GET | `/api/marketing/stats` | Global marketing stats |
 | GET | `/api/marketing/company/:companyId` | Campaign history for a company |
 
-### Finance *(in development)*
+### Finance
 | Method | Route | Description |
 |---|---|---|
 | GET | `/api/finance/expenses` | List all expenses (admin + finance) |
+| GET | `/api/finance/expenses/summary` | Summary stats (this month, year, pending, overdue) |
+| GET | `/api/finance/expenses/by-person` | Per-person spending breakdown with month/year filter |
 | POST | `/api/finance/expenses` | Create expense (admin only) |
 | PUT | `/api/finance/expenses/:id` | Update expense (admin only) |
 | DELETE | `/api/finance/expenses/:id` | Delete expense (admin only) |
@@ -447,7 +484,7 @@ Backend runs on `http://localhost:5000`
 | PUT | `/api/users/:id` | Update user (admin only) |
 | DELETE | `/api/users/:id` | Delete user (admin only) |
 
-All routes require `Authorization: Bearer <token>` header.
+All routes require `Authorization: Bearer <token>` header (except webhooks).
 
 ---
 
@@ -467,25 +504,34 @@ All routes require `Authorization: Bearer <token>` header.
 ### Direct Email Flow
 1. Sales rep clicks **📧 Send Email** on a company profile
 2. Selects recipient (person) and template (or blank)
-3. Edits in Visual or HTML mode, inserts merge tags
-4. Clicks Send — email delivered via SendGrid from the rep's own @planfor.io address
-5. Activity log shows `Email Sent` — expandable inline to read full email
-6. Falls back to `Email Draft Saved` if recipient has no email address
+3. Edits in Tiptap visual editor or raw HTML mode, inserts merge tags
+4. Clicks Send — email wrapped in professional HTML template and delivered via SendGrid
+5. SendGrid tracks delivery, opens, and clicks via webhook
+6. Activity log shows `Email Sent` — expandable inline to read full email
+7. Emails tab shows real-time tracking status (Delivered → Opened → Clicked)
+8. Falls back to `Email Draft Saved` if recipient has no email address
+
+### Email Tracking
+- **Delivered**: SendGrid confirmed delivery to recipient's mail server
+- **Opened**: Recipient's email client loaded the tracking pixel (note: Gmail proxy may pre-trigger)
+- **Clicked**: Recipient clicked a tracked link in the email
+- **Bounced**: Email could not be delivered
+- Status priority prevents downgrade (Clicked → Opened is blocked)
 
 ---
 
 ## Marketing & Campaigns
 
 ### Campaign Flow
-1. Marketing user creates a campaign (name, subject, body, from details)
-2. Selects recipients — filtered by stage, origin, category; unsubscribed contacts excluded automatically
-3. Sends via SendGrid bulk API — each recipient gets a unique message with custom args for tracking
-4. SendGrid webhook posts events (open, click, bounce, unsubscribe) back to `/api/marketing/webhook`
-5. Events update `crm_campaign_recipients` status and timestamps in real time
-6. Campaign analytics page shows delivered / opened / clicked / bounced / unsubscribed counts
-7. Per-contact history visible on Company Profile → Marketing tab
-
-> ⚠️ Webhook requires a public URL. Use ngrok for local development or deploy to production.
+1. Marketing user creates a campaign with side-by-side visual/HTML editor
+2. Merge tags bar allows quick insertion of personalization tags
+3. Selects recipients — filtered by stage, origin, category with individual checkbox selection
+4. Reviews campaign summary with email preview
+5. Sends via SendGrid bulk API — each recipient gets a unique message with custom args for tracking
+6. SendGrid webhook posts events (open, click, bounce, unsubscribe) back to `/api/marketing/webhook`
+7. Events update `crm_campaign_recipients` status and timestamps in real time
+8. Campaign analytics page shows delivered / opened / clicked / bounced / unsubscribed counts with rates
+9. Per-contact history visible on Company Profile → Marketing tab
 
 ---
 
@@ -500,6 +546,12 @@ Server, Domain, Software, Marketing, Legal, Office, Salaries, Other
 - **Pending** — expense logged, not yet paid
 - **Paid** — payment confirmed
 - **Overdue** — past due date, unpaid
+
+### Per-Person Tracking
+- Each expense tracks who paid (Paid By dropdown — admin users only)
+- Spending by Person section with monthly/yearly filters
+- Percentage breakdown with visual bar
+- Paid / Pending / Overdue splits per person
 
 ### Stripe Integration
 Stripe foundation is planned for future PlanMe marketplace payment flows. Pending API key setup.
@@ -525,6 +577,42 @@ Stripe foundation is planned for future PlanMe marketplace payment flows. Pendin
 
 ---
 
+## Deployment
+
+### Production
+- **Backend**: Render Web Service (`planfor-crm-api`) at `https://planfor-crm-api.onrender.com`
+- **Frontend**: Render Static Site (`planfor-crm-web`) at `https://crm.planfor.io`
+- **DNS**: Cloudflare — CNAME `crm` → `planfor-crm-web.onrender.com`
+- **SPA Routing**: Render rewrite rule `/* → /index.html`
+
+### Environment Variables on Render
+Backend service requires all `.env` variables listed above. Frontend requires:
+- `REACT_APP_API=https://planfor-crm-api.onrender.com/api`
+
+### SendGrid Webhooks
+- **Direct Email**: `https://planfor-crm-api.onrender.com/api/emails/webhook`
+- **Marketing Campaigns**: `https://planfor-crm-api.onrender.com/api/marketing/webhook`
+
+---
+
+## Versioning
+
+We use Git tags for version tracking:
+
+```bash
+# Tag a release
+git tag v1.x.x -m "Description of release"
+git push --tags
+
+# View all tags
+git tag -l
+
+# Checkout a specific version
+git checkout v1.x.x
+```
+
+---
+
 ## Roadmap
 
 | Feature | Status |
@@ -539,19 +627,45 @@ Stripe foundation is planned for future PlanMe marketplace payment flows. Pendin
 | Dashboard | ✅ Done |
 | Email Templates Manager | ✅ Done |
 | Email Composer with SendGrid send | ✅ Done |
+| Tiptap Rich Text Editor | ✅ Done (v1.1.0) |
+| Email Tracking (Delivered/Opened/Clicked/Bounced) | ✅ Done (v1.1.0) |
+| Emails tab on Company Profile | ✅ Done (v1.1.0) |
 | Roles & Permissions (RBAC) | ✅ Done |
 | Team Management page | ✅ Done |
 | Marketing Campaigns module | ✅ Done |
-| SendGrid campaign webhook | ✅ Done |
+| Campaign side-by-side Visual/HTML editor | ✅ Done (v1.1.0) |
+| Campaign individual recipient selection | ✅ Done (v1.1.0) |
+| SendGrid webhooks (direct + campaign) | ✅ Done (v1.1.0) |
 | Company Profile — Marketing tab | ✅ Done |
-| Finance Module — Expenses tracker | 🔧 In Development |
-| SendGrid webhook for direct emails | 🔵 Pending (needs public URL) |
-| Gmail OAuth + inbox sync | 🔵 Pending |
-| Two-way conversation view | 🔵 Pending |
-| Google Calendar + Meeting Scheduler | 🔵 Pending |
+| Finance Module — Expenses tracker | ✅ Done (v1.1.0) |
+| Finance — Per-person spending breakdown | ✅ Done (v1.1.0) |
+| Production deployment (Render + Cloudflare) | ✅ Done (v1.1.0) |
+| Client Management System | 🔵 Next up |
+| SendGrid webhook signature verification | 🔵 Pending |
+| Gmail OAuth + inbox sync | 🔵 Pending (needs Google Cloud Console) |
+| Two-way conversation view | 🔵 Pending (depends on Gmail) |
+| Google Calendar + Meeting Scheduler | 🔵 Pending (depends on Gmail) |
 | Stripe integration | 🔵 Pending (waiting for API key) |
-| Production deployment | 🔵 Pending |
-| Open source public version | 🔵 Pending |
+| Campaign HTML syntax highlighting | 🔵 Future polish |
+
+---
+
+## Changelog
+
+### v1.1.0 — March 15, 2026
+- Finance Module: full CRUD, per-person spending breakdown with month/year filters, paid-by tracking
+- Tiptap Rich Text Editor: replaced contentEditable in Email Composer, Templates, and Campaign Builder
+- Email Tracking: SendGrid webhooks for delivered/opened/clicked/bounced on direct emails
+- Emails tab on Company Profile with tracking dashboard and summary cards
+- Campaign Builder: side-by-side visual/HTML editor, merge tags bar, individual recipient selection
+- Email HTML wrapper for professional email styling
+- Production deployment on Render with Cloudflare DNS (crm.planfor.io)
+- Status priority logic to prevent tracking downgrades
+- Browser tab title updated to "Planfor CRM"
+- SPA routing fix for Render static site
+
+### v1.0.0 — March 12, 2026
+- Initial release: Dashboard, Contacts, Company Profile, CSV Import, Email Templates, Email Composer, Marketing Campaigns, Team Management, RBAC
 
 ---
 
