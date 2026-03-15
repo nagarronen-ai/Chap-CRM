@@ -20,11 +20,13 @@ export default function Sidebar() {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: '📊', show: true },
     { path: '/contacts', label: 'Contacts', icon: '🏢', show: true },
+    { path: '/clients', label: 'Clients', icon: '🤝', show: true },
     { path: '/emails', label: 'Email Templates', icon: '✉️', show: can('email:templates') },
     { path: '/import', label: 'Import CSV', icon: '📥', show: can('import:run') },
     { path: '/team', label: 'Team', icon: '👥', show: can('users:manage') },
     { path: '/marketing', label: 'Marketing', icon: '📣', show: can('marketing:view') },
-    { path: '/finance', label: 'Finance', icon: '💰', show: can('finance:general') },  ];
+    { path: '/finance', label: 'Finance', icon: '💰', show: can('finance:general') },
+  ];
 
   const handleLogout = () => {
     localStorage.removeItem('token');

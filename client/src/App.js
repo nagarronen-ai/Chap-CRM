@@ -9,6 +9,8 @@ import Emails from './pages/Emails';
 import Team from './pages/Team';
 import Marketing from './pages/Marketing';
 import Finance from './pages/Finance';
+import Clients from './pages/Clients';
+import ClientProfile from './pages/ClientProfile';
 
 
 const PrivateRoute = ({ children }) => {
@@ -28,6 +30,8 @@ export default function App() {
         <Route path="/team" element={<PrivateRoute><Team /></PrivateRoute>} />
         <Route path="/marketing" element={<PrivateRoute><Marketing /></PrivateRoute>} />
         <Route path="/finance" element={<PrivateRoute><Finance /></PrivateRoute>} />
+        <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
+        <Route path="/clients/:id" element={<PrivateRoute><ClientProfile /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
     </Router>

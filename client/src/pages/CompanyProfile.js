@@ -125,8 +125,20 @@ export default function CompanyProfile() {
   const [emailEditorTab, setEmailEditorTab] = useState('visual');
   const emailBodyRef = useRef(null);
   const emailSubjectRef = useRef(null);
+  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [convertForm, setConvertForm] = useState({ contract_type: 'RevShare', commission_rate: 5, contract_start_date: '', contract_end_date: '', notes: '' });
+  const [converting, setConverting] = useState(false);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
+  const convertToClient = async () => {
+    setConverting(true);
+    try {
+      const res = await axios.post(`${API}/clients/convert/${id}`, convertForm, { headers: getHeaders() });
+      setShowConvertModal(false);
+      navigate(`/clients/${res.data.id}`);
+    } catch (err) { console.error(err); alert('Conversion failed.'); }
+    setConverting(false);
+  };
 
   useEffect(() => { fetchCompany(); fetchActivity(); fetchTemplates(); fetchMarketingData(); fetchEmailTracking(); }, [id]);
     const fetchTeamUsers = async () => {
@@ -407,6 +419,8 @@ export default function CompanyProfile() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h1 style={{ color: '#3E423D', fontSize: 32, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>{company.company_name}</h1>
             <div style={{ display: 'flex', gap: 8 }}>
+            {company.stage === 'Closed Won' && can('company:edit') && <button onClick={() => setShowConvertModal(true)} style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>🤝 Convert to Client</button>}
+            {company.stage === 'Converted' && <span style={{ background: '#D4EDDA', color: '#155724', borderRadius: 8, padding: '8px 16px', fontSize: 13 }}>✅ Converted to Client</span>}
             {can('email:send') && <button onClick={openEmailComposer} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>📧 Send Email</button>}
               {company.website && <a href={company.website} target="_blank" rel="noreferrer" style={{ background: '#F5F3EF', color: '#94B0BC', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 12, textDecoration: 'none' }}>🌐 Website</a>}
               {company.company_linkedin && <a href={company.company_linkedin} target="_blank" rel="noreferrer" style={{ background: '#F5F3EF', color: '#94B0BC', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 12, textDecoration: 'none' }}>in LinkedIn</a>}
@@ -1125,6 +1139,53 @@ export default function CompanyProfile() {
         )}
 
       </div>
+      {/* Convert to Client Modal */}
+      {showConvertModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: 40, width: 520, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
+              <h2 style={{ color: '#3E423D', fontSize: 22, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 6px' }}>Convert to Client</h2>
+              <p style={{ color: '#717182', fontSize: 13, margin: '0 0 24px' }}>Converting <strong>{company.company_name}</strong> from a lead to an active client.</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Contract Type</label>
+                    <select value={convertForm.contract_type} onChange={e => setConvertForm(prev => ({ ...prev, contract_type: e.target.value }))} style={inputStyle}>
+                      <option value="RevShare">RevShare</option>
+                      <option value="Subscription">Subscription</option>
+                      <option value="Flat Fee">Flat Fee</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Commission Rate (%)</label>
+                    <input type="number" value={convertForm.commission_rate} onChange={e => setConvertForm(prev => ({ ...prev, commission_rate: e.target.value }))} style={inputStyle} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Contract Start Date</label>
+                    <input type="date" value={convertForm.contract_start_date} onChange={e => setConvertForm(prev => ({ ...prev, contract_start_date: e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Contract End Date</label>
+                    <input type="date" value={convertForm.contract_end_date} onChange={e => setConvertForm(prev => ({ ...prev, contract_end_date: e.target.value }))} style={inputStyle} />
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Notes</label>
+                  <textarea value={convertForm.notes} onChange={e => setConvertForm(prev => ({ ...prev, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Any notes about this client..." />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                <button onClick={convertToClient} disabled={converting}
+                  style={{ flex: 1, background: converting ? '#A5B2A3' : '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                  {converting ? '⏳ Converting...' : '🤝 Convert to Client'}
+                </button>
+                <button onClick={() => setShowConvertModal(false)}
+                  style={{ flex: 1, background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
