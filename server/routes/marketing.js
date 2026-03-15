@@ -205,7 +205,7 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
     subject: campaign.subject
       .replace(/{{first_name}}/g, r.first_name || '')
       .replace(/{{company_name}}/g, r.company_name || ''),
-    html: resolveBody(campaign.body_html, r),
+      html: resolveBody(campaign.body_html, r) + '<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999;">You received this email because you are in our vendor network.<br><a href="{{{unsubscribe}}}" style="color:#999;text-decoration:underline;">Unsubscribe</a></div>',
     trackingSettings: {
       clickTracking: { enable: true },
       openTracking: { enable: true },
