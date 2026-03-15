@@ -863,7 +863,7 @@ export default function CompanyProfile() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#F5F3EF' }}>
-                      {['Campaign', 'Sent', 'Status', 'Opened', 'Clicked'].map(h => (
+                    {['Campaign', 'Recipient', 'Sent', 'Status', 'Opened', 'Clicked'].map(h => (
                         <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>
                       ))}
                     </tr>
@@ -871,7 +871,8 @@ export default function CompanyProfile() {
                   <tbody>
                     {marketingData.map((r, i) => (
                       <tr key={r.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
-                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{r.crm_campaigns?.name}</td>
+<td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{r.crm_campaigns?.name}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#5A6059' }}>{r.crm_people ? `${r.crm_people.first_name} ${r.crm_people.last_name}` : r.email || '—'}</td>
                         <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.crm_campaigns?.sent_at ? new Date(r.crm_campaigns.sent_at).toLocaleDateString() : '—'}</td>
                         <td style={{ padding: '12px 16px' }}>
                           <span style={{
