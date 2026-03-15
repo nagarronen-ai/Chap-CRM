@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
+import TiptapEditor from '../components/TiptapEditor';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
@@ -42,9 +43,11 @@ export default function Marketing() {
   });
   const [filters, setFilters] = useState({ stage: '', origin: '', city: '', category: '' });
   const [recipients, setRecipients] = useState([]);
+  const [selectedRecipients, setSelectedRecipients] = useState({});
   const [excludedCount, setExcludedCount] = useState(0);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [templates, setTemplates] = useState([]);
+  const [editorTab, setEditorTab] = useState('visual');
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -81,7 +84,11 @@ export default function Marketing() {
       if (filters.city) params.city = filters.city;
       if (filters.category) params.category = filters.category;
       const res = await axios.get(`${API}/marketing/recipients`, { headers: getHeaders(), params });
-      setRecipients(res.data.recipients);
+      const recs = res.data.recipients;
+      setRecipients(recs);
+      const selected = {};
+      recs.forEach((r, i) => { selected[i] = true; });
+      setSelectedRecipients(selected);
 
       const excRes = await axios.get(`${API}/marketing/recipients/excluded`, { headers: getHeaders() });
       setExcludedCount(excRes.data.excluded_count);
@@ -114,15 +121,16 @@ export default function Marketing() {
   };
 
   const sendCampaign = async () => {
-    if (!window.confirm(`Send to ${recipients.length} recipients?`)) return;
+    const selectedCount = Object.values(selectedRecipients).filter(Boolean).length;
+    if (!window.confirm(`Send to ${selectedCount} recipients?`)) return;
     setSending(true);
     try {
       // First save as draft
       const draftRes = await axios.post(`${API}/marketing/campaigns`, form, { headers: getHeaders() });
       const campaignId = draftRes.data.id;
       // Then send
-      await axios.post(`${API}/marketing/campaigns/${campaignId}/send`, { recipients }, { headers: getHeaders() });
-      setView('list');
+      const filteredRecipients = recipients.filter((_, i) => selectedRecipients[i]);
+      await axios.post(`${API}/marketing/campaigns/${campaignId}/send`, { recipients: filteredRecipients }, { headers: getHeaders() });      setView('list');
       fetchCampaigns();
       fetchGlobalStats();
     } catch (err) {
@@ -276,10 +284,27 @@ export default function Marketing() {
                 <input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} style={inputStyle} placeholder="e.g. Quick Q re: {{company_name}}" />
               </div>
               <div>
-                <label style={labelStyle}>Email Body *</label>
-                <textarea value={form.body_html} onChange={e => setForm({ ...form, body_html: e.target.value })} rows={12}
-                  style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
-                  placeholder="Write your email HTML here or load from a template above..." />
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                  <label style={{ ...labelStyle, marginBottom: 0, marginRight: 'auto' }}>Email Body *</label>
+                  {['visual', 'html'].map(tab => (
+                    <button key={tab} onClick={() => setEditorTab(tab)}
+                      style={{ background: editorTab === tab ? '#3E423D' : '#F5F3EF', color: editorTab === tab ? '#fff' : '#717182', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
+                      {tab === 'html' ? 'HTML' : '✨ Visual'}
+                    </button>
+                  ))}
+                </div>
+                {editorTab === 'html' ? (
+                  <textarea value={form.body_html} onChange={e => setForm({ ...form, body_html: e.target.value })} rows={12}
+                    style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+                    placeholder="Write your email HTML here..." />
+                ) : (
+                  <TiptapEditor
+                    content={form.body_html}
+                    onChange={html => setForm(prev => ({ ...prev, body_html: html }))}
+                    placeholder="Write your campaign email..."
+                    minHeight={300}
+                  />
+                )}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
                 <button onClick={saveDraft} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>
@@ -327,8 +352,7 @@ export default function Marketing() {
 
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16 }}>
                   <div style={{ background: '#D4EDDA', borderRadius: 8, padding: '8px 16px' }}>
-                    <span style={{ color: '#155724', fontSize: 13, fontWeight: 600 }}>✅ {loadingRecipients ? '...' : recipients.length} recipients selected</span>
-                  </div>
+                  <span style={{ color: '#155724', fontSize: 13, fontWeight: 600 }}>✅ {loadingRecipients ? '...' : Object.values(selectedRecipients).filter(Boolean).length} of {recipients.length} recipients selected</span>                  </div>
                   {excludedCount > 0 && (
                     <div style={{ background: '#FFE5D0', borderRadius: 8, padding: '8px 16px' }}>
                       <span style={{ color: '#856404', fontSize: 13 }}>🚫 {excludedCount} excluded (unsubscribed)</span>
@@ -341,6 +365,16 @@ export default function Marketing() {
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead style={{ position: 'sticky', top: 0, background: '#F5F3EF' }}>
                         <tr>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, width: 40 }}>
+                            <input type="checkbox"
+                              checked={Object.values(selectedRecipients).filter(Boolean).length === recipients.length}
+                              onChange={e => {
+                                const all = {};
+                                recipients.forEach((_, i) => { all[i] = e.target.checked; });
+                                setSelectedRecipients(all);
+                              }}
+                              style={{ accentColor: '#8E9B8B' }} />
+                          </th>
                           {['Company', 'Contact', 'Email', 'Stage'].map(h => (
                             <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
                           ))}
@@ -348,7 +382,12 @@ export default function Marketing() {
                       </thead>
                       <tbody>
                         {recipients.map((r, i) => (
-                          <tr key={i} style={{ borderTop: '1px solid rgba(62,66,61,0.06)' }}>
+                          <tr key={i} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: selectedRecipients[i] ? '#fff' : '#FAFAF9', opacity: selectedRecipients[i] ? 1 : 0.5 }}>
+                            <td style={{ padding: '8px 12px' }}>
+                              <input type="checkbox" checked={!!selectedRecipients[i]}
+                                onChange={e => setSelectedRecipients(prev => ({ ...prev, [i]: e.target.checked }))}
+                                style={{ accentColor: '#8E9B8B' }} />
+                            </td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#3E423D' }}>{r.company_name}</td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#5A6059' }}>{r.first_name} {r.last_name}</td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#717182' }}>{r.email}</td>
@@ -363,8 +402,8 @@ export default function Marketing() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <button onClick={() => setStep(1)} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>← Back</button>
-                <button onClick={() => setStep(3)} disabled={recipients.length === 0}
-                  style={{ background: recipients.length > 0 ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 13, cursor: recipients.length > 0 ? 'pointer' : 'not-allowed' }}>
+                <button onClick={() => setStep(3)} disabled={Object.values(selectedRecipients).filter(Boolean).length === 0}
+                  style={{ background: Object.values(selectedRecipients).filter(Boolean).length > 0 ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 13, cursor: Object.values(selectedRecipients).filter(Boolean).length > 0 ? 'pointer' : 'not-allowed' }}>
                   Next: Review →
                 </button>
               </div>
@@ -381,7 +420,7 @@ export default function Marketing() {
                     { label: 'Campaign Name', value: form.name },
                     { label: 'From', value: `${form.from_name} <${form.from_email}>` },
                     { label: 'Subject', value: form.subject },
-                    { label: 'Recipients', value: `${recipients.length} contacts` },
+                    { label: 'Recipients', value: `${Object.values(selectedRecipients).filter(Boolean).length} contacts` },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ background: '#F5F3EF', borderRadius: 8, padding: 16 }}>
                       <p style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>{label}</p>
@@ -408,8 +447,7 @@ export default function Marketing() {
                   </button>
                   <button onClick={sendCampaign} disabled={sending}
                     style={{ background: sending ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 28px', fontSize: 13, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
-                    {sending ? '⏳ Sending...' : `🚀 Send to ${recipients.length} Recipients`}
-                  </button>
+                    {sending ? '⏳ Sending...' : `🚀 Send to ${Object.values(selectedRecipients).filter(Boolean).length} Recipients`}                  </button>
                 </div>
               </div>
             </div>
