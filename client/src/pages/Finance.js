@@ -338,8 +338,8 @@ export default function Finance() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(62,66,61,0.08)' }}>
-                  {['Title', 'Category', 'Amount', 'Date', 'Vendor', 'Paid By', 'Status', 'Recurring', isAdmin ? 'Actions' : ''].filter(Boolean).map(h => (
-                    <th key={h} style={{
+                {['Title', 'Category', 'Amount', 'Date', 'Vendor', 'Paid By', 'Status', 'Receipt', 'Recurring', isAdmin ? 'Actions' : ''].filter(Boolean).map(h => (
+                      <th key={h} style={{
                       textAlign: 'left', padding: '12px 16px', fontSize: 11, fontWeight: 600,
                       color: '#717182', textTransform: 'uppercase', letterSpacing: 0.5,
                     }}>{h}</th>
@@ -373,7 +373,7 @@ export default function Finance() {
                         {exp.status.charAt(0).toUpperCase() + exp.status.slice(1)}
                       </span>
                     </td>
-                    <td style={{ padding: '14px 16px', fontSize: 13, color: '#5A6059' }}>{exp.recurring ? '🔄 Yes' : '—'}</td>
+                    <td style={{ padding: '14px 16px', fontSize: 13 }}>{exp.receipt_url ? <a href={exp.receipt_url} target="_blank" rel="noreferrer" style={{ color: '#94B0BC', textDecoration: 'none' }}>📎 View</a> : <span style={{ color: '#CBCED4' }}>—</span>}</td>
                     {isAdmin && (
                       <td style={{ padding: '14px 16px' }}>
                         <div style={{ display: 'flex', gap: 8 }}>
@@ -479,8 +479,25 @@ export default function Finance() {
               </div>
 
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#5A6059', display: 'block', marginBottom: 4 }}>Receipt URL</label>
-                <input value={form.receipt_url} onChange={e => setForm({ ...form, receipt_url: e.target.value })} placeholder="https://..." style={inputStyle} />
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#5A6059', display: 'block', marginBottom: 4 }}>Receipt</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                    onChange={async (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const formData = new FormData();
+                      formData.append('file', file);
+                      try {
+                        const res = await axios.post(`${API}/uploads/receipts`, formData, {
+                          headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'multipart/form-data' }                        });
+                        setForm(prev => ({ ...prev, receipt_url: res.data.url }));
+                      } catch (err) { console.error(err); alert('Upload failed'); }
+                    }}
+                    style={{ fontSize: 12, flex: 1 }}
+                  />
+                  {form.receipt_url && <a href={form.receipt_url} target="_blank" rel="noreferrer" style={{ color: '#94B0BC', fontSize: 12, whiteSpace: 'nowrap' }}>View</a>}
+                </div>
+                {!form.receipt_url && <input value={form.receipt_url || ''} onChange={e => setForm({ ...form, receipt_url: e.target.value })} placeholder="Or paste URL..." style={{ ...inputStyle, marginTop: 6, fontSize: 12 }} />}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

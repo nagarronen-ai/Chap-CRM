@@ -56,11 +56,11 @@ function InlineField({ label, value, onSave, type = 'text', options = null }) {
     if (val !== value) onSave(val);
   };
 
-  const labelStyle = { color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 3 };
-  const inputStyle = { width: '100%', background: '#F3F3F5', border: '1px solid #8E9B8B', borderRadius: 6, padding: '6px 10px', color: '#3E423D', fontSize: 13, outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box' };
+  const labelStyle = { color: '#717182', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 2 };
+  const inputStyle = { width: '100%', background: '#F3F3F5', border: '1px solid #8E9B8B', borderRadius: 6, padding: '5px 8px', color: '#3E423D', fontSize: 13, outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box' };
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 8 }}>
       <label style={labelStyle}>{label}</label>
       {editing ? (
         options ? (
@@ -75,10 +75,10 @@ function InlineField({ label, value, onSave, type = 'text', options = null }) {
         )
       ) : (
         <div onClick={() => setEditing(true)}
-          style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid transparent', color: val ? '#3E423D' : '#CBCED4', fontSize: 13, cursor: 'text', minHeight: 30, display: 'flex', alignItems: 'center', transition: 'border 0.15s', background: 'transparent' }}
-          onMouseOver={e => e.currentTarget.style.border = '1px solid rgba(62,66,61,0.2)'}
-          onMouseOut={e => e.currentTarget.style.border = '1px solid transparent'}>
-          {val || <span style={{ fontStyle: 'italic', color: '#CBCED4' }}>Click to edit...</span>}
+        style={{ padding: '6px 10px', color: val ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: val ? 500 : 400, cursor: 'text', minHeight: 22, display: 'flex', alignItems: 'center', background: '#F5F3EF', borderRadius: 6 }}
+        onMouseOver={e => e.currentTarget.style.background = '#EBE8E1'}
+        onMouseOut={e => e.currentTarget.style.background = '#F5F3EF'}>
+          {val || <span style={{ fontStyle: 'italic', fontSize: 12 }}>—</span>}
         </div>
       )}
     </div>
@@ -126,7 +126,7 @@ export default function CompanyProfile() {
   const emailBodyRef = useRef(null);
   const emailSubjectRef = useRef(null);
   const [showConvertModal, setShowConvertModal] = useState(false);
-  const [convertForm, setConvertForm] = useState({ contract_type: 'RevShare', commission_rate: 5, contract_start_date: '', contract_end_date: '', notes: '' });
+  const [convertForm, setConvertForm] = useState({ contract_type: 'RevShare', commission_rate: 5, contract_amount: 0, contract_signed_date: '', notes: '' });
   const [converting, setConverting] = useState(false);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -505,41 +505,54 @@ export default function CompanyProfile() {
           ))}
         </div>
 
-        {/* OVERVIEW TAB */}
-        {activeTab === 'overview' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 20 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)', boxShadow: '0 2px 8px rgba(62,66,61,0.06)' }}>
-                <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: 1 }}>Company Info</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-                  <InlineField label="Company Name" value={company.company_name} onSave={v => updateField('company_name', v)} />
-                  <InlineField label="Website" value={company.website} onSave={v => updateField('website', v)} />
-                  <InlineField label="Category" value={company.category} onSave={v => updateField('category', v)} options={Object.keys(CATEGORIES)} />
-                  <InlineField label="Business Type" value={company.business_type} onSave={v => updateField('business_type', v)} options={company.category ? CATEGORIES[company.category] : []} />
-                  <InlineField label="Industry" value={company.industry} onSave={v => updateField('industry', v)} />
-                  <InlineField label="Employees" value={company.employees} onSave={v => updateField('employees', v)} />
-                  <InlineField label="Annual Revenue" value={company.annual_revenue} onSave={v => updateField('annual_revenue', v)} />
-                  <InlineField label="Origin" value={company.origin} onSave={v => updateField('origin', v)} options={ORIGINS} />
-                </div>
+ {/* OVERVIEW TAB */}
+ {activeTab === 'overview' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
+            <div style={{ background: '#fff', borderRadius: 12, padding: 28, border: '1px solid rgba(62,66,61,0.1)' }}>
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contact Info</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
+                {[
+                  { field: 'company_name', label: 'Company Name' },
+                  { field: 'city', label: 'City' },
+                  { field: 'state', label: 'State' },
+                  { field: 'country', label: 'Country', options: COUNTRIES },
+                  { field: 'company_address', label: 'Address' },
+                  { field: 'origin', label: 'Origin', options: ORIGINS },
+                ].map(({ field, label, options }) => (
+                  <InlineField key={field} label={label} value={company[field]} onSave={v => updateField(field, v)} options={options} />
+                ))}
               </div>
-              <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)', boxShadow: '0 2px 8px rgba(62,66,61,0.06)' }}>
-                <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 16px', textTransform: 'uppercase', letterSpacing: 1 }}>Location & Social</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-                  <InlineField label="City" value={company.city} onSave={v => updateField('city', v)} />
-                  <InlineField label="State" value={company.state} onSave={v => updateField('state', v)} />
-                  <InlineField label="Country" value={company.country} onSave={v => updateField('country', v)} options={COUNTRIES} />
-                  <InlineField label="Address" value={company.company_address} onSave={v => updateField('company_address', v)} />
-                  <InlineField label="LinkedIn" value={company.company_linkedin} onSave={v => updateField('company_linkedin', v)} />
-                  <InlineField label="Facebook" value={company.facebook_url} onSave={v => updateField('facebook_url', v)} />
-                  <InlineField label="Twitter" value={company.twitter_url} onSave={v => updateField('twitter_url', v)} />
-                </div>
+
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Business</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
+                {[
+                  { field: 'category', label: 'Category', options: Object.keys(CATEGORIES) },
+                  { field: 'business_type', label: 'Business Type', options: company.category ? CATEGORIES[company.category] : [] },
+                  { field: 'website', label: 'Website' },
+                  { field: 'industry', label: 'Industry' },
+                  { field: 'employees', label: 'Employees' },
+                  { field: 'annual_revenue', label: 'Annual Revenue' },
+                ].map(({ field, label, options }) => (
+                  <InlineField key={field} label={label} value={company[field]} onSave={v => updateField(field, v)} options={options} />
+                ))}
+              </div>
+
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Social</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px' }}>
+                {[
+                  { field: 'company_linkedin', label: 'LinkedIn' },
+                  { field: 'facebook_url', label: 'Facebook' },
+                  { field: 'twitter_url', label: 'Twitter' },
+                ].map(({ field, label }) => (
+                  <InlineField key={field} label={label} value={company[field]} onSave={v => updateField(field, v)} />
+                ))}
               </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)', boxShadow: '0 2px 8px rgba(62,66,61,0.06)' }}>
+              <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: 0, textTransform: 'uppercase', letterSpacing: 1 }}>People ({company.crm_people?.length || 0})</h3>
+                  <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: 0 }}>People ({company.crm_people?.length || 0})</h3>
                   <button onClick={() => setShowAddPerson(true)} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>+ Add</button>
                 </div>
                 {company.crm_people?.length === 0 ? (
@@ -555,16 +568,16 @@ export default function CompanyProfile() {
                         {person.mobile_phone && <p style={{ color: '#5A6059', fontSize: 12, margin: 0 }}>📱 {person.mobile_phone}</p>}
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                      {can('people:edit') && <button onClick={() => setEditingPerson({ ...person })} style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059' }}>✏️</button>}
-                      {can('people:delete') && <button onClick={() => deletePerson(person.id)} style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>✕</button>}
+                        {can('people:edit') && <button onClick={() => setEditingPerson({ ...person })} style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059' }}>✏️</button>}
+                        {can('people:delete') && <button onClick={() => deletePerson(person.id)} style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>✕</button>}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)', boxShadow: '0 2px 8px rgba(62,66,61,0.06)' }}>
-                <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: 1 }}>Quick Note</h3>
+              <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)' }}>
+                <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>Quick Note</h3>
                 <textarea value={quickNote} onChange={e => setQuickNote(e.target.value)} placeholder="Add a note..." rows={3}
                   style={{ ...inputStyle, resize: 'vertical', marginBottom: 10 }} />
                 <button onClick={saveQuickNote} disabled={savingQuickNote || !quickNote.trim()}
@@ -587,7 +600,6 @@ export default function CompanyProfile() {
             </div>
           </div>
         )}
-
         {/* PEOPLE TAB */}
         {activeTab === 'people' && (
           <div>
@@ -1146,30 +1158,44 @@ export default function CompanyProfile() {
               <h2 style={{ color: '#3E423D', fontSize: 22, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 6px' }}>Convert to Client</h2>
               <p style={{ color: '#717182', fontSize: 13, margin: '0 0 24px' }}>Converting <strong>{company.company_name}</strong> from a lead to an active client.</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={labelStyle}>Contract Type</label>
                     <select value={convertForm.contract_type} onChange={e => setConvertForm(prev => ({ ...prev, contract_type: e.target.value }))} style={inputStyle}>
-                      <option value="RevShare">RevShare</option>
-                      <option value="Subscription">Subscription</option>
-                      <option value="Flat Fee">Flat Fee</option>
+                      <option value="RevShare">RevShare ($ + %)</option>
+                      <option value="Commission">Commission (%)</option>
+                      <option value="Subscription">Subscription ($/month)</option>
                     </select>
                   </div>
                   <div>
+                    <label style={labelStyle}>Contract Signed Date</label>
+                    <input type="date" value={convertForm.contract_signed_date || ''} onChange={e => setConvertForm(prev => ({ ...prev, contract_signed_date: e.target.value }))} style={inputStyle} />
+                  </div>
+                </div>
+                {convertForm.contract_type === 'RevShare' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={labelStyle}>Base Amount ($)</label>
+                      <input type="number" value={convertForm.contract_amount || ''} onChange={e => setConvertForm(prev => ({ ...prev, contract_amount: e.target.value }))} style={inputStyle} placeholder="e.g. 500" />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Revenue Share (%)</label>
+                      <input type="number" value={convertForm.commission_rate} onChange={e => setConvertForm(prev => ({ ...prev, commission_rate: e.target.value }))} style={inputStyle} placeholder="e.g. 5" />
+                    </div>
+                  </div>
+                )}
+                {convertForm.contract_type === 'Commission' && (
+                  <div>
                     <label style={labelStyle}>Commission Rate (%)</label>
-                    <input type="number" value={convertForm.commission_rate} onChange={e => setConvertForm(prev => ({ ...prev, commission_rate: e.target.value }))} style={inputStyle} />
+                    <input type="number" value={convertForm.commission_rate} onChange={e => setConvertForm(prev => ({ ...prev, commission_rate: e.target.value }))} style={inputStyle} placeholder="e.g. 10" />
                   </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                )}
+                {convertForm.contract_type === 'Subscription' && (
                   <div>
-                    <label style={labelStyle}>Contract Start Date</label>
-                    <input type="date" value={convertForm.contract_start_date} onChange={e => setConvertForm(prev => ({ ...prev, contract_start_date: e.target.value }))} style={inputStyle} />
+                    <label style={labelStyle}>Monthly Amount ($)</label>
+                    <input type="number" value={convertForm.contract_amount || ''} onChange={e => setConvertForm(prev => ({ ...prev, contract_amount: e.target.value }))} style={inputStyle} placeholder="e.g. 99" />
                   </div>
-                  <div>
-                    <label style={labelStyle}>Contract End Date</label>
-                    <input type="date" value={convertForm.contract_end_date} onChange={e => setConvertForm(prev => ({ ...prev, contract_end_date: e.target.value }))} style={inputStyle} />
-                  </div>
-                </div>
+                )}
                 <div>
                   <label style={labelStyle}>Notes</label>
                   <textarea value={convertForm.notes} onChange={e => setConvertForm(prev => ({ ...prev, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Any notes about this client..." />

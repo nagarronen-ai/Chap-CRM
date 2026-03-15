@@ -352,7 +352,8 @@ export default function ClientProfile() {
         {/* Info Bar */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
           {[
-            { label: 'Contract', value: `${client.contract_type} · ${client.commission_rate}%` },
+{ label: 'Contract', value: client.contract_type === 'Subscription' ? `${client.contract_type} · $${client.contract_amount || 0}/mo` : client.contract_type === 'RevShare' ? `${client.contract_type} · $${client.contract_amount || 0} + ${client.commission_rate}%` : `${client.contract_type} · ${client.commission_rate}%` },
+
             { label: 'Contact', value: `${client.contact_first_name} ${client.contact_last_name}` },
             { label: 'Location', value: `${client.city || ''}${client.state ? `, ${client.state}` : ''}` || '—' },
             { label: 'Assigned To', value: client.crm_users?.name || '—' },
@@ -380,59 +381,119 @@ export default function ClientProfile() {
           ))}
         </div>
 
-        {/* ─── OVERVIEW TAB ─── */}
-        {activeTab === 'overview' && (
+{/* ─── OVERVIEW TAB ─── */}
+{activeTab === 'overview' && (
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
             <div style={{ background: '#fff', borderRadius: 12, padding: 28, border: '1px solid rgba(62,66,61,0.1)' }}>
-              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 20px' }}>Business Details</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contact Info</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
                 {[
                   { field: 'business_name', label: 'Business Name' },
                   { field: 'contact_email', label: 'Email' },
                   { field: 'contact_phone', label: 'Phone' },
-                  { field: 'website', label: 'Website' },
                   { field: 'address', label: 'Address' },
                   { field: 'city', label: 'City' },
                   { field: 'state', label: 'State' },
-                  { field: 'category', label: 'Category' },
-                  { field: 'business_type', label: 'Business Type' },
-                  { field: 'contract_type', label: 'Contract Type', type: 'select', options: ['RevShare', 'Subscription', 'Flat Fee'] },
-                  { field: 'commission_rate', label: 'Commission Rate (%)', type: 'number' },
-                  { field: 'contract_start_date', label: 'Contract Start', type: 'date' },
-                  { field: 'contract_end_date', label: 'Contract End', type: 'date' },
-                ].map(({ field, label, type, options }) => (
+                ].map(({ field, label }) => (
                   <div key={field}>
                     <label style={labelStyle}>{label}</label>
                     {editField === field ? (
-                      type === 'select' ? (
-                        <select value={client[field] || ''} onChange={e => updateField(field, e.target.value)} onBlur={() => setEditField(null)} autoFocus style={inputStyle}>
-                          {options.map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                      ) : (
-                        <input type={type || 'text'} value={client[field] || ''} onChange={e => setClient(prev => ({ ...prev, [field]: e.target.value }))}
-                          onBlur={e => updateField(field, e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField(field, e.target.value)}
-                          autoFocus style={inputStyle} />
-                      )
+                      <input type="text" value={client[field] || ''} onChange={e => setClient(prev => ({ ...prev, [field]: e.target.value }))}
+                        onBlur={e => updateField(field, e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField(field, e.target.value)}
+                        autoFocus style={inputStyle} />
                     ) : (
                       <p onClick={() => isAdmin && setEditField(field)}
-                        style={{ color: client[field] ? '#3E423D' : '#CBCED4', fontSize: 13, margin: 0, padding: '9px 0', cursor: isAdmin ? 'pointer' : 'default' }}>
-                        {client[field] || 'Click to set...'}
+                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        {client[field] || '—'}
                       </p>
                     )}
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: 16 }}>
-                <label style={labelStyle}>Notes</label>
-                {editField === 'notes' ? (
-                  <textarea value={client.notes || ''} onChange={e => setClient(prev => ({ ...prev, notes: e.target.value }))}
-                    onBlur={e => updateField('notes', e.target.value)} autoFocus rows={4} style={{ ...inputStyle, resize: 'vertical' }} />
-                ) : (
-                  <p onClick={() => isAdmin && setEditField('notes')}
-                    style={{ color: client.notes ? '#3E423D' : '#CBCED4', fontSize: 13, margin: 0, cursor: isAdmin ? 'pointer' : 'default', whiteSpace: 'pre-wrap' }}>
-                    {client.notes || 'Click to add notes...'}
-                  </p>
+
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Business</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
+                {[
+                  { field: 'category', label: 'Category' },
+                  { field: 'business_type', label: 'Business Type' },
+                  { field: 'website', label: 'Website' },
+                ].map(({ field, label }) => (
+                  <div key={field}>
+                    <label style={labelStyle}>{label}</label>
+                    {editField === field ? (
+                      <input type="text" value={client[field] || ''} onChange={e => setClient(prev => ({ ...prev, [field]: e.target.value }))}
+                        onBlur={e => updateField(field, e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField(field, e.target.value)}
+                        autoFocus style={inputStyle} />
+                    ) : (
+                      <p onClick={() => isAdmin && setEditField(field)}
+                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        {client[field] || '—'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contract</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
+                <div>
+                  <label style={labelStyle}>Contract Type</label>
+                  {editField === 'contract_type' ? (
+                    <select value={client.contract_type || ''} onChange={e => updateField('contract_type', e.target.value)} onBlur={() => setEditField(null)} autoFocus style={inputStyle}>
+                      <option value="RevShare">RevShare ($ + %)</option>
+                      <option value="Commission">Commission (%)</option>
+                      <option value="Subscription">Subscription ($/month)</option>
+                    </select>
+                  ) : (
+                    <p onClick={() => isAdmin && setEditField('contract_type')}
+                      style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 500, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                      {client.contract_type || '—'}
+                    </p>
+                  )}
+                </div>
+                {(client.contract_type === 'RevShare' || client.contract_type === 'Commission') && (
+                  <div>
+                    <label style={labelStyle}>{client.contract_type === 'RevShare' ? 'Revenue Share (%)' : 'Commission Rate (%)'}</label>
+                    {editField === 'commission_rate' ? (
+                      <input type="number" value={client.commission_rate || ''} onChange={e => setClient(prev => ({ ...prev, commission_rate: e.target.value }))}
+                        onBlur={e => updateField('commission_rate', e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField('commission_rate', e.target.value)}
+                        autoFocus style={inputStyle} />
+                    ) : (
+                      <p onClick={() => isAdmin && setEditField('commission_rate')}
+                        style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 500, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        {client.commission_rate ? `${client.commission_rate}%` : '—'}
+                      </p>
+                    )}
+                  </div>
                 )}
+                {(client.contract_type === 'RevShare' || client.contract_type === 'Subscription') && (
+                  <div>
+                    <label style={labelStyle}>{client.contract_type === 'RevShare' ? 'Base Amount ($)' : 'Monthly Amount ($)'}</label>
+                    {editField === 'contract_amount' ? (
+                      <input type="number" value={client.contract_amount || ''} onChange={e => setClient(prev => ({ ...prev, contract_amount: e.target.value }))}
+                        onBlur={e => updateField('contract_amount', e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField('contract_amount', e.target.value)}
+                        autoFocus style={inputStyle} />
+                    ) : (
+                      <p onClick={() => isAdmin && setEditField('contract_amount')}
+                        style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 500, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        {client.contract_amount ? `$${client.contract_amount}` : '—'}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <label style={labelStyle}>Contract Signed</label>
+                  {editField === 'contract_signed_date' ? (
+                    <input type="date" value={client.contract_signed_date || ''} onChange={e => setClient(prev => ({ ...prev, contract_signed_date: e.target.value }))}
+                      onBlur={e => updateField('contract_signed_date', e.target.value)}
+                      autoFocus style={inputStyle} />
+                  ) : (
+                    <p onClick={() => isAdmin && setEditField('contract_signed_date')}
+                      style={{ color: client.contract_signed_date ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client.contract_signed_date ? 500 : 400, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                      {client.contract_signed_date || '—'}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
             <div>
@@ -497,8 +558,9 @@ export default function ClientProfile() {
                   <thead><tr style={{ background: '#F5F3EF' }}>{['Title', 'Type', 'Status', 'Signed', 'Expires', 'By', 'Date', ''].map(h => (<th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>))}</tr></thead>
                   <tbody>{documents.map((d, i) => (
                     <tr key={d.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{d.title}</td>
-                      <td style={{ padding: '12px 16px' }}><span style={{ background: '#F5F3EF', color: '#717182', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{d.doc_type}</span></td>
+<td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>
+                        {d.file_url ? <a href={d.file_url} target="_blank" rel="noreferrer" style={{ color: '#3E423D', textDecoration: 'none' }}>{d.title} 📎</a> : d.title}
+                      </td>                      <td style={{ padding: '12px 16px' }}><span style={{ background: '#F5F3EF', color: '#717182', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{d.doc_type}</span></td>
                       <td style={{ padding: '12px 16px' }}><span style={{ background: d.status === 'Signed' ? '#D4EDDA' : d.status === 'Expired' ? '#F8D7DA' : '#F5F3EF', color: d.status === 'Signed' ? '#155724' : d.status === 'Expired' ? '#721C24' : '#717182', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{d.status}</span></td>
                       <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{d.signed_date ? new Date(d.signed_date).toLocaleDateString() : '—'}</td>
                       <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{d.expires_date ? new Date(d.expires_date).toLocaleDateString() : '—'}</td>
@@ -526,7 +588,7 @@ export default function ClientProfile() {
                 <button onClick={saveVendorPage} disabled={savingVendorPage} style={{ background: savingVendorPage ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, cursor: 'pointer' }}>{savingVendorPage ? 'Saving...' : '💾 Save'}</button>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px' }}>
               <div><label style={labelStyle}>Display Name</label><input value={vendorPage.display_name || ''} onChange={e => setVendorPage(prev => ({ ...prev, display_name: e.target.value }))} style={inputStyle} /></div>
               <div><label style={labelStyle}>Tagline</label><input value={vendorPage.tagline || ''} onChange={e => setVendorPage(prev => ({ ...prev, tagline: e.target.value }))} style={inputStyle} placeholder="e.g. A luxury barn experience..." /></div>
               <div><label style={labelStyle}>Venue Type</label><select value={vendorPage.venue_type || ''} onChange={e => setVendorPage(prev => ({ ...prev, venue_type: e.target.value }))} style={inputStyle}><option value="">Select...</option>{VENUE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}</select></div>
@@ -602,8 +664,28 @@ export default function ClientProfile() {
                   <div><label style={labelStyle}>Signed Date</label><input type="date" value={docForm.signed_date || ''} onChange={e => setDocForm(prev => ({ ...prev, signed_date: e.target.value }))} style={inputStyle} /></div>
                   <div><label style={labelStyle}>Expires Date</label><input type="date" value={docForm.expires_date || ''} onChange={e => setDocForm(prev => ({ ...prev, expires_date: e.target.value }))} style={inputStyle} /></div>
                 </div>
-                <div><label style={labelStyle}>File URL</label><input value={docForm.file_url} onChange={e => setDocForm(prev => ({ ...prev, file_url: e.target.value }))} style={inputStyle} placeholder="https://..." /></div>
-                <div><label style={labelStyle}>Notes</label><textarea value={docForm.notes} onChange={e => setDocForm(prev => ({ ...prev, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></div>
+                <div>
+                  <label style={labelStyle}>Document File</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                      onChange={async (e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        try {
+                          const res = await axios.post(`${API}/uploads/client-documents`, formData, {
+                            headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
+                          });
+                          setDocForm(prev => ({ ...prev, file_url: res.data.url }));
+                        } catch (err) { console.error(err); alert('Upload failed'); }
+                      }}
+                      style={{ fontSize: 12, flex: 1 }}
+                    />
+                    {docForm.file_url && <a href={docForm.file_url} target="_blank" rel="noreferrer" style={{ color: '#94B0BC', fontSize: 12 }}>View file</a>}
+                  </div>
+                  {!docForm.file_url && <input value={docForm.file_url || ''} onChange={e => setDocForm(prev => ({ ...prev, file_url: e.target.value }))} style={{ ...inputStyle, marginTop: 6 }} placeholder="Or paste URL manually..." />}
+                </div>                <div><label style={labelStyle}>Notes</label><textarea value={docForm.notes} onChange={e => setDocForm(prev => ({ ...prev, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></div>
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
                 <button onClick={saveDocument} disabled={!docForm.title} style={{ flex: 1, background: docForm.title ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, cursor: docForm.title ? 'pointer' : 'default' }}>{editingDoc ? 'Save Changes' : 'Add Document'}</button>
