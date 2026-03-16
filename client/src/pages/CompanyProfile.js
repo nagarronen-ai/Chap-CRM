@@ -868,14 +868,24 @@ export default function CompanyProfile() {
         {activeTab === 'marketing' && (
           <div>
             {company.crm_people?.some(p => p.marketing_unsubscribed) && (
-              <div style={{ background: '#FFE5D0', borderRadius: 10, padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 18 }}>🚫</span>
-                <div>
+              <div style={{ background: '#FFE5D0', borderRadius: 10, padding: '12px 20px', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 18 }}>🚫</span>
                   <p style={{ color: '#856404', fontSize: 13, fontWeight: 600, margin: 0 }}>Unsubscribed Contacts</p>
-                  <p style={{ color: '#856404', fontSize: 12, margin: 0 }}>
-                    {company.crm_people.filter(p => p.marketing_unsubscribed).map(p => `${p.first_name} ${p.last_name}`).join(', ')} opted out of marketing emails.
-                  </p>
                 </div>
+                {company.crm_people.filter(p => p.marketing_unsubscribed).map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid rgba(133,100,4,0.15)' }}>
+                    <span style={{ color: '#856404', fontSize: 12 }}>{p.first_name} {p.last_name} — {p.email}</span>
+                    <button onClick={async () => {
+                      try {
+                        await axios.post(`${API}/marketing/resubscribe/${p.id}`, {}, { headers: getHeaders() });
+                        fetchCompany();
+                      } catch (err) { console.error(err); }
+                    }} style={{ background: '#fff', color: '#856404', border: '1px solid #856404', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                      Resubscribe
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
             {marketingData.length === 0 ? (

@@ -37,35 +37,72 @@ const GUEST_CAPACITIES = ['0-50', '51-100', '101-150', '151-200', '201-250', '25
 const PRICE_TIERS = ['$', '$$', '$$$', '$$$$'];
 
 function PeopleFromContact({ companyId, getHeaders }) {
-  const [people, setPeople] = useState([]);
-  useEffect(() => {
+    const [people, setPeople] = useState([]);
+    const [editing, setEditing] = useState(null);
+    const [editForm, setEditForm] = useState({});
+  
     const fetchPeople = async () => {
       try {
         const res = await axios.get(`${API}/contacts/companies/${companyId}`, { headers: getHeaders() });
         setPeople(res.data.crm_people || []);
       } catch (err) {}
     };
-    fetchPeople();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
-
-  if (people.length === 0) return null;
-
-  return (
-    <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
-      <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>People ({people.length})</h3>
-      {people.map(p => (
-        <div key={p.id} style={{ background: '#F5F3EF', borderRadius: 10, padding: 12, marginBottom: 8 }}>
-          <p style={{ color: '#3E423D', fontWeight: 600, margin: '0 0 2px', fontSize: 13 }}>{p.first_name} {p.last_name}</p>
-          {p.title && <p style={{ color: '#717182', fontSize: 12, margin: '0 0 4px' }}>{p.title}</p>}
-          {p.email && <p style={{ color: '#94B0BC', fontSize: 12, margin: '0 0 2px' }}>✉️ {p.email}</p>}
-          {p.work_phone && <p style={{ color: '#5A6059', fontSize: 12, margin: '0 0 2px' }}>📞 {p.work_phone}</p>}
-          {p.mobile_phone && <p style={{ color: '#5A6059', fontSize: 12, margin: 0 }}>📱 {p.mobile_phone}</p>}
-        </div>
-      ))}
-    </div>
-  );
-}
+  
+    useEffect(() => {
+      fetchPeople();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [companyId]);
+  
+    const savePerson = async () => {
+      try {
+        await axios.put(`${API}/contacts/people/${editing}`, editForm, { headers: getHeaders() });
+        setEditing(null);
+        fetchPeople();
+      } catch (err) { console.error(err); }
+    };
+  
+    if (people.length === 0) return null;
+  
+    const inputStyle = { width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '5px 8px', color: '#3E423D', fontSize: 12, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' };
+  
+    return (
+      <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
+        <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>People ({people.length})</h3>
+        {people.map(p => (
+          <div key={p.id} style={{ background: '#F5F3EF', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+            {editing === p.id ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input value={editForm.first_name || ''} onChange={e => setEditForm(prev => ({ ...prev, first_name: e.target.value }))} placeholder="First" style={inputStyle} />
+                  <input value={editForm.last_name || ''} onChange={e => setEditForm(prev => ({ ...prev, last_name: e.target.value }))} placeholder="Last" style={inputStyle} />
+                </div>
+                <input value={editForm.title || ''} onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))} placeholder="Title" style={inputStyle} />
+                <input value={editForm.email || ''} onChange={e => setEditForm(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" style={inputStyle} />
+                <input value={editForm.work_phone || ''} onChange={e => setEditForm(prev => ({ ...prev, work_phone: e.target.value }))} placeholder="Work Phone" style={inputStyle} />
+                <input value={editForm.mobile_phone || ''} onChange={e => setEditForm(prev => ({ ...prev, mobile_phone: e.target.value }))} placeholder="Mobile" style={inputStyle} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={savePerson} style={{ flex: 1, background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '5px', fontSize: 11, cursor: 'pointer' }}>Save</button>
+                  <button onClick={() => setEditing(null)} style={{ flex: 1, background: '#fff', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '5px', fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p style={{ color: '#3E423D', fontWeight: 600, margin: '0 0 2px', fontSize: 13 }}>{p.first_name} {p.last_name}</p>
+                  {p.title && <p style={{ color: '#717182', fontSize: 12, margin: '0 0 4px' }}>{p.title}</p>}
+                  {p.email && <p style={{ color: '#94B0BC', fontSize: 12, margin: '0 0 2px' }}>✉️ {p.email}</p>}
+                  {p.work_phone && <p style={{ color: '#5A6059', fontSize: 12, margin: '0 0 2px' }}>📞 {p.work_phone}</p>}
+                  {p.mobile_phone && <p style={{ color: '#5A6059', fontSize: 12, margin: 0 }}>📱 {p.mobile_phone}</p>}
+                </div>
+                <button onClick={() => { setEditing(p.id); setEditForm({ first_name: p.first_name, last_name: p.last_name, title: p.title || '', email: p.email || '', work_phone: p.work_phone || '', mobile_phone: p.mobile_phone || '' }); }}
+                  style={{ background: '#fff', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#5A6059' }}>✏️</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
 export default function ClientProfile() {
   const { id } = useParams();
@@ -149,6 +186,9 @@ export default function ClientProfile() {
       if (convertedFrom) {
         const emailRes = await axios.get(`${API}/emails/sent/company/${convertedFrom}`, { headers: getHeaders() });
         setContactEmailHistory(emailRes.data || []);
+
+        const companyRes = await axios.get(`${API}/contacts/companies/${convertedFrom}`, { headers: getHeaders() });
+        setClientPeople(companyRes.data.crm_people || []);
 
         const mktRes = await axios.get(`${API}/marketing/company/${convertedFrom}`, { headers: getHeaders() });
         setContactMarketingHistory(mktRes.data || []);
@@ -428,6 +468,8 @@ export default function ClientProfile() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
                 {[
                   { field: 'business_name', label: 'Business Name' },
+                  { field: 'contact_first_name', label: 'First Name' },
+                  { field: 'contact_last_name', label: 'Last Name' },
                   { field: 'contact_email', label: 'Email' },
                   { field: 'contact_phone', label: 'Phone' },
                   { field: 'address', label: 'Address' },
@@ -559,6 +601,32 @@ export default function ClientProfile() {
 {/* ─── EMAILS TAB ─── */}
 {activeTab === 'emails' && (
           <div>
+            {/* Unsubscribed Banner */}
+            {clientPeople.filter(p => p.marketing_unsubscribed).length > 0 && (
+              <div style={{ background: '#FFE5D0', borderRadius: 10, padding: '12px 20px', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 18 }}>🚫</span>
+                  <p style={{ color: '#856404', fontSize: 13, fontWeight: 600, margin: 0 }}>Unsubscribed Contacts</p>
+                </div>
+                {clientPeople.filter(p => p.marketing_unsubscribed).map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid rgba(133,100,4,0.15)' }}>
+                    <span style={{ color: '#856404', fontSize: 12 }}>{p.first_name} {p.last_name} — {p.email}</span>
+                    <button onClick={async () => {
+                      try {
+                        await axios.post(`${API}/marketing/resubscribe/${p.id}`, {}, { headers: getHeaders() });
+                        // Refresh people list
+                        if (client.converted_from) {
+                          const res = await axios.get(`${API}/contacts/companies/${client.converted_from}`, { headers: getHeaders() });
+                          setClientPeople(res.data.crm_people || []);
+                        }
+                      } catch (err) { console.error(err); }
+                    }} style={{ background: '#fff', color: '#856404', border: '1px solid #856404', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                      Resubscribe
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Client Emails Section */}
             <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden', marginBottom: 24 }}>
               <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>

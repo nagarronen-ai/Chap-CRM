@@ -455,4 +455,40 @@ router.get('/company/:companyId', auth, async (req, res) => {
   res.json(data);
 });
 
+// POST /api/marketing/resubscribe/:personId — resubscribe a person
+router.post('/resubscribe/:personId', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('crm_people')
+    .update({ marketing_unsubscribed: false, marketing_unsubscribed_at: null })
+    .eq('id', req.params.personId)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// GET /api/marketing/unsubscribed — list all unsubscribed people
+router.get('/unsubscribed', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('crm_people')
+    .select('id, first_name, last_name, email, marketing_unsubscribed_at, company_id, crm_companies(id, company_name, stage)')
+    .eq('marketing_unsubscribed', true)
+    .order('marketing_unsubscribed_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// POST /api/marketing/resubscribe-bulk — resubscribe multiple people
+router.post('/resubscribe-bulk', auth, async (req, res) => {
+  const { person_ids } = req.body;
+  if (!person_ids?.length) return res.status(400).json({ error: 'No person IDs provided' });
+  const { data, error } = await supabase
+    .from('crm_people')
+    .update({ marketing_unsubscribed: false, marketing_unsubscribed_at: null })
+    .in('id', person_ids)
+    .select();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ resubscribed: data.length });
+});
+
 module.exports = router;

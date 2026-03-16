@@ -17,10 +17,11 @@ const CATEGORIES = {
   'Other': ['Jeweler', 'Travel & Honeymoon', 'Other'],
 };
 const STAGE_COLORS = {
+  
   'New': '#94B0BC', 'Contacted': '#8E9B8B', 'No Reply': '#717182',
   'Follow-up': '#D4A574', 'Meeting Scheduled': '#B4A5D6',
   'Proposal Offered': '#8E9B8B', 'Agreement Sent': '#94B0BC',
-  'Closed Won': '#4CAF50', 'Closed Lost': '#D4183D', 'Not Interested': '#CBCED4',
+'Closed Won': '#4CAF50', 'Closed Lost': '#D4183D', 'Not Interested': '#CBCED4', 'Converted': '#1a6fad',
 };
 const ROLE_COLORS = {
   admin: '#8E9B8B', sales: '#94B0BC', marketing: '#B4A5D6',

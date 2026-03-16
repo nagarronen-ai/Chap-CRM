@@ -42,10 +42,10 @@ const prettifyHTML = (html) => {
 };
 
 export default function Marketing() {
-  const { role, can } = useRole();
+  const { can } = useRole();
   const canSend = can('marketing:send');
 
-  const [view, setView] = useState('list'); // list | create | detail
+  const [view, setView] = useState('list');
   const [campaigns, setCampaigns] = useState([]);
   const [globalStats, setGlobalStats] = useState(null);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
@@ -58,15 +58,21 @@ export default function Marketing() {
     name: '', subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null,
   });
   const [filters, setFilters] = useState({ stage: '', origin: '', city: '', category: '', source: 'all' });
-    const [recipients, setRecipients] = useState([]);
+  const [recipients, setRecipients] = useState([]);
   const [selectedRecipients, setSelectedRecipients] = useState({});
   const [excludedCount, setExcludedCount] = useState(0);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [templates, setTemplates] = useState([]);
-  const [editorTab, setEditorTab] = useState('visual');
+
+  // Sub navigation
+  const [subView, setSubView] = useState('campaigns');
+  const [unsubscribed, setUnsubscribed] = useState([]);
+  const [selectedUnsubs, setSelectedUnsubs] = useState({});
+  const [loadingUnsubs, setLoadingUnsubs] = useState(false);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchCampaigns(); fetchGlobalStats(); fetchTemplates(); }, []);
 
   const fetchCampaigns = async () => {
@@ -89,6 +95,26 @@ export default function Marketing() {
       const res = await axios.get(`${API}/emails/templates`, { headers: getHeaders() });
       setTemplates(res.data.filter(t => t.visibility === 'team'));
     } catch (err) { console.error(err); }
+  };
+
+  const fetchUnsubscribed = async () => {
+    setLoadingUnsubs(true);
+    try {
+      const res = await axios.get(`${API}/marketing/unsubscribed`, { headers: getHeaders() });
+      setUnsubscribed(res.data);
+      setSelectedUnsubs({});
+    } catch (err) { console.error(err); }
+    setLoadingUnsubs(false);
+  };
+
+  const resubscribeBulk = async () => {
+    const ids = Object.entries(selectedUnsubs).filter(([, v]) => v).map(([k]) => k);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Resubscribe ${ids.length} contact(s)?`)) return;
+    try {
+      await axios.post(`${API}/marketing/resubscribe-bulk`, { person_ids: ids }, { headers: getHeaders() });
+      fetchUnsubscribed();
+    } catch (err) { console.error(err); alert('Failed'); }
   };
 
   const fetchRecipients = async () => {
@@ -141,12 +167,11 @@ export default function Marketing() {
     if (!window.confirm(`Send to ${selectedCount} recipients?`)) return;
     setSending(true);
     try {
-      // First save as draft
       const draftRes = await axios.post(`${API}/marketing/campaigns`, form, { headers: getHeaders() });
       const campaignId = draftRes.data.id;
-      // Then send
       const filteredRecipients = recipients.filter((_, i) => selectedRecipients[i]);
-      await axios.post(`${API}/marketing/campaigns/${campaignId}/send`, { recipients: filteredRecipients }, { headers: getHeaders() });      setView('list');
+      await axios.post(`${API}/marketing/campaigns/${campaignId}/send`, { recipients: filteredRecipients }, { headers: getHeaders() });
+      setView('list');
       fetchCampaigns();
       fetchGlobalStats();
     } catch (err) {
@@ -205,8 +230,8 @@ export default function Marketing() {
             })}
           </div>
 
-{/* Email Preview */}
-<div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden', marginBottom: 24 }}>
+          {/* Email Preview */}
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden', marginBottom: 24 }}>
             <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>Email Content</h3>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -316,88 +341,46 @@ export default function Marketing() {
               <div>
                 <label style={labelStyle}>Email Body *</label>
                 <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-                  {/* Visual Editor — Left Side */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
                       <span style={{ fontSize: 11, color: '#8E9B8B', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>✨ Visual Editor</span>
                     </div>
-                    <TiptapEditor
-                      content={form.body_html}
-                      onChange={html => setForm(prev => ({ ...prev, body_html: html }))}
-                      placeholder="Write your campaign email..."
-                      minHeight={350}
-                    />
+                    <TiptapEditor content={form.body_html} onChange={html => setForm(prev => ({ ...prev, body_html: html }))} placeholder="Write your campaign email..." minHeight={350} />
                   </div>
-                  {/* HTML Code — Right Side */}
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
                       <span style={{ fontSize: 11, color: '#717182', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>HTML Code</span>
                     </div>
-                    <textarea
-                      value={prettifyHTML(form.body_html)}
-                      onChange={e => setForm({ ...form, body_html: e.target.value })}
-                      style={{
-                        ...inputStyle,
-                        fontFamily: "'SF Mono', 'Fira Code', monospace",
-                        fontSize: 11,
-                        lineHeight: 1.5,
-                        resize: 'none',
-                        height: 'auto',
-                        minHeight: 392,
-                        flex: 1,
-                        background: '#1E1E2E',
-                        color: '#CDD6F4',
-                        border: '1px solid rgba(62,66,61,0.1)',
-                        borderRadius: 8,
-                        padding: 16,
-                      }}
-                      placeholder="HTML will appear here as you type..."
-                    />
+                    <textarea value={prettifyHTML(form.body_html)} onChange={e => setForm({ ...form, body_html: e.target.value })}
+                      style={{ ...inputStyle, fontFamily: "'SF Mono', 'Fira Code', monospace", fontSize: 11, lineHeight: 1.5, resize: 'none', height: 'auto', minHeight: 392, flex: 1, background: '#1E1E2E', color: '#CDD6F4', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: 16 }}
+                      placeholder="HTML will appear here as you type..." />
                   </div>
                 </div>
-                {/* Merge Tags Bar */}
-                <div style={{
-                  display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-                  marginTop: 12, padding: '12px 16px',
-                  background: '#F5F3EF', borderRadius: 8, border: '1px solid rgba(62,66,61,0.08)',
-                }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12, padding: '12px 16px', background: '#F5F3EF', borderRadius: 8, border: '1px solid rgba(62,66,61,0.08)' }}>
                   <span style={{ fontSize: 11, color: '#717182', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', marginRight: 4 }}>Merge Tags:</span>
                   {[
-                    { tag: '{{first_name}}', label: 'First Name' },
-                    { tag: '{{last_name}}', label: 'Last Name' },
-                    { tag: '{{company_name}}', label: 'Company' },
-                    { tag: '{{sender_name}}', label: 'Sender' },
-                    { tag: '{{sender_email}}', label: 'Sender Email' },
-                    { tag: '{{city}}', label: 'City' },
-                    { tag: '{{stage}}', label: 'Stage' },
+                    { tag: '{{first_name}}', label: 'First Name' }, { tag: '{{last_name}}', label: 'Last Name' },
+                    { tag: '{{company_name}}', label: 'Company' }, { tag: '{{sender_name}}', label: 'Sender' },
+                    { tag: '{{sender_email}}', label: 'Sender Email' }, { tag: '{{city}}', label: 'City' }, { tag: '{{stage}}', label: 'Stage' },
                   ].map(({ tag, label }) => (
                     <button key={tag}
                       onClick={() => setForm(prev => {
                         const current = prev.body_html || '';
                         const updated = current.replace(/<\/p>\s*$/, tag + '</p>') !== current
-                          ? current.replace(/<\/p>\s*$/, tag + '</p>')
-                          : current + tag;
+                          ? current.replace(/<\/p>\s*$/, tag + '</p>') : current + tag;
                         return { ...prev, body_html: updated };
                       })}
-                      style={{
-                        background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6,
-                        padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059',
-                        fontFamily: "'Inter', sans-serif", transition: 'all 0.1s',
-                      }}
+                      style={{ background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059', fontFamily: "'Inter', sans-serif", transition: 'all 0.1s' }}
                       onMouseOver={e => { e.currentTarget.style.background = '#8E9B8B'; e.currentTarget.style.color = '#fff'; }}
-                      onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#5A6059'; }}
-                    >
+                      onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#5A6059'; }}>
                       {label} <span style={{ fontFamily: 'monospace', fontSize: 10, opacity: 0.7, marginLeft: 2 }}>{tag}</span>
                     </button>
                   ))}
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
-                <button onClick={saveDraft} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>
-                  💾 Save Draft
-                </button>
-                <button onClick={() => { setStep(2); fetchRecipients(); }}
-                  disabled={!form.name || !form.subject || !form.body_html}
+                <button onClick={saveDraft} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>💾 Save Draft</button>
+                <button onClick={() => { setStep(2); fetchRecipients(); }} disabled={!form.name || !form.subject || !form.body_html}
                   style={{ background: form.name && form.subject && form.body_html ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 13, cursor: form.name && form.subject && form.body_html ? 'pointer' : 'not-allowed' }}>
                   Next: Recipients →
                 </button>
@@ -409,7 +392,7 @@ export default function Marketing() {
           {step === 2 && (
             <div>
               <div style={{ background: '#fff', borderRadius: 12, padding: 32, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
-              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 20px' }}>Filter Recipients</h3>
+                <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 20px' }}>Filter Recipients</h3>
                 <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'flex-end' }}>
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Source</label>
@@ -438,15 +421,14 @@ export default function Marketing() {
                     <input value={filters.city} onChange={e => setFilters({ ...filters, city: e.target.value })} style={inputStyle} placeholder="e.g. Austin" />
                   </div>
                   <div>
-                    <button onClick={fetchRecipients} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                      🔍 Apply
-                    </button>
+                    <button onClick={fetchRecipients} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>🔍 Apply</button>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16 }}>
                   <div style={{ background: '#D4EDDA', borderRadius: 8, padding: '8px 16px' }}>
-                  <span style={{ color: '#155724', fontSize: 13, fontWeight: 600 }}>✅ {loadingRecipients ? '...' : Object.values(selectedRecipients).filter(Boolean).length} of {recipients.length} recipients selected</span>                  </div>
+                    <span style={{ color: '#155724', fontSize: 13, fontWeight: 600 }}>✅ {loadingRecipients ? '...' : Object.values(selectedRecipients).filter(Boolean).length} of {recipients.length} recipients selected</span>
+                  </div>
                   {excludedCount > 0 && (
                     <div style={{ background: '#FFE5D0', borderRadius: 8, padding: '8px 16px' }}>
                       <span style={{ color: '#856404', fontSize: 13 }}>🚫 {excludedCount} excluded (unsubscribed)</span>
@@ -460,13 +442,8 @@ export default function Marketing() {
                       <thead style={{ position: 'sticky', top: 0, background: '#F5F3EF' }}>
                         <tr>
                           <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, width: 40 }}>
-                            <input type="checkbox"
-                              checked={Object.values(selectedRecipients).filter(Boolean).length === recipients.length}
-                              onChange={e => {
-                                const all = {};
-                                recipients.forEach((_, i) => { all[i] = e.target.checked; });
-                                setSelectedRecipients(all);
-                              }}
+                            <input type="checkbox" checked={Object.values(selectedRecipients).filter(Boolean).length === recipients.length}
+                              onChange={e => { const all = {}; recipients.forEach((_, i) => { all[i] = e.target.checked; }); setSelectedRecipients(all); }}
                               style={{ accentColor: '#8E9B8B' }} />
                           </th>
                           {['Source', 'Company', 'Contact', 'Email', 'Stage'].map(h => (
@@ -478,9 +455,7 @@ export default function Marketing() {
                         {recipients.map((r, i) => (
                           <tr key={i} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: selectedRecipients[i] ? '#fff' : '#FAFAF9', opacity: selectedRecipients[i] ? 1 : 0.5 }}>
                             <td style={{ padding: '8px 12px' }}>
-                              <input type="checkbox" checked={!!selectedRecipients[i]}
-                                onChange={e => setSelectedRecipients(prev => ({ ...prev, [i]: e.target.checked }))}
-                                style={{ accentColor: '#8E9B8B' }} />
+                              <input type="checkbox" checked={!!selectedRecipients[i]} onChange={e => setSelectedRecipients(prev => ({ ...prev, [i]: e.target.checked }))} style={{ accentColor: '#8E9B8B' }} />
                             </td>
                             <td style={{ padding: '8px 12px' }}>
                               <span style={{ background: r.source === 'Client' ? '#D4EDDA' : '#EBF4FF', color: r.source === 'Client' ? '#155724' : '#1a6fad', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>{r.source || 'Contact'}</span>
@@ -525,7 +500,6 @@ export default function Marketing() {
                     </div>
                   ))}
                 </div>
-
                 <div>
                   <p style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>Email Preview</p>
                   <div style={{ border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: 24, background: '#FAFAF9' }}>
@@ -535,16 +509,14 @@ export default function Marketing() {
                   </div>
                 </div>
               </div>
-
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <button onClick={() => setStep(2)} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>← Back</button>
                 <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={saveDraft} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>
-                    💾 Save Draft
-                  </button>
+                  <button onClick={saveDraft} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>💾 Save Draft</button>
                   <button onClick={sendCampaign} disabled={sending}
                     style={{ background: sending ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 28px', fontSize: 13, cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 600 }}>
-                    {sending ? '⏳ Sending...' : `🚀 Send to ${Object.values(selectedRecipients).filter(Boolean).length} Recipients`}                  </button>
+                    {sending ? '⏳ Sending...' : `🚀 Send to ${Object.values(selectedRecipients).filter(Boolean).length} Recipients`}
+                  </button>
                 </div>
               </div>
             </div>
@@ -554,15 +526,15 @@ export default function Marketing() {
     );
   }
 
-  // ─── CAMPAIGN LIST VIEW ─────────────────────────────────────────────────────
+  // ─── MAIN LIST VIEW ─────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
       <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
         <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 4px' }}>Growth</p>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h1 style={{ color: '#3E423D', fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>Marketing</h1>
-          {canSend && (
+          {canSend && subView === 'campaigns' && (
             <button onClick={() => { setStep(1); setForm({ name: '', subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null }); setView('create'); }}
               style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>
               + New Campaign
@@ -570,80 +542,163 @@ export default function Marketing() {
           )}
         </div>
 
-        {/* Global Stats */}
-        {globalStats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 32 }}>
-            {[
-              { label: 'Total Campaigns', value: globalStats.total_campaigns, icon: '📣' },
-              { label: 'Total Sent', value: globalStats.total_sent, icon: '📤' },
-              { label: 'Avg Open Rate', value: `${globalStats.avg_open_rate}%`, icon: '👁' },
-              { label: 'Avg CTR', value: `${globalStats.avg_ctr}%`, icon: '🖱' },
-              { label: 'Unsubscribed', value: globalStats.total_unsubscribed, icon: '🚫' },
-            ].map(({ label, value, icon }) => (
-              <div key={label} style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', textAlign: 'center' }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
-                <p style={{ color: '#3E423D', fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>{value}</p>
-                <p style={{ color: '#717182', fontSize: 11, margin: 0, textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</p>
+        {/* Sub Navigation */}
+        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid rgba(62,66,61,0.1)', marginBottom: 24 }}>
+          <button onClick={() => setSubView('campaigns')}
+            style={{ background: 'none', border: 'none', borderBottom: subView === 'campaigns' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'campaigns' ? '#1a1d1a' : '#717182', fontWeight: subView === 'campaigns' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+            Campaigns
+          </button>
+          <button onClick={() => { setSubView('unsubscribed'); fetchUnsubscribed(); }}
+            style={{ background: 'none', border: 'none', borderBottom: subView === 'unsubscribed' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'unsubscribed' ? '#1a1d1a' : '#717182', fontWeight: subView === 'unsubscribed' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+            Unsubscribed {unsubscribed.length > 0 && <span style={{ background: '#D4183D', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, marginLeft: 4 }}>{unsubscribed.length}</span>}
+          </button>
+        </div>
+
+        {/* Campaigns View */}
+        {subView === 'campaigns' && (<>
+          {/* Global Stats */}
+          {globalStats && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 32 }}>
+              {[
+                { label: 'Total Campaigns', value: globalStats.total_campaigns, icon: '📣' },
+                { label: 'Total Sent', value: globalStats.total_sent, icon: '📤' },
+                { label: 'Avg Open Rate', value: `${globalStats.avg_open_rate}%`, icon: '👁' },
+                { label: 'Avg CTR', value: `${globalStats.avg_ctr}%`, icon: '🖱' },
+                { label: 'Unsubscribed', value: globalStats.total_unsubscribed, icon: '🚫' },
+              ].map(({ label, value, icon }) => (
+                <div key={label} style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
+                  <p style={{ color: '#3E423D', fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>{value}</p>
+                  <p style={{ color: '#717182', fontSize: 11, margin: 0, textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Campaign List */}
+          {loading ? (
+            <p style={{ color: '#717182' }}>Loading...</p>
+          ) : campaigns.length === 0 ? (
+            <div style={{ background: '#fff', borderRadius: 12, padding: 60, textAlign: 'center', border: '1px solid rgba(62,66,61,0.1)' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>📣</div>
+              <p style={{ color: '#3E423D', fontSize: 16, fontWeight: 500, margin: '0 0 8px' }}>No campaigns yet</p>
+              <p style={{ color: '#717182', fontSize: 13, margin: '0 0 24px' }}>Create your first email campaign to get started</p>
+              {canSend && <button onClick={() => setView('create')} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>+ New Campaign</button>}
+            </div>
+          ) : (
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#F5F3EF' }}>
+                    {['Campaign', 'Status', 'Recipients', 'Open Rate', 'CTR', 'Sent', ''].map(h => (
+                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.map((c, i) => (
+                    <tr key={c.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9', cursor: 'pointer' }}
+                      onClick={() => openCampaign(c)}>
+                      <td style={{ padding: '14px 16px' }}>
+                        <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 500, margin: '0 0 2px' }}>{c.name}</p>
+                        <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>By {c.crm_users?.name}</p>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{ background: STATUS_COLORS[c.status]?.bg, color: STATUS_COLORS[c.status]?.color, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{c.status}</span>
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: 13, color: '#5A6059' }}>{c.stats?.sent || 0}</td>
+                      <td style={{ padding: '14px 16px', fontSize: 13, color: c.stats?.open_rate >= 30 ? '#8E9B8B' : '#3E423D', fontWeight: c.stats?.open_rate >= 30 ? 600 : 400 }}>
+                        {c.status === 'sent' ? `${c.stats?.open_rate || 0}%` : '—'}
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: 13, color: c.stats?.ctr >= 2 ? '#8E9B8B' : '#3E423D', fontWeight: c.stats?.ctr >= 2 ? 600 : 400 }}>
+                        {c.status === 'sent' ? `${c.stats?.ctr || 0}%` : '—'}
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: 12, color: '#717182' }}>{c.sent_at ? new Date(c.sent_at).toLocaleDateString() : '—'}</td>
+                      <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
+                        {c.status === 'draft' && canSend && (
+                          <button onClick={() => deleteCampaign(c.id)} style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>)}
+
+        {/* Unsubscribed View */}
+        {subView === 'unsubscribed' && (
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: 0 }}>Unsubscribed Contacts ({unsubscribed.length})</h3>
+              {Object.values(selectedUnsubs).some(Boolean) && (
+                <button onClick={resubscribeBulk}
+                  style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                  Resubscribe {Object.values(selectedUnsubs).filter(Boolean).length} Selected
+                </button>
+              )}
+            </div>
+            {loadingUnsubs ? (
+              <div style={{ padding: 40, textAlign: 'center', color: '#717182' }}>Loading...</div>
+            ) : unsubscribed.length === 0 ? (
+              <div style={{ padding: 60, textAlign: 'center' }}>
+                <p style={{ color: '#8E9B8B', fontSize: 14, fontWeight: 500, margin: '0 0 4px' }}>No unsubscribed contacts</p>
+                <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>Everyone is receiving marketing emails</p>
               </div>
-            ))}
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#F5F3EF' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', width: 40 }}>
+                      <input type="checkbox"
+                        checked={Object.values(selectedUnsubs).filter(Boolean).length === unsubscribed.length && unsubscribed.length > 0}
+                        onChange={e => { const all = {}; unsubscribed.forEach(p => { all[p.id] = e.target.checked; }); setSelectedUnsubs(all); }}
+                        style={{ accentColor: '#8E9B8B' }} />
+                    </th>
+                    {['Name', 'Email', 'Company', 'Status', 'Unsubscribed', ''].map(h => (
+                      <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {unsubscribed.map((p, i) => (
+                    <tr key={p.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                      <td style={{ padding: '12px 16px' }}>
+                        <input type="checkbox" checked={!!selectedUnsubs[p.id]} onChange={e => setSelectedUnsubs(prev => ({ ...prev, [p.id]: e.target.checked }))} style={{ accentColor: '#8E9B8B' }} />
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#1a1d1a', fontWeight: 500 }}>{p.first_name} {p.last_name}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#717182' }}>{p.email}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', cursor: 'pointer' }}
+                        onClick={() => p.crm_companies?.id && window.open(`/contacts/${p.crm_companies.id}`, '_blank')}>
+                        {p.crm_companies?.company_name || '—'}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: p.crm_companies?.stage === 'Converted' ? '#E3F2FD' : '#F5F3EF', color: p.crm_companies?.stage === 'Converted' ? '#1a6fad' : '#717182', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>
+                          {p.crm_companies?.stage === 'Converted' ? 'Client' : 'Contact'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>
+                        {p.marketing_unsubscribed_at ? new Date(p.marketing_unsubscribed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <button onClick={async () => {
+                          try {
+                            await axios.post(`${API}/marketing/resubscribe/${p.id}`, {}, { headers: getHeaders() });
+                            fetchUnsubscribed();
+                          } catch (err) { console.error(err); }
+                        }} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+                          Resubscribe
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 
-        {/* Campaign List */}
-        {loading ? (
-          <p style={{ color: '#717182' }}>Loading...</p>
-        ) : campaigns.length === 0 ? (
-          <div style={{ background: '#fff', borderRadius: 12, padding: 60, textAlign: 'center', border: '1px solid rgba(62,66,61,0.1)' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📣</div>
-            <p style={{ color: '#3E423D', fontSize: 16, fontWeight: 500, margin: '0 0 8px' }}>No campaigns yet</p>
-            <p style={{ color: '#717182', fontSize: 13, margin: '0 0 24px' }}>Create your first email campaign to get started</p>
-            {canSend && <button onClick={() => setView('create')} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>+ New Campaign</button>}
-          </div>
-        ) : (
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#F5F3EF' }}>
-                  {['Campaign', 'Status', 'Recipients', 'Open Rate', 'CTR', 'Sent', ''].map(h => (
-                    <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {campaigns.map((c, i) => (
-                  <tr key={c.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9', cursor: 'pointer' }}
-                    onClick={() => openCampaign(c)}>
-                    <td style={{ padding: '14px 16px' }}>
-                      <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 500, margin: '0 0 2px' }}>{c.name}</p>
-                      <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>By {c.crm_users?.name}</p>
-                    </td>
-                    <td style={{ padding: '14px 16px' }}>
-                      <span style={{ background: STATUS_COLORS[c.status]?.bg, color: STATUS_COLORS[c.status]?.color, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>
-                        {c.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: 13, color: '#5A6059' }}>{c.stats?.sent || 0}</td>
-                    <td style={{ padding: '14px 16px', fontSize: 13, color: c.stats?.open_rate >= 30 ? '#8E9B8B' : '#3E423D', fontWeight: c.stats?.open_rate >= 30 ? 600 : 400 }}>
-                      {c.status === 'sent' ? `${c.stats?.open_rate || 0}%` : '—'}
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: 13, color: c.stats?.ctr >= 2 ? '#8E9B8B' : '#3E423D', fontWeight: c.stats?.ctr >= 2 ? 600 : 400 }}>
-                      {c.status === 'sent' ? `${c.stats?.ctr || 0}%` : '—'}
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: 12, color: '#717182' }}>
-                      {c.sent_at ? new Date(c.sent_at).toLocaleDateString() : '—'}
-                    </td>
-                    <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
-                      {c.status === 'draft' && canSend && (
-                        <button onClick={() => deleteCampaign(c.id)}
-                          style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </div>
   );
