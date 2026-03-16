@@ -93,6 +93,8 @@ export default function ClientProfile() {
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState(null);
+  const [clientPeople, setClientPeople] = useState([]);
   const [showEmailStep2, setShowEmailStep2] = useState(false);
   const [emailForm, setEmailForm] = useState({ subject: '', body_html: '', signature_html: '' });
   const [savingEmail, setSavingEmail] = useState(false);
@@ -103,6 +105,13 @@ export default function ClientProfile() {
   const [emailEditorTab, setEmailEditorTab] = useState('visual');
   const emailSubjectRef = useRef(null);
   const emailBodyRef = useRef(null);
+  const [clientEmails, setClientEmails] = useState([]);
+  const [contactEmailHistory, setContactEmailHistory] = useState([]);
+  const [contactMarketingHistory, setContactMarketingHistory] = useState([]);
+  const [clientEmailsPage, setClientEmailsPage] = useState(1);
+  const [contactEmailsPage, setContactEmailsPage] = useState(1);
+  const [campaignHistoryPage, setCampaignHistoryPage] = useState(1);
+  const EMAIL_PAGE_SIZE = 5;
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -123,9 +132,28 @@ export default function ClientProfile() {
       setDocuments(docsRes.data);
       setVendorPage(vpRes.data || {});
       setFinance(finRes.data);
+      if (clientRes.data?.converted_from) fetchEmailHistory(clientRes.data.converted_from);
     } catch (err) { console.error(err); }
     fetchTemplates();
     setLoading(false);
+  };
+
+  const fetchEmailHistory = async (convertedFrom) => {
+    try {
+      // Emails sent from client profile (logged in activity as "Email sent to...")
+      const { data: clientAct } = await axios.get(`${API}/clients/${id}/activity`, { headers: getHeaders() });
+      const emailActivity = (clientAct || []).filter(a => a.details?.includes('Email sent to'));
+      setClientEmails(emailActivity);
+
+      // Emails from original contact
+      if (convertedFrom) {
+        const emailRes = await axios.get(`${API}/emails/sent/company/${convertedFrom}`, { headers: getHeaders() });
+        setContactEmailHistory(emailRes.data || []);
+
+        const mktRes = await axios.get(`${API}/marketing/company/${convertedFrom}`, { headers: getHeaders() });
+        setContactMarketingHistory(mktRes.data || []);
+      }
+    } catch (err) { console.error(err); }
   };
 
   const fetchTemplates = async () => {
@@ -206,11 +234,21 @@ export default function ClientProfile() {
   };
 
   // Email composer functions
-  const openEmailComposer = () => {
+  const openEmailComposer = async () => {
     setEmailForm({ subject: '', body_html: '', signature_html: '' });
     setSelectedTemplate(null);
     setEmailSuccess(false);
     setEmailEditorTab('visual');
+    setEmailRecipient(null);
+    // Fetch people from original company
+    if (client.converted_from) {
+      try {
+        const res = await axios.get(`${API}/contacts/companies/${client.converted_from}`, { headers: getHeaders() });
+        setClientPeople(res.data.crm_people || []);
+      } catch (err) { setClientPeople([]); }
+    } else {
+      setClientPeople([]);
+    }
     setShowEmailStep1(true);
   };
 
@@ -278,10 +316,10 @@ export default function ClientProfile() {
         template_id: selectedTemplate?.id || null,
         subject: resolveTags(emailForm.subject),
         body_html: resolvedBody,
-        recipient_email: client.contact_email,
-        recipient_name: `${client.contact_first_name} ${client.contact_last_name}`,
+        recipient_email: emailRecipient?.email || client.contact_email,
+        recipient_name: emailRecipient?.name || `${client.contact_first_name} ${client.contact_last_name}`,
       }, { headers: getHeaders() });
-      await axios.post(`${API}/clients/${id}/note`, { note: `Email sent to ${client.contact_email}: "${emailForm.subject}"` }, { headers: getHeaders() });
+      await axios.post(`${API}/clients/${id}/note`, { note: `Email sent to ${emailRecipient?.email || client.contact_email}: "${emailForm.subject}"` }, { headers: getHeaders() });
       setEmailSuccess(true);
       setTimeout(() => { setShowEmailStep2(false); setEmailSuccess(false); setEmailForm({ subject: '', body_html: '', signature_html: '' }); fetchAll(); }, 2000);
     } catch (err) { console.error(err); alert('Send failed.'); }
@@ -371,6 +409,7 @@ export default function ClientProfile() {
             { key: 'overview', label: 'Overview' },
             { key: 'activity', label: `Activity (${activity.length})` },
             { key: 'documents', label: `Documents (${documents.length})` },
+            { key: 'emails', label: `Emails (${clientEmails.length + contactEmailHistory.length + contactMarketingHistory.length})` },
             { key: 'vendor-page', label: 'Vendor Page' },
             ...(canFinance ? [{ key: 'finance', label: `Finance (${finance.length})` }] : []),
           ].map(tab => (
@@ -514,6 +553,135 @@ export default function ClientProfile() {
                 {activity.filter(a => a.action === 'Note Added').length === 0 && <p style={{ color: '#CBCED4', fontSize: 12, margin: 0 }}>No notes yet</p>}
               </div>
             </div>
+          </div>
+        )}
+
+{/* ─── EMAILS TAB ─── */}
+{activeTab === 'emails' && (
+          <div>
+            {/* Client Emails Section */}
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden', marginBottom: 24 }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ background: '#D4EDDA', color: '#155724', fontSize: 10, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>Client</span>
+                <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>Emails Since Conversion ({clientEmails.length})</h3>
+              </div>
+              {clientEmails.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center' }}>
+                  <p style={{ color: '#CBCED4', fontSize: 13, margin: 0 }}>No emails sent since conversion</p>
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ background: '#F5F3EF' }}>
+                    {['Details', 'Date'].map(h => (
+                      <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                  {clientEmails.slice((clientEmailsPage - 1) * EMAIL_PAGE_SIZE, clientEmailsPage * EMAIL_PAGE_SIZE).map((e, i) => (
+                      <tr key={e.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{e.details}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{new Date(e.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  </table>
+              )}
+              {clientEmails.length > EMAIL_PAGE_SIZE && (
+                <div style={{ padding: '12px 24px', borderTop: '1px solid rgba(62,66,61,0.06)', display: 'flex', justifyContent: 'center', gap: 6 }}>
+                  <button onClick={() => setClientEmailsPage(p => Math.max(1, p - 1))} disabled={clientEmailsPage === 1} style={{ background: 'none', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: clientEmailsPage === 1 ? 'default' : 'pointer', opacity: clientEmailsPage === 1 ? 0.4 : 1 }}>←</button>
+                  <span style={{ color: '#717182', fontSize: 12, padding: '4px 8px' }}>{clientEmailsPage}/{Math.ceil(clientEmails.length / EMAIL_PAGE_SIZE)}</span>
+                  <button onClick={() => setClientEmailsPage(p => Math.min(Math.ceil(clientEmails.length / EMAIL_PAGE_SIZE), p + 1))} disabled={clientEmailsPage >= Math.ceil(clientEmails.length / EMAIL_PAGE_SIZE)} style={{ background: 'none', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: clientEmailsPage >= Math.ceil(clientEmails.length / EMAIL_PAGE_SIZE) ? 'default' : 'pointer', opacity: clientEmailsPage >= Math.ceil(clientEmails.length / EMAIL_PAGE_SIZE) ? 0.4 : 1 }}>→</button>
+                </div>
+              )}
+            </div>
+
+            {/* Contact History Section */}
+            {client.converted_from && (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden', marginBottom: 24 }}>
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ background: '#EBF4FF', color: '#1a6fad', fontSize: 10, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>Contact History</span>
+                  <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>Direct Emails Before Conversion ({contactEmailHistory.length})</h3>
+                </div>
+                {contactEmailHistory.length === 0 ? (
+                  <div style={{ padding: 40, textAlign: 'center' }}>
+                    <p style={{ color: '#CBCED4', fontSize: 13, margin: 0 }}>No direct emails in contact history</p>
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#F5F3EF' }}>
+                      {['Subject', 'Recipient', 'Sent', 'Status'].map(h => (
+                        <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                    {contactEmailHistory.slice((contactEmailsPage - 1) * EMAIL_PAGE_SIZE, contactEmailsPage * EMAIL_PAGE_SIZE).map((e, i) => (
+                        <tr key={e.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{e.subject || '(no subject)'}</td>
+                          <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{e.crm_people ? `${e.crm_people.first_name} ${e.crm_people.last_name}` : '—'}</td>
+                          <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{e.sent_at ? new Date(e.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <span style={{
+                              background: e.email_status === 'opened' || e.email_status === 'clicked' ? '#E8F5E9' : e.email_status === 'bounced' ? '#FFEBEE' : e.email_status === 'delivered' ? '#E3F2FD' : '#F5F3EF',
+                              color: e.email_status === 'opened' || e.email_status === 'clicked' ? '#2E7D32' : e.email_status === 'bounced' ? '#C62828' : e.email_status === 'delivered' ? '#1565C0' : '#717182',
+                              borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize'
+                            }}>{e.email_status || e.status || '—'}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    </table>
+                )}
+                {contactEmailHistory.length > EMAIL_PAGE_SIZE && (
+                  <div style={{ padding: '12px 24px', borderTop: '1px solid rgba(62,66,61,0.06)', display: 'flex', justifyContent: 'center', gap: 6 }}>
+                    <button onClick={() => setContactEmailsPage(p => Math.max(1, p - 1))} disabled={contactEmailsPage === 1} style={{ background: 'none', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: contactEmailsPage === 1 ? 'default' : 'pointer', opacity: contactEmailsPage === 1 ? 0.4 : 1 }}>←</button>
+                    <span style={{ color: '#717182', fontSize: 12, padding: '4px 8px' }}>{contactEmailsPage}/{Math.ceil(contactEmailHistory.length / EMAIL_PAGE_SIZE)}</span>
+                    <button onClick={() => setContactEmailsPage(p => Math.min(Math.ceil(contactEmailHistory.length / EMAIL_PAGE_SIZE), p + 1))} disabled={contactEmailsPage >= Math.ceil(contactEmailHistory.length / EMAIL_PAGE_SIZE)} style={{ background: 'none', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: contactEmailsPage >= Math.ceil(contactEmailHistory.length / EMAIL_PAGE_SIZE) ? 'default' : 'pointer', opacity: contactEmailsPage >= Math.ceil(contactEmailHistory.length / EMAIL_PAGE_SIZE) ? 0.4 : 1 }}>→</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Campaign History Section */}
+            {client.converted_from && contactMarketingHistory.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ background: '#F3E8FF', color: '#7C3AED', fontSize: 10, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>Campaign History</span>
+                  <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>Campaigns Before Conversion ({contactMarketingHistory.length})</h3>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ background: '#F5F3EF' }}>
+                    {['Campaign', 'Recipient', 'Sent', 'Status', 'Opened', 'Clicked'].map(h => (
+                      <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                  {contactMarketingHistory.slice((campaignHistoryPage - 1) * EMAIL_PAGE_SIZE, campaignHistoryPage * EMAIL_PAGE_SIZE).map((r, i) => (
+                      <tr key={r.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{r.crm_campaigns?.name || '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#5A6059' }}>{r.crm_people ? `${r.crm_people.first_name} ${r.crm_people.last_name}` : r.email || '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.crm_campaigns?.sent_at ? new Date(r.crm_campaigns.sent_at).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: r.status === 'opened' || r.status === 'clicked' ? '#D4EDDA' : r.status === 'bounced' ? '#F8D7DA' : '#F5F3EF',
+                            color: r.status === 'opened' || r.status === 'clicked' ? '#155724' : r.status === 'bounced' ? '#721C24' : '#717182',
+                            borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize'
+                          }}>{r.status}</span>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.opened_at ? new Date(r.opened_at).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.clicked_at ? new Date(r.clicked_at).toLocaleDateString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  </table>
+                {contactMarketingHistory.length > EMAIL_PAGE_SIZE && (
+                  <div style={{ padding: '12px 24px', borderTop: '1px solid rgba(62,66,61,0.06)', display: 'flex', justifyContent: 'center', gap: 6 }}>
+                    <button onClick={() => setCampaignHistoryPage(p => Math.max(1, p - 1))} disabled={campaignHistoryPage === 1} style={{ background: 'none', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: campaignHistoryPage === 1 ? 'default' : 'pointer', opacity: campaignHistoryPage === 1 ? 0.4 : 1 }}>←</button>
+                    <span style={{ color: '#717182', fontSize: 12, padding: '4px 8px' }}>{campaignHistoryPage}/{Math.ceil(contactMarketingHistory.length / EMAIL_PAGE_SIZE)}</span>
+                    <button onClick={() => setCampaignHistoryPage(p => Math.min(Math.ceil(contactMarketingHistory.length / EMAIL_PAGE_SIZE), p + 1))} disabled={campaignHistoryPage >= Math.ceil(contactMarketingHistory.length / EMAIL_PAGE_SIZE)} style={{ background: 'none', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: campaignHistoryPage >= Math.ceil(contactMarketingHistory.length / EMAIL_PAGE_SIZE) ? 'default' : 'pointer', opacity: campaignHistoryPage >= Math.ceil(contactMarketingHistory.length / EMAIL_PAGE_SIZE) ? 0.4 : 1 }}>→</button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -723,8 +891,22 @@ export default function ClientProfile() {
         {showEmailStep1 && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
             <div style={{ background: '#fff', borderRadius: 16, padding: 40, width: 580, boxShadow: '0 20px 60px rgba(62,66,61,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
-              <h2 style={{ color: '#3E423D', fontSize: 22, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 6px' }}>New Email</h2>
-              <p style={{ color: '#717182', fontSize: 13, margin: '0 0 24px' }}>To: <strong>{client.contact_first_name} {client.contact_last_name}</strong> ‹{client.contact_email}›</p>
+            <h2 style={{ color: '#3E423D', fontSize: 22, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 6px' }}>New Email</h2>
+              <p style={{ color: '#717182', fontSize: 13, margin: '0 0 24px' }}>To: <strong>{client.business_name}</strong></p>
+              <div style={{ marginBottom: 20 }}>
+                <label style={labelStyle}>Send To</label>
+                <select value={emailRecipient ? JSON.stringify(emailRecipient) : ''} onChange={e => {
+                  if (e.target.value) setEmailRecipient(JSON.parse(e.target.value));
+                  else setEmailRecipient({ email: client.contact_email, name: `${client.contact_first_name} ${client.contact_last_name}` });
+                }} style={inputStyle}>
+                  <option value="">👤 {client.contact_first_name} {client.contact_last_name} — {client.contact_email} (Primary)</option>
+                  {clientPeople.filter(p => p.email && p.email !== client.contact_email).map(p => (
+                    <option key={p.id} value={JSON.stringify({ email: p.email, name: `${p.first_name} ${p.last_name}`, person_id: p.id })}>
+                      👤 {p.first_name} {p.last_name} — {p.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div style={{ marginBottom: 28 }}>
                 <label style={labelStyle}>Choose Template</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
@@ -758,8 +940,7 @@ export default function ClientProfile() {
               <div style={{ padding: '20px 28px', borderBottom: '1px solid rgba(62,66,61,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                 <div>
                   <h2 style={{ color: '#3E423D', fontSize: 20, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 2px' }}>Compose Email</h2>
-                  <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>To: <strong>{client.business_name}</strong> · {client.contact_first_name} {client.contact_last_name} ‹{client.contact_email}›</p>
-                </div>
+                  <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>To: <strong>{client.business_name}</strong> · {emailRecipient?.name || `${client.contact_first_name} ${client.contact_last_name}`} ‹{emailRecipient?.email || client.contact_email}›</p>                </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => { setShowEmailStep2(false); setShowEmailStep1(true); }} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>← Back</button>
                   {emailSuccess ? (
