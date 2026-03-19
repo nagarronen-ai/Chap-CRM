@@ -1,0 +1,179 @@
+// server/routes/sync.js
+const express = require('express');
+const router = express.Router();
+const supabase = require('../db');
+const auth = require('../middleware/auth');
+const { syncAllAccounts, syncSingleAccount } = require('../services/gmailSync');
+
+// ─── TRIGGER SYNC ────────────────────────────────────────────────────────────
+
+// POST /api/sync/gmail — trigger a sync for all accounts (admin) or just your own
+router.post('/gmail', auth, async (req, res) => {
+  try {
+    if (req.user.role === 'admin') {
+      // Admins sync all accounts
+      syncAllAccounts(); // Fire and forget — don't block the response
+      res.json({ success: true, message: 'Sync started for all accounts' });
+    } else {
+      // Non-admins sync only their personal account
+      const { data: account } = await supabase
+        .from('crm_google_accounts')
+        .select('id')
+        .eq('user_id', req.user.id)
+        .eq('account_type', 'personal')
+        .eq('is_active', true)
+        .single();
+
+      if (!account) return res.status(404).json({ error: 'No connected Gmail account' });
+
+      syncSingleAccount(account.id); // Fire and forget
+      res.json({ success: true, message: 'Sync started for your account' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── SYNC STATUS ─────────────────────────────────────────────────────────────
+
+// GET /api/sync/status — get sync status for current user's accounts
+router.get('/status', auth, async (req, res) => {
+  try {
+    let query = supabase
+      .from('crm_google_accounts')
+      .select('id, email, account_type, last_sync_at, last_history_id, is_active')
+      .eq('is_active', true);
+
+    if (req.user.role !== 'admin') {
+      query = query.or(`user_id.eq.${req.user.id},account_type.eq.shared`);
+    }
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── SYNCED EMAILS FOR A COMPANY ─────────────────────────────────────────────
+
+// GET /api/sync/emails/company/:companyId
+router.get('/emails/company/:companyId', auth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('crm_synced_emails')
+      .select('*')
+      .eq('company_id', req.params.companyId)
+      .order('email_date', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── SYNCED EMAILS FOR A CLIENT ──────────────────────────────────────────────
+
+// GET /api/sync/emails/client/:clientId
+router.get('/emails/client/:clientId', auth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('crm_synced_emails')
+      .select('*')
+      .eq('client_id', req.params.clientId)
+      .order('email_date', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── ALL SYNCED EMAILS FOR CURRENT USER (Inbox Page) ─────────────────────────
+
+// GET /api/sync/inbox — emails from the user's connected account(s)
+router.get('/inbox', auth, async (req, res) => {
+  try {
+    // Get user's connected account IDs
+    const { data: accounts } = await supabase
+      .from('crm_google_accounts')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .eq('is_active', true);
+
+    if (!accounts || accounts.length === 0) return res.json([]);
+
+    const accountIds = accounts.map(a => a.id);
+
+    const { filter, search } = req.query;
+
+    let query = supabase
+      .from('crm_synced_emails')
+      .select('*, crm_companies(company_name), crm_people(first_name, last_name), crm_clients(business_name)')
+      .in('google_account_id', accountIds)
+      .order('email_date', { ascending: false })
+      .limit(100);
+
+    if (filter === 'unread') query = query.eq('is_read', false);
+    if (filter === 'inbound') query = query.eq('direction', 'inbound');
+    if (filter === 'outbound') query = query.eq('direction', 'outbound');
+
+    if (search) {
+      query = query.or(`subject.ilike.%${search}%,from_name.ilike.%${search}%,from_email.ilike.%${search}%,body_snippet.ilike.%${search}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── MARK AS READ ────────────────────────────────────────────────────────────
+
+router.put('/emails/:id/read', auth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('crm_synced_emails')
+      .update({ is_read: true })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── UNREAD COUNT ────────────────────────────────────────────────────────────
+
+router.get('/unread-count', auth, async (req, res) => {
+  try {
+    const { data: accounts } = await supabase
+      .from('crm_google_accounts')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .eq('is_active', true);
+
+    if (!accounts || accounts.length === 0) return res.json({ count: 0 });
+
+    const accountIds = accounts.map(a => a.id);
+
+    const { count, error } = await supabase
+      .from('crm_synced_emails')
+      .select('id', { count: 'exact', head: true })
+      .in('google_account_id', accountIds)
+      .eq('is_read', false)
+      .eq('direction', 'inbound');
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ count: count || 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

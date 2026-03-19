@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [teamUsers, setTeamUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activityPage, setActivityPage] = useState(0);
+  const [upcomingMeetings, setUpcomingMeetings] = useState([]);
   const navigate = useNavigate();
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -55,6 +56,7 @@ export default function Dashboard() {
     try { const res = await axios.get(`${API}/marketing/stats`, { headers: getHeaders() }); setMarketingStats(res.data); } catch (err) {}
     try { const res = await axios.get(`${API}/finance/expenses/summary`, { headers: getHeaders() }); setFinanceStats(res.data); } catch (err) {}
     try { const res = await axios.get(`${API}/users`, { headers: getHeaders() }); setTeamUsers(res.data); } catch (err) {}
+    try { const res = await axios.get(`${API}/calendar/upcoming`, { headers: getHeaders() }); setUpcomingMeetings(res.data); } catch (err) {}
     setLoading(false);
   };
 
@@ -308,6 +310,44 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
+
+{/* Upcoming Meetings */}
+<div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ color: '#1a1d1a', fontSize: 14, fontWeight: 600, margin: 0 }}>Upcoming Meetings</h3>
+                <button onClick={() => navigate('/calendar')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 12, cursor: 'pointer', padding: 0 }}>View calendar →</button>
+              </div>
+              {(() => {
+                const now = new Date();
+                const weekOut = new Date(now.getTime() + 7 * 86400000);
+                const filtered = upcomingMeetings.filter(m => {
+                  const start = new Date(m.start_time);
+                  return start >= now && start <= weekOut;
+                });
+                return filtered.length === 0 ? (
+                  <p style={{ color: '#CBCED4', fontSize: 12, textAlign: 'center', padding: 16 }}>No meetings in the next 7 days</p>
+                ) : filtered.slice(0, 5).map(m => {
+                  const start = new Date(m.start_time);
+                  const isToday = start.toDateString() === new Date().toDateString();
+                  const isTomorrow = start.toDateString() === new Date(Date.now() + 86400000).toDateString();
+                  const dayLabel = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                  return (
+                    <div key={m.id} onClick={() => m.company_id ? navigate(`/contacts/${m.company_id}`) : m.client_id ? navigate(`/clients/${m.client_id}`) : null}
+                      style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(62,66,61,0.04)', cursor: 'pointer' }}>
+                      <div style={{ width: 4, borderRadius: 2, background: m.meeting_type === 'google_meet' ? '#4CAF50' : '#D4A574', flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ color: '#1a1d1a', fontSize: 12, fontWeight: 500, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <span style={{ color: isToday ? '#D4A574' : '#717182', fontSize: 10, fontWeight: isToday ? 600 : 400 }}>{dayLabel}</span>
+                          <span style={{ color: '#717182', fontSize: 10 }}>{start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                          <span style={{ color: '#CBCED4', fontSize: 10 }}>{m.meeting_type === 'google_meet' ? '📹' : '📞'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
 
             {/* Finance */}
             {financeStats && (

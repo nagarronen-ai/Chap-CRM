@@ -11,6 +11,9 @@ import Marketing from './pages/Marketing';
 import Finance from './pages/Finance';
 import Clients from './pages/Clients';
 import ClientProfile from './pages/ClientProfile';
+import Settings from './pages/Settings';
+import EmailInbox from './pages/EmailInbox';
+import CalendarPage from './pages/Calendar';
 
 
 const PrivateRoute = ({ children }) => {
@@ -32,6 +35,9 @@ export default function App() {
         <Route path="/finance" element={<PrivateRoute><Finance /></PrivateRoute>} />
         <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
         <Route path="/clients/:id" element={<PrivateRoute><ClientProfile /></PrivateRoute>} />
+        <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
+        <Route path="/inbox" element={<PrivateRoute><EmailInbox /></PrivateRoute>} />
+        <Route path="/calendar" element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
     </Router>

@@ -1,5 +1,7 @@
 // client/src/components/Sidebar.js
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 
 export default function Sidebar() {
@@ -7,6 +9,22 @@ export default function Sidebar() {
   const location = useLocation();
   const { can, role } = useRole();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [unreadCount, setUnreadCount] = useState(0);
+  const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
+
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const res = await axios.get(`${API}/sync/unread-count`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        setUnreadCount(res.data.count || 0);
+      } catch (err) {}
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const ROLE_COLORS = {
     admin: '#8E9B8B', sales: '#94B0BC', marketing: '#B4A5D6',
@@ -21,11 +39,14 @@ export default function Sidebar() {
     { path: '/dashboard', label: 'Dashboard', icon: '📊', show: true },
     { path: '/contacts', label: 'Contacts', icon: '🏢', show: true },
     { path: '/clients', label: 'Clients', icon: '🤝', show: true },
+    { path: '/calendar', label: 'Calendar', icon: '📅', show: true },
     { path: '/emails', label: 'Email Templates', icon: '✉️', show: can('email:templates') },
+    { path: '/inbox', label: 'Email Inbox', icon: '📬', show: true, badge: unreadCount },
     { path: '/import', label: 'Import CSV', icon: '📥', show: can('import:run') },
     { path: '/team', label: 'Team', icon: '👥', show: can('users:manage') },
     { path: '/marketing', label: 'Marketing', icon: '📣', show: can('marketing:view') },
     { path: '/finance', label: 'Finance', icon: '💰', show: can('finance:general') },
+    { path: '/settings', label: 'Settings', icon: '⚙️', show: true },
   ];
 
   const handleLogout = () => {
@@ -64,6 +85,13 @@ export default function Sidebar() {
               }}>
               <span style={{ fontSize: 16 }}>{item.icon}</span>
               {item.label}
+              {item.badge > 0 && (
+                <span style={{
+                  marginLeft: 'auto', background: '#D4183D', color: '#fff',
+                  fontSize: 10, fontWeight: 700, borderRadius: 10,
+                  padding: '1px 7px', minWidth: 18, textAlign: 'center',
+                }}>{item.badge > 99 ? '99+' : item.badge}</span>
+              )}
             </div>
           );
         })}

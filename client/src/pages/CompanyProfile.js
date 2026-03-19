@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 import TiptapEditor from '../components/TiptapEditor';
+import ScheduleMeetingModal from '../components/ScheduleMeetingModal';
 
 const STAGES = ['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'];
 const ORIGINS = ['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'];
@@ -112,6 +113,8 @@ export default function CompanyProfile() {
   const [emailBodies, setEmailBodies] = useState({});
   const [activityPage, setActivityPage] = useState(1);
   const [activityPageSize, setActivityPageSize] = useState(5);
+  const [showMeetingModal, setShowMeetingModal] = useState(false);
+  const [gmailConnected, setGmailConnected] = useState(null);
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
@@ -128,6 +131,8 @@ export default function CompanyProfile() {
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [convertForm, setConvertForm] = useState({ contract_type: 'RevShare', commission_rate: 5, contract_amount: 0, contract_signed_date: '', notes: '' });
   const [converting, setConverting] = useState(false);
+  const [includeSignature, setIncludeSignature] = useState(true);
+  const [userSignature, setUserSignature] = useState('');
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
   const convertToClient = async () => {
@@ -157,6 +162,15 @@ export default function CompanyProfile() {
       setNextAction(res.data.next_action || '');
     } catch (err) { console.error(err); }
     setLoading(false);
+    // Fetch user signature
+    try {
+      const sigRes = await axios.get(`${API}/users/me`, { headers: getHeaders() });
+      setUserSignature(sigRes.data.email_signature || '');
+    } catch (err) {}
+    try {
+      const gmailRes = await axios.get(`${API}/emails/gmail-status`, { headers: getHeaders() });
+      setGmailConnected(gmailRes.data);
+    } catch (err) {}
   };
 
   const fetchActivity = async () => {
@@ -325,7 +339,7 @@ export default function CompanyProfile() {
   const resolvedSubject = () => resolveTags(emailForm.subject, getSelectedPerson());
   const resolvedBody = () => {
     const body = resolveTags(emailForm.body_html, getSelectedPerson());
-    const sig = resolveTags(emailForm.signature_html || '', getSelectedPerson());
+    const sig = includeSignature ? resolveTags(userSignature || '', getSelectedPerson()) : '';
     if (!sig) return body;
     return body + '<br><br><div style="margin-top:16px;padding-top:12px;border-top:1px solid #e0e0e0;">' + sig + '</div>';
   };
@@ -422,6 +436,7 @@ export default function CompanyProfile() {
             {company.stage === 'Closed Won' && can('company:edit') && <button onClick={() => setShowConvertModal(true)} style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>🤝 Convert to Client</button>}
             {company.stage === 'Converted' && <span style={{ background: '#D4EDDA', color: '#155724', borderRadius: 8, padding: '8px 16px', fontSize: 13 }}>✅ Converted to Client</span>}
             {can('email:send') && <button onClick={openEmailComposer} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>📧 Send Email</button>}
+            <button onClick={() => setShowMeetingModal(true)} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>📅 Schedule Meeting</button>
               {company.website && <a href={company.website} target="_blank" rel="noreferrer" style={{ background: '#F5F3EF', color: '#94B0BC', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 12, textDecoration: 'none' }}>🌐 Website</a>}
               {company.company_linkedin && <a href={company.company_linkedin} target="_blank" rel="noreferrer" style={{ background: '#F5F3EF', color: '#94B0BC', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 12, textDecoration: 'none' }}>in LinkedIn</a>}
             </div>
@@ -985,6 +1000,8 @@ export default function CompanyProfile() {
                     {getSelectedPerson() && <span> · {getSelectedPerson().first_name} {getSelectedPerson().last_name}{getSelectedPerson().email ? ` ‹${getSelectedPerson().email}›` : ''}</span>}
                     {selectedTemplate && <span> · Template: {selectedTemplate.name}</span>}
                   </p>
+                  {gmailConnected?.connected && <span style={{ background: '#E8F5E9', color: '#2E7D32', fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600 }}>📧 via Gmail · {gmailConnected.email}</span>}
+                  {gmailConnected && !gmailConnected.connected && <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600 }}>📧 via SendGrid</span>}
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => { setShowEmailStep2(false); setShowEmailStep1(true); }}
@@ -1077,10 +1094,18 @@ export default function CompanyProfile() {
                   </div>
 
                   {/* Signature preview */}
-                  {emailForm.signature_html && (
-                    <div style={{ background: '#F5F3EF', borderRadius: 8, padding: 16, border: '1px solid rgba(62,66,61,0.1)' }}>
-                      <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 8px' }}>Signature</p>
-                      <div dangerouslySetInnerHTML={{ __html: resolveTags(emailForm.signature_html, getSelectedPerson()) }} style={{ fontSize: 13 }} />
+                  {userSignature && (
+                    <div style={{ background: includeSignature ? '#F5F3EF' : '#FAFAFA', borderRadius: 8, padding: 14, border: `1px solid ${includeSignature ? 'rgba(62,66,61,0.1)' : 'rgba(62,66,61,0.06)'}`, opacity: includeSignature ? 1 : 0.5 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: includeSignature ? 8 : 0 }}>
+                        <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: 0 }}>Signature</p>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: includeSignature ? '#8E9B8B' : '#717182' }}>
+                          <input type="checkbox" checked={includeSignature} onChange={e => setIncludeSignature(e.target.checked)} style={{ accentColor: '#8E9B8B' }} />
+                          {includeSignature ? 'Included' : 'Excluded'}
+                        </label>
+                      </div>
+                      {includeSignature && (
+                        <div dangerouslySetInnerHTML={{ __html: userSignature }} style={{ fontSize: 13 }} />
+                      )}
                     </div>
                   )}
                 </div>
@@ -1222,6 +1247,15 @@ export default function CompanyProfile() {
             </div>
           </div>
         )}
+        <ScheduleMeetingModal
+          show={showMeetingModal}
+          onClose={() => setShowMeetingModal(false)}
+          onCreated={() => fetchActivity()}
+          companyId={id}
+          companyName={company?.company_name}
+          state={company?.state}
+          people={company?.crm_people || []}
+        />
     </div>
   );
 }

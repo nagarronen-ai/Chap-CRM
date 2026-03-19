@@ -25,12 +25,6 @@ const DEFAULT_TEMPLATE = `<div style="font-family: Arial, sans-serif; font-size:
   <p>Best,<br>{{sender_name}}</p>
 </div>`;
 
-const DEFAULT_SIGNATURE = `<div style="font-family: Arial, sans-serif; font-size: 13px; color: #666; border-top: 1px solid #eee; padding-top: 12px; margin-top: 20px;">
-  <strong>{{sender_name}}</strong><br>
-  Planfor.io<br>
-  {{sender_email}}
-</div>`;
-
 export default function Emails() {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,23 +32,19 @@ export default function Emails() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [activeTab, setActiveTab] = useState('html');
   const [activeField, setActiveField] = useState('body');
-  const [form, setForm] = useState({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: DEFAULT_SIGNATURE, visibility: 'team' });
+  const [form, setForm] = useState({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: '', visibility: 'team' });
   const [formErrors, setFormErrors] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [showSignatureEditor, setShowSignatureEditor] = useState(false);
-  const [signature, setSignature] = useState(DEFAULT_SIGNATURE);
-  const [savingSignature, setSavingSignature] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const editorRef = useRef(null);
   const subjectRef = useRef(null);
+  const [signature, setSignature] = useState('');
 
   const { role } = useRole();
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  // Can this user create templates?
   const canCreate = ['admin', 'marketing', 'sales', 'csm', 'support', 'finance'].includes(role);
 
-  // Can this user edit/delete a specific template?
   const canEditTemplate = (t) => {
     if (role === 'admin') return true;
     if (role === 'marketing' && (t.visibility === 'team' || t.created_by === currentUser.id)) return true;
@@ -62,12 +52,17 @@ export default function Emails() {
     return false;
   };
 
-  // Can this user set visibility to 'team'?
   const canSetTeamVisibility = ['admin', 'marketing'].includes(role);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
   useEffect(() => { fetchTemplates(); }, []);
+
+  useEffect(() => {
+    axios.get(`${API}/users/me`, { headers: getHeaders() })
+      .then(res => setSignature(res.data.email_signature || ''))
+      .catch(() => {});
+  }, []);
 
   const fetchTemplates = async () => {
     try {
@@ -79,7 +74,7 @@ export default function Emails() {
 
   const openNew = () => {
     setEditingTemplate(null);
-    setForm({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: signature, visibility: canSetTeamVisibility ? 'team' : 'private' });
+    setForm({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: '', visibility: canSetTeamVisibility ? 'team' : 'private' });
     setFormErrors([]);
     setShowEditor(true);
     setPreviewMode(false);
@@ -88,7 +83,7 @@ export default function Emails() {
 
   const openEdit = (template) => {
     setEditingTemplate(template);
-    setForm({ name: template.name, category: template.category, subject: template.subject, body_html: template.body_html, signature_html: template.signature_html || signature, visibility: template.visibility || 'private' });
+    setForm({ name: template.name, category: template.category, subject: template.subject, body_html: template.body_html, signature_html: template.signature_html || '', visibility: template.visibility || 'private' });
     setFormErrors([]);
     setShowEditor(true);
     setPreviewMode(false);
@@ -202,10 +197,6 @@ export default function Emails() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
           <h1 style={{ color: '#3E423D', fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>Email Templates</h1>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setShowSignatureEditor(true)}
-              style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 18px', fontSize: 13, cursor: 'pointer' }}>
-              ✍️ Edit Signature
-            </button>
             {canCreate && (
               <button onClick={openNew}
                 style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 13, cursor: 'pointer' }}>
@@ -354,7 +345,7 @@ export default function Emails() {
                         <div style={{ background: '#fff', borderRadius: 8, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
                           <p style={{ color: '#717182', fontSize: 12, margin: '0 0 4px' }}>Subject: <strong style={{ color: '#3E423D' }}>{resolvePreview(form.subject)}</strong></p>
                           <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
-                          <div dangerouslySetInnerHTML={{ __html: resolvePreview(form.body_html + (form.signature_html || '')) }} />
+                          <div dangerouslySetInnerHTML={{ __html: resolvePreview(form.body_html + (signature ? '<br><br><div style="margin-top:16px;padding-top:12px;border-top:1px solid #e0e0e0;">' + signature + '</div>' : '')) }} />
                         </div>
                       </div>
                     ) : activeTab === 'html' ? (
@@ -378,10 +369,13 @@ export default function Emails() {
                     )}
                   </div>
 
-                  {!previewMode && (
+                  {!previewMode && signature && (
                     <div style={{ background: '#F5F3EF', borderRadius: 8, padding: 16, border: '1px solid rgba(62,66,61,0.1)' }}>
-                      <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 8px' }}>Signature Preview</p>
-                      <div dangerouslySetInnerHTML={{ __html: form.signature_html || signature }} style={{ fontSize: 13 }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: 0 }}>Your Signature</p>
+                        <span style={{ color: '#717182', fontSize: 11 }}>Edit in Settings → Email Signature</span>
+                      </div>
+                      <div dangerouslySetInnerHTML={{ __html: signature }} style={{ fontSize: 13 }} />
                     </div>
                   )}
                 </div>
@@ -410,31 +404,6 @@ export default function Emails() {
                     </p>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Signature Editor */}
-        {showSignatureEditor && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: '#fff', borderRadius: 16, padding: 40, width: 640, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
-              <h2 style={{ color: '#3E423D', fontSize: 22, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 8px' }}>Email Signature</h2>
-              <p style={{ color: '#717182', fontSize: 13, margin: '0 0 20px' }}>This signature will be appended to all emails you send from the CRM.</p>
-              <label style={labelStyle}>Signature HTML</label>
-              <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={8}
-                style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 12, marginBottom: 16, resize: 'vertical' }} />
-              <p style={{ color: '#717182', fontSize: 12, margin: '0 0 10px' }}>Preview:</p>
-              <div style={{ background: '#F5F3EF', borderRadius: 8, padding: 16, marginBottom: 24 }}>
-                <div dangerouslySetInnerHTML={{ __html: resolvePreview(signature) }} />
-              </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button onClick={() => { setSavingSignature(true); setTimeout(() => { setSavingSignature(false); setShowSignatureEditor(false); }, 500); }}
-                  style={{ flex: 1, background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>
-                  {savingSignature ? '⏳ Saving...' : 'Save Signature'}
-                </button>
-                <button onClick={() => setShowSignatureEditor(false)}
-                  style={{ flex: 1, background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
               </div>
             </div>
           </div>

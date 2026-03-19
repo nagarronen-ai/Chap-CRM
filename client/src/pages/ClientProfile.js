@@ -4,6 +4,8 @@ import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 import TiptapEditor from '../components/TiptapEditor';
+import ScheduleMeetingModal from '../components/ScheduleMeetingModal';
+
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
@@ -35,6 +37,7 @@ const CEREMONY_OPTIONS = ['Civil Union', 'Commitment Ceremony', 'Elopement', 'In
 const DIVERSITY_OPTIONS = ['Asian-owned', 'Black-owned', 'Hispanic or Latinx-owned', 'LGBTQ+-owned', 'Native American-owned', 'Pacific Islander-owned', 'Veteran-owned', 'Woman-owned'];
 const GUEST_CAPACITIES = ['0-50', '51-100', '101-150', '151-200', '201-250', '251-300', '300+'];
 const PRICE_TIERS = ['$', '$$', '$$$', '$$$$'];
+
 
 function PeopleFromContact({ companyId, getHeaders }) {
     const [people, setPeople] = useState([]);
@@ -127,6 +130,9 @@ export default function ClientProfile() {
   const [financeForm, setFinanceForm] = useState({ type: 'Commission', amount: '', description: '', status: 'Pending', date: new Date().toISOString().split('T')[0] });
   const [editingFinance, setEditingFinance] = useState(null);
   const [savingVendorPage, setSavingVendorPage] = useState(false);
+  const [syncedEmails, setSyncedEmails] = useState([]);
+  const [expandedSyncedEmail, setExpandedSyncedEmail] = useState({}); 
+  const [showMeetingModal, setShowMeetingModal] = useState(false);
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
@@ -149,6 +155,9 @@ export default function ClientProfile() {
   const [contactEmailsPage, setContactEmailsPage] = useState(1);
   const [campaignHistoryPage, setCampaignHistoryPage] = useState(1);
   const EMAIL_PAGE_SIZE = 5;
+  const [includeSignature, setIncludeSignature] = useState(true);
+  const [userSignature, setUserSignature] = useState('');
+  const [gmailConnected, setGmailConnected] = useState(null);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -158,6 +167,7 @@ export default function ClientProfile() {
   const fetchAll = async () => {
     try {
       const [clientRes, activityRes, docsRes, vpRes, finRes] = await Promise.all([
+        
         axios.get(`${API}/clients/${id}`, { headers: getHeaders() }),
         axios.get(`${API}/clients/${id}/activity`, { headers: getHeaders() }),
         axios.get(`${API}/clients/${id}/documents`, { headers: getHeaders() }),
@@ -171,8 +181,22 @@ export default function ClientProfile() {
       setFinance(finRes.data);
       if (clientRes.data?.converted_from) fetchEmailHistory(clientRes.data.converted_from);
     } catch (err) { console.error(err); }
+    // Fetch synced emails for this client
+try {
+    const syncRes = await axios.get(`${API}/sync/emails/client/${id}`, { headers: getHeaders() });
+    setSyncedEmails(syncRes.data);
+  } catch (err) { console.error('Synced emails fetch error:', err); }
+  // Fetch user signature
+  try {
+    const sigRes = await axios.get(`${API}/users/me`, { headers: getHeaders() });
+    setUserSignature(sigRes.data.email_signature || '');
+  } catch (err) {}
     fetchTemplates();
     setLoading(false);
+    try {
+        const gmailRes = await axios.get(`${API}/emails/gmail-status`, { headers: getHeaders() });
+        setGmailConnected(gmailRes.data);
+      } catch (err) {}
   };
 
   const fetchEmailHistory = async (convertedFrom) => {
@@ -348,7 +372,8 @@ export default function ClientProfile() {
   const sendClientEmail = async () => {
     if (!emailForm.subject || !emailForm.body_html) return;
     setSavingEmail(true);
-    const resolvedBody = resolveTags(emailForm.body_html) + (emailForm.signature_html ? '<br><br><div style="margin-top:16px;padding-top:12px;border-top:1px solid #e0e0e0;">' + resolveTags(emailForm.signature_html) + '</div>' : '');
+    const sig = includeSignature ? (userSignature || '') : '';
+    const resolvedBody = resolveTags(emailForm.body_html) + (sig ? '<br><br><div style="margin-top:16px;padding-top:12px;border-top:1px solid #e0e0e0;">' + resolveTags(sig) + '</div>' : '');
     try {
       await axios.post(`${API}/emails/send`, {
         company_id: client.converted_from || null,
@@ -404,6 +429,10 @@ export default function ClientProfile() {
                 📧 Send Email
               </button>
             )}
+            <button onClick={() => setShowMeetingModal(true)}
+              style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
+              📅 Schedule Meeting
+            </button>
             {client.converted_from && (
               <button onClick={() => navigate(`/contacts/${client.converted_from}`)}
                 style={{ background: '#F5F3EF', color: '#717182', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 12, cursor: 'pointer' }}>
@@ -755,26 +784,81 @@ export default function ClientProfile() {
 
         {/* ─── ACTIVITY TAB ─── */}
         {activeTab === 'activity' && (
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)' }}>
-            {activity.length === 0 ? (
-              <p style={{ color: '#CBCED4', fontSize: 13, textAlign: 'center', padding: '40px 0' }}>No activity yet</p>
-            ) : activity.map(a => (
-              <div key={a.id} style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: '1px solid rgba(62,66,61,0.06)', alignItems: 'flex-start' }}>
+  <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)' }}>
+    {activity.length === 0 && syncedEmails.length === 0 ? (
+      <p style={{ color: '#CBCED4', fontSize: 13, textAlign: 'center', padding: '40px 0' }}>No activity yet</p>
+    ) : (
+      <>
+        {/* Combine activity + synced emails, sorted by date */}
+        {[
+          ...activity.map(a => ({ ...a, type: 'activity', sortDate: new Date(a.created_at) })),
+          ...syncedEmails.map(e => ({ ...e, type: 'synced_email', sortDate: new Date(e.email_date) })),
+        ]
+          .sort((a, b) => b.sortDate - a.sortDate)
+          .map(item => {
+            if (item.type === 'synced_email') {
+              const isExpanded = expandedSyncedEmail[item.id];
+              return (
+                <div key={`synced-${item.id}`} style={{ borderBottom: '1px solid rgba(62,66,61,0.06)' }}>
+                  <div style={{ display: 'flex', gap: 12, padding: '12px 0', alignItems: 'flex-start' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: item.direction === 'inbound' ? '#EBF4FF' : '#E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
+                      {item.direction === 'inbound' ? '📥' : '📤'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
+                        <span style={{ color: '#3E423D', fontSize: 13, fontWeight: 500 }}>{item.from_name || item.from_email}</span>
+                        <span style={{ background: item.direction === 'inbound' ? '#EBF4FF' : '#E8F5E9', color: item.direction === 'inbound' ? '#1a6fad' : '#2E7D32', fontSize: 10, borderRadius: 20, padding: '1px 8px' }}>
+                          {item.direction === 'inbound' ? 'Email Received' : 'Email Sent'}
+                        </span>
+                        {item.direction === 'inbound' && <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 10, borderRadius: 20, padding: '1px 8px' }}>via Gmail Sync</span>}
+                      </div>
+                      <p style={{ color: '#3E423D', fontSize: 13, margin: '0 0 2px', fontWeight: 500 }}>{item.subject}</p>
+                      <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>{item.body_snippet?.substring(0, 120)}...</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ color: '#CBCED4', fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(item.email_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      <button onClick={() => setExpandedSyncedEmail(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                        style={{ background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', color: '#5A6059' }}>
+                        {isExpanded ? '▲ Hide' : '▼ View Email'}
+                      </button>
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div style={{ borderTop: '1px solid rgba(62,66,61,0.08)', background: '#FAFAF9', padding: 20, marginBottom: 8, borderRadius: '0 0 8px 8px' }}>
+                      <div style={{ fontSize: 12, color: '#717182', marginBottom: 8 }}>
+                        <strong>From:</strong> {item.from_name} &lt;{item.from_email}&gt; &nbsp;|&nbsp;
+                        <strong>Date:</strong> {new Date(item.email_date).toLocaleString()}
+                        {item.has_attachments && <span> &nbsp;|&nbsp; 📎 {item.attachment_count} attachment(s)</span>}
+                      </div>
+                      <div style={{ background: '#fff', borderRadius: 8, padding: 16, border: '1px solid rgba(62,66,61,0.08)', fontSize: 14, lineHeight: 1.6 }}
+                        dangerouslySetInnerHTML={{ __html: item.body_html || item.body_snippet }} />
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Regular activity item (existing rendering)
+            return (
+              <div key={item.id} style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: '1px solid rgba(62,66,61,0.06)', alignItems: 'flex-start' }}>
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#F5F3EF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
-                  {a.action === 'Note Added' ? '📌' : a.action === 'Client Created' ? '🤝' : a.action === 'Document Added' ? '📄' : a.action === 'Transaction Added' ? '💰' : a.action === 'Vendor Page Updated' ? '🌐' : '📋'}
+                  {item.action === 'Note Added' ? '📌' : item.action === 'Client Created' ? '🤝' : item.action === 'Document Added' ? '📄' : item.action === 'Transaction Added' ? '💰' : item.action === 'Vendor Page Updated' ? '🌐' : item.action === 'Email Received' ? '📥' : '📋'}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
-                    <span style={{ color: '#3E423D', fontSize: 13, fontWeight: 500 }}>{a.crm_users?.name || '—'}</span>
-                    <span style={{ background: '#F5F3EF', color: '#717182', fontSize: 10, borderRadius: 20, padding: '1px 8px' }}>{a.action}</span>
+                    <span style={{ color: '#3E423D', fontSize: 13, fontWeight: 500 }}>{item.crm_users?.name || '—'}</span>
+                    <span style={{ background: '#F5F3EF', color: '#717182', fontSize: 10, borderRadius: 20, padding: '1px 8px' }}>{item.action}</span>
                   </div>
-                  <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>{a.details}</p>
+                  <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>{item.details}</p>
                 </div>
-                <span style={{ color: '#CBCED4', fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                <span style={{ color: '#CBCED4', fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+      </>
+    )}
+  </div>
+)}
 
         {/* ─── DOCUMENTS TAB ─── */}
         {activeTab === 'documents' && (
@@ -1005,10 +1089,13 @@ export default function ClientProfile() {
         {showEmailStep2 && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
             <div style={{ background: '#fff', borderRadius: 16, width: '90vw', maxWidth: 1100, height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
-              <div style={{ padding: '20px 28px', borderBottom: '1px solid rgba(62,66,61,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ padding: '20px 28px', borderBottom: '1px solid rgba(62,66,61,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                 <div>
                   <h2 style={{ color: '#3E423D', fontSize: 20, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 2px' }}>Compose Email</h2>
-                  <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>To: <strong>{client.business_name}</strong> · {emailRecipient?.name || `${client.contact_first_name} ${client.contact_last_name}`} ‹{emailRecipient?.email || client.contact_email}›</p>                </div>
+                  <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>To: <strong>{client.business_name}</strong> · {emailRecipient?.name || `${client.contact_first_name} ${client.contact_last_name}`} ‹{emailRecipient?.email || client.contact_email}›</p>
+                  {gmailConnected?.connected && <span style={{ background: '#E8F5E9', color: '#2E7D32', fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600 }}>📧 via Gmail · {gmailConnected.email}</span>}
+                  {gmailConnected && !gmailConnected.connected && <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600 }}>📧 via SendGrid</span>}
+                </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => { setShowEmailStep2(false); setShowEmailStep1(true); }} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>← Back</button>
                   {emailSuccess ? (
@@ -1042,10 +1129,18 @@ export default function ClientProfile() {
                       <TiptapEditor content={emailForm.body_html} onChange={html => setEmailForm(prev => ({ ...prev, body_html: html }))} onFocus={() => setEmailActiveField('body')} placeholder="Write your email..." minHeight={280} />
                     )}
                   </div>
-                  {emailForm.signature_html && (
-                    <div style={{ background: '#F5F3EF', borderRadius: 8, padding: 16, border: '1px solid rgba(62,66,61,0.1)' }}>
-                      <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 8px' }}>Signature</p>
-                      <div dangerouslySetInnerHTML={{ __html: resolveTags(emailForm.signature_html) }} style={{ fontSize: 13 }} />
+                  {userSignature && (
+                    <div style={{ background: includeSignature ? '#F5F3EF' : '#FAFAFA', borderRadius: 8, padding: 14, border: `1px solid ${includeSignature ? 'rgba(62,66,61,0.1)' : 'rgba(62,66,61,0.06)'}`, opacity: includeSignature ? 1 : 0.5 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: includeSignature ? 8 : 0 }}>
+                        <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: 0 }}>Signature</p>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: includeSignature ? '#8E9B8B' : '#717182' }}>
+                          <input type="checkbox" checked={includeSignature} onChange={e => setIncludeSignature(e.target.checked)} style={{ accentColor: '#8E9B8B' }} />
+                          {includeSignature ? 'Included' : 'Excluded'}
+                        </label>
+                      </div>
+                      {includeSignature && (
+                        <div dangerouslySetInnerHTML={{ __html: userSignature }} style={{ fontSize: 13 }} />
+                      )}
                     </div>
                   )}
                 </div>
@@ -1067,6 +1162,18 @@ export default function ClientProfile() {
             </div>
           </div>
         )}
+<ScheduleMeetingModal
+          show={showMeetingModal}
+          onClose={() => setShowMeetingModal(false)}
+          onCreated={() => fetchAll()}
+          clientId={id}
+          companyId={client?.converted_from}
+          companyName={client?.business_name}
+          state={client?.state}
+          people={clientPeople}
+          contactEmail={client?.contact_email}
+          contactName={`${client?.contact_first_name} ${client?.contact_last_name}`}
+        />
 
       </div>
     </div>

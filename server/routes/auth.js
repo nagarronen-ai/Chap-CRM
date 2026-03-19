@@ -13,7 +13,7 @@ router.post('/login', async (req, res) => {
 
   const { data: user, error } = await supabase
     .from('crm_users')
-    .select('id, email, name, password, role')
+    .select('id, email, name, password, role, timezone')
     .eq('email', email.toLowerCase())
     .single();
 
@@ -35,7 +35,7 @@ router.post('/login', async (req, res) => {
 
   res.json({
     token,
-    user: { id: user.id, email: user.email, name: user.name, role: user.role }
+    user: { id: user.id, email: user.email, name: user.name, role: user.role, timezone: user.timezone }
   });
 });
 
