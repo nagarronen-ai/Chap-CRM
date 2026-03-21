@@ -5,6 +5,7 @@ import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 
 export default function Sidebar() {
+  const APP_VERSION = 'v1.4.2';
   const navigate = useNavigate();
   const location = useLocation();
   const { can, role } = useRole();
@@ -121,6 +122,9 @@ export default function Sidebar() {
         <div onClick={handleLogout}
           style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', color: '#D4183D', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>↩</span> Sign out
+        </div>
+        <div style={{ background: '#F5F3EF', borderRadius: 6, padding: '4px 10px', textAlign: 'center', margin: '8px 16px 0' }}>
+          <p style={{ color: '#717182', fontSize: 11, margin: 0, fontWeight: 500 }}>{APP_VERSION}</p>
         </div>
       </div>
     </div>

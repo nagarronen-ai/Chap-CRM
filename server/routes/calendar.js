@@ -504,4 +504,76 @@ router.get('/needs-completion', auth, async (req, res) => {
   }
 });
 
+// ─── IMPORT & COMPLETE (for Google-only events) ─────────────────────────────
+
+// POST /api/calendar/import-complete
+router.post('/import-complete', auth, async (req, res) => {
+  try {
+    const { google_event_id, title, description, meeting_type, start_time, end_time, meet_link, attendees, notes } = req.body;
+
+    if (!google_event_id || !title || !start_time || !end_time) {
+      return res.status(400).json({ error: 'google_event_id, title, start_time, and end_time are required' });
+    }
+
+    // Check if already imported
+    const { data: existing } = await supabase
+      .from('crm_meetings')
+      .select('id')
+      .eq('google_event_id', google_event_id)
+      .single();
+
+    if (existing) {
+      // Already exists — just update status and notes
+      const { data, error } = await supabase
+        .from('crm_meetings')
+        .update({ status: 'completed', notes: notes || null, updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.json(data);
+    }
+
+    // Get google account
+    const { data: account } = await supabase
+      .from('crm_google_accounts')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .eq('account_type', 'personal')
+      .eq('is_active', true)
+      .single();
+
+    // Create CRM meeting record and mark as completed
+    const { data: meeting, error } = await supabase
+      .from('crm_meetings')
+      .insert([{
+        google_event_id,
+        google_account_id: account?.id || null,
+        company_id: null,
+        client_id: null,
+        person_id: null,
+        created_by: req.user.id,
+        title,
+        description: description || '',
+        meeting_type: meeting_type || 'google_meet',
+        status: 'completed',
+        start_time,
+        end_time,
+        location: meet_link || '',
+        meet_link: meet_link || '',
+        attendees: attendees || [],
+        is_internal: false,
+        notes: notes || null,
+      }])
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(meeting);
+  } catch (err) {
+    console.error('Import-complete error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

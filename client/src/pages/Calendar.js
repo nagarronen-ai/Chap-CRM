@@ -84,9 +84,12 @@ export default function Calendar() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [companies, setCompanies] = useState([]);
   const [clients, setClients] = useState([]);
-  const [teamUsers, setTeamUsers] = useState([]);
+  const [teamUsers, setTeamUsers] = useState([]); 
   const navigate = useNavigate();
   const { role } = useRole();
+  const [completingEvent, setCompletingEvent] = useState(false);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [savingCompletion, setSavingCompletion] = useState(false);
 
   const [form, setForm] = useState({
     title: '', description: '', meeting_type: 'google_meet',
@@ -258,6 +261,43 @@ export default function Calendar() {
       setSelectedEvent(null);
       fetchEvents();
     } catch (err) { console.error(err); }
+  };
+
+  const completeMeeting = async (meetingId) => {
+    setSavingCompletion(true);
+    try {
+      await axios.put(`${API}/calendar/meetings/${meetingId}`, {
+        status: 'completed',
+        notes: completionNotes,
+      }, { headers: getHeaders() });
+      setSelectedEvent(null);
+      setCompletingEvent(false);
+      setCompletionNotes('');
+      fetchEvents();
+    } catch (err) { console.error(err); }
+    setSavingCompletion(false);
+  };
+
+  const importAndCompleteMeeting = async (event) => {
+    setSavingCompletion(true);
+    try {
+      await axios.post(`${API}/calendar/import-complete`, {
+        google_event_id: event.id,
+        title: event.title,
+        description: event.description,
+        meeting_type: event.meet_link ? 'google_meet' : 'phone',
+        start_time: event.start_time,
+        end_time: event.end_time,
+        meet_link: event.meet_link,
+        attendees: event.attendees,
+        notes: completionNotes,
+      }, { headers: getHeaders() });
+      setSelectedEvent(null);
+      setCompletingEvent(false);
+      setCompletionNotes('');
+      fetchEvents();
+    } catch (err) { console.error(err); }
+    setSavingCompletion(false);
   };
 
   // ─── MONTH VIEW ────────────────────────────────────────────────────────────
@@ -560,7 +600,7 @@ export default function Calendar() {
         {/* Event Detail Popup */}
         {selectedEvent && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-            onClick={() => setSelectedEvent(null)}
+          onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); }}
           >
             <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 32, width: 480, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -576,7 +616,7 @@ export default function Calendar() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => setSelectedEvent(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#717182' }}>✕</button>
+                <button onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); }} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#717182' }}>✕</button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
@@ -612,9 +652,8 @@ export default function Calendar() {
                   </div>
                 )}
                 {selectedEvent.description && (
-                  <div style={{ background: '#F5F3EF', borderRadius: 8, padding: 12 }}>
-                    <p style={{ color: '#5A6059', fontSize: 13, margin: 0, lineHeight: 1.5 }}>{selectedEvent.description}</p>
-                  </div>
+                  <div style={{ background: '#F5F3EF', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#3E423D', lineHeight: 1.5 }}
+                    dangerouslySetInnerHTML={{ __html: selectedEvent.description }} />
                 )}
                 {selectedEvent.attendees?.length > 0 && (
                   <div>
@@ -630,6 +669,50 @@ export default function Calendar() {
                 )}
               </div>
 
+              {/* Completion flow for past CRM meetings */}
+              {new Date(selectedEvent.end_time) < new Date() && selectedEvent.crm_status !== 'completed' && selectedEvent.crm_status !== 'cancelled' && (
+                <div style={{ background: '#FFF3CD', borderRadius: 10, padding: 16, marginBottom: 12 }}>
+                  {!completingEvent ? (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <p style={{ color: '#856404', fontSize: 13, fontWeight: 500, margin: 0 }}>This meeting has passed — how did it go?</p>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setCompletingEvent(true)}
+                          style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
+                          ✓ Complete
+                        </button>
+                        <button onClick={() => { if (selectedEvent.crm_meeting_id) { cancelMeeting(selectedEvent.crm_meeting_id); } else { setSelectedEvent(null); } }}
+                          style={{ background: '#F5F3EF', color: '#D4183D', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>
+                          ✗ No-show
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <p style={{ color: '#856404', fontSize: 12, fontWeight: 600, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Meeting Notes</p>
+                      <textarea value={completionNotes} onChange={e => setCompletionNotes(e.target.value)}
+                        placeholder="What was discussed? Key takeaways, next steps..."
+                        rows={4} style={{ width: '100%', background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 14px', fontSize: 13, resize: 'vertical', outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box', lineHeight: 1.6 }} />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                      <button onClick={() => selectedEvent.crm_meeting_id ? completeMeeting(selectedEvent.crm_meeting_id) : importAndCompleteMeeting(selectedEvent)} disabled={savingCompletion}
+                          style={{ flex: 1, background: savingCompletion ? '#A5B2A3' : '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, padding: '8px', fontSize: 13, cursor: 'pointer' }}>
+                          {savingCompletion ? '⏳ Saving...' : '✓ Mark Complete & Save'}
+                        </button>
+                        <button onClick={() => { setCompletingEvent(false); setCompletionNotes(''); }}
+                          style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Show notes if already completed */}
+              {selectedEvent.notes && (
+                <div style={{ background: '#F5F3EF', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                  <p style={{ color: '#717182', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 6px', fontWeight: 600 }}>Meeting Notes</p>
+                  <p style={{ color: '#3E423D', fontSize: 13, margin: 0, lineHeight: 1.6 }}>{selectedEvent.notes}</p>
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8 }}>
                 {selectedEvent.html_link && (
                   <a href={selectedEvent.html_link} target="_blank" rel="noreferrer"
@@ -637,7 +720,7 @@ export default function Calendar() {
                     Open in Google Calendar
                   </a>
                 )}
-                {selectedEvent.crm_meeting_id && (
+                {selectedEvent.crm_meeting_id && selectedEvent.crm_status !== 'completed' && selectedEvent.crm_status !== 'cancelled' && new Date(selectedEvent.end_time) >= new Date() && (
                   <button onClick={() => cancelMeeting(selectedEvent.crm_meeting_id)}
                     style={{ background: 'none', color: '#D4183D', border: '1px solid #D4183D', borderRadius: 8, padding: '10px 16px', fontSize: 13, cursor: 'pointer' }}>
                     Cancel Meeting
