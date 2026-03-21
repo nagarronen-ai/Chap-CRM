@@ -118,7 +118,7 @@ router.post('/meetings', auth, async (req, res) => {
     const {
       title, description, meeting_type, start_time, end_time,
       company_id, client_id, person_id,
-      attendee_emails, is_internal,
+      attendee_emails, is_internal, auto_record,
     } = req.body;
 
     if (!title || !start_time || !end_time) {
@@ -180,7 +180,8 @@ router.post('/meetings', auth, async (req, res) => {
           status: a.responseStatus || 'needsAction',
         })),
         is_internal: is_internal || false,
-      }])
+        auto_record: auto_record || false,
+      }]) 
       .select()
       .single();
 
@@ -466,11 +467,24 @@ router.get('/meetings/company/:companyId', auth, async (req, res) => {
 // GET /api/calendar/meetings/client/:clientId
 router.get('/meetings/client/:clientId', auth, async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data: client } = await supabase
+      .from('crm_clients')
+      .select('converted_from')
+      .eq('id', req.params.clientId)
+      .single();
+
+    let query = supabase
       .from('crm_meetings')
       .select('*, crm_users!crm_meetings_created_by_fkey(name)')
-      .eq('client_id', req.params.clientId)
       .order('start_time', { ascending: false });
+
+    if (client?.converted_from) {
+      query = query.or(`client_id.eq.${req.params.clientId},company_id.eq.${client.converted_from}`);
+    } else {
+      query = query.eq('client_id', req.params.clientId);
+    }
+
+    const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   } catch (err) {
@@ -572,6 +586,216 @@ router.post('/import-complete', auth, async (req, res) => {
     res.json(meeting);
   } catch (err) {
     console.error('Import-complete error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ─── RECORDING: SEND BOT TO MEETING ──────────────────────────────────────────
+
+// POST /api/calendar/meetings/:id/record
+router.post('/meetings/:id/record', auth, async (req, res) => {
+  try {
+    const { data: meeting } = await supabase
+      .from('crm_meetings')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting.meet_link) return res.status(400).json({ error: 'No Google Meet link on this meeting' });
+    if (meeting.recording_status === 'recording' || meeting.recording_status === 'sending_bot') {
+      return res.status(400).json({ error: 'Recording already in progress' });
+    }
+
+    const recallService = require('../services/recallService');
+    const { botId } = await recallService.createBot(meeting.meet_link, 'Planfor Assistant');
+
+    // Update meeting with bot ID and status
+    const { data, error } = await supabase
+      .from('crm_meetings')
+      .update({
+        recall_bot_id: botId,
+        recording_status: 'sending_bot',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    console.log('🎙️ Recording started for meeting:', meeting.title, '| Bot ID:', botId);
+    res.json({ botId, status: 'sending_bot', meeting: data });
+  } catch (err) {
+    console.error('Start recording error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── RECORDING: CHECK STATUS ─────────────────────────────────────────────────
+
+// GET /api/calendar/meetings/:id/recording-status
+router.get('/meetings/:id/recording-status', auth, async (req, res) => {
+  try {
+    const { data: meeting } = await supabase
+      .from('crm_meetings')
+      .select('recall_bot_id, recording_status')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting.recall_bot_id) return res.json({ status: null, message: 'No recording started' });
+
+    const recallService = require('../services/recallService');
+    const botStatus = await recallService.getBotStatus(meeting.recall_bot_id);
+    const crmStatus = recallService.mapRecallStatus(botStatus.status);
+
+    // Update DB if status changed
+    if (crmStatus !== meeting.recording_status) {
+      await supabase
+        .from('crm_meetings')
+        .update({
+          recording_status: crmStatus,
+          recording_url: botStatus.videoUrl || botStatus.recordingUrl || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', req.params.id);
+    }
+
+    res.json({
+      status: crmStatus,
+      recallStatus: botStatus.status,
+      recordingUrl: botStatus.videoUrl || botStatus.recordingUrl || null,
+    });
+  } catch (err) {
+    console.error('Recording status error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── RECORDING: FETCH TRANSCRIPT + AI SUMMARY ───────────────────────────────
+
+// POST /api/calendar/meetings/:id/process-transcript
+router.post('/meetings/:id/process-transcript', auth, async (req, res) => {
+  try {
+    const { data: meeting } = await supabase
+      .from('crm_meetings')
+      .select('*, crm_companies(company_name), crm_clients(business_name), crm_people(first_name, last_name)')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting.recall_bot_id) return res.status(400).json({ error: 'No recording bot for this meeting' });
+
+    // Step 1: Fetch transcript from Recall.ai
+    console.log('📝 Fetching transcript for meeting:', meeting.title);
+    const recallService = require('../services/recallService');
+    const { fullText, segments } = await recallService.getTranscript(meeting.recall_bot_id);
+
+    if (!fullText || fullText.trim().length === 0) {
+      return res.status(400).json({ error: 'Transcript is empty — the recording may still be processing' });
+    }
+
+    // Step 2: Generate AI summary
+    console.log('🤖 Generating AI summary...');
+    const { generateMeetingSummary } = require('../services/aiSummary');
+    const summary = await generateMeetingSummary(fullText, {
+      title: meeting.title,
+      companyName: meeting.crm_companies?.company_name || meeting.crm_clients?.business_name || '',
+      contactName: meeting.crm_people ? `${meeting.crm_people.first_name} ${meeting.crm_people.last_name}` : '',
+      meetingType: meeting.meeting_type,
+    });
+
+    // Step 3: Save everything to the meeting record
+    const { data, error } = await supabase
+      .from('crm_meetings')
+      .update({
+        transcript: fullText,
+        transcript_segments: segments,
+        ai_summary: summary.summary,
+        ai_action_items: summary.actionItems,
+        recording_status: 'completed',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Step 4: Log to activity timeline
+    if (meeting.company_id || meeting.client_id) {
+      await supabase.from('crm_activity_log').insert([{
+        company_id: meeting.company_id || null,
+        client_id: meeting.client_id || null,
+        person_id: meeting.person_id || null,
+        user_id: req.user.id,
+        action: 'Meeting Recorded',
+        details: `AI summary generated for "${meeting.title}" — ${summary.actionItems.length} action item(s) identified`,
+      }]);
+    }
+
+    console.log('✅ Transcript + summary saved for:', meeting.title);
+    res.json({
+      transcript: fullText,
+      segments,
+      summary: summary.summary,
+      actionItems: summary.actionItems,
+      sentiment: summary.sentiment,
+      nextSteps: summary.nextSteps,
+      keyTakeaways: summary.keyTakeaways,
+    });
+  } catch (err) {
+    console.error('Process transcript error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── RECORDING: REGENERATE AI SUMMARY ────────────────────────────────────────
+
+// POST /api/calendar/meetings/:id/regenerate-summary
+router.post('/meetings/:id/regenerate-summary', auth, async (req, res) => {
+  try {
+    const { data: meeting } = await supabase
+      .from('crm_meetings')
+      .select('*, crm_companies(company_name), crm_clients(business_name), crm_people(first_name, last_name)')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!meeting.transcript) return res.status(400).json({ error: 'No transcript available to summarize' });
+
+    const { generateMeetingSummary } = require('../services/aiSummary');
+    const summary = await generateMeetingSummary(meeting.transcript, {
+      title: meeting.title,
+      companyName: meeting.crm_companies?.company_name || meeting.crm_clients?.business_name || '',
+      contactName: meeting.crm_people ? `${meeting.crm_people.first_name} ${meeting.crm_people.last_name}` : '',
+      meetingType: meeting.meeting_type,
+    });
+
+    const { data, error } = await supabase
+      .from('crm_meetings')
+      .update({
+        ai_summary: summary.summary,
+        ai_action_items: summary.actionItems,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({
+      summary: summary.summary,
+      actionItems: summary.actionItems,
+      sentiment: summary.sentiment,
+      nextSteps: summary.nextSteps,
+      keyTakeaways: summary.keyTakeaways,
+    });
+  } catch (err) {
+    console.error('Regenerate summary error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

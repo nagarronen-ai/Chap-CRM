@@ -227,6 +227,72 @@ export default function CompanyProfile() {
     setSavingCompletion(false);
   };
 
+  const [recordingStatus, setRecordingStatus] = useState({});
+  const [processingTranscript, setProcessingTranscript] = useState({});
+
+  const startRecording = async (meetingId) => {
+    try {
+      setRecordingStatus(prev => ({ ...prev, [meetingId]: 'sending_bot' }));
+      await axios.post(`${API}/calendar/meetings/${meetingId}/record`, {}, { headers: getHeaders() });
+      // Poll for status updates
+      pollRecordingStatus(meetingId);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to start recording: ' + (err.response?.data?.error || err.message));
+      setRecordingStatus(prev => ({ ...prev, [meetingId]: null }));
+    }
+  };
+
+  const pollRecordingStatus = (meetingId) => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await axios.get(`${API}/calendar/meetings/${meetingId}/recording-status`, { headers: getHeaders() });
+        const status = res.data.status;
+        setRecordingStatus(prev => ({ ...prev, [meetingId]: status }));
+
+        if (status === 'processing' || status === 'completed' || status === 'failed') {
+          clearInterval(interval);
+          if (status === 'processing') {
+            // Auto-fetch transcript
+            processTranscript(meetingId);
+          }
+          if (status === 'completed') {
+            fetchMeetings();
+          }
+        }
+      } catch (err) {
+        console.error('Poll error:', err);
+        clearInterval(interval);
+      }
+    }, 10000); // Check every 10 seconds
+  };
+
+  const processTranscript = async (meetingId) => {
+    setProcessingTranscript(prev => ({ ...prev, [meetingId]: true }));
+    try {
+      await axios.post(`${API}/calendar/meetings/${meetingId}/process-transcript`, {}, { headers: getHeaders() });
+      setRecordingStatus(prev => ({ ...prev, [meetingId]: 'completed' }));
+      fetchMeetings();
+    } catch (err) {
+      console.error('Process transcript error:', err);
+      // Might not be ready yet — try again in 30 seconds
+      setTimeout(() => processTranscript(meetingId), 30000);
+    }
+    setProcessingTranscript(prev => ({ ...prev, [meetingId]: false }));
+  };
+
+  const regenerateSummary = async (meetingId) => {
+    setProcessingTranscript(prev => ({ ...prev, [meetingId]: true }));
+    try {
+      await axios.post(`${API}/calendar/meetings/${meetingId}/regenerate-summary`, {}, { headers: getHeaders() });
+      fetchMeetings();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to regenerate summary');
+    }
+    setProcessingTranscript(prev => ({ ...prev, [meetingId]: false }));
+  };
+
   const fetchEmailBody = async (activityId, companyId) => {
     if (emailBodies[activityId]) return;
     try {
@@ -829,7 +895,7 @@ export default function CompanyProfile() {
                     const start = new Date(m.start_time);
                     const end = new Date(m.end_time);
                     const isPast = end < new Date();
-                    const needsComplete = isPast && (m.status === 'scheduled' || m.status === 'confirmed');
+                    const needsComplete = (m.status === 'scheduled' || m.status === 'confirmed');
                     const isExpanded = completingMeeting === m.id;
                     const statusColors = {
                       scheduled: { bg: '#F3E8FF', color: '#7C3AED' },
@@ -840,14 +906,14 @@ export default function CompanyProfile() {
                     const st = statusColors[m.status] || { bg: '#F5F3EF', color: '#717182' };
 
                     return (
-                      <div key={m.id} style={{ background: '#fff', borderRadius: 12, border: needsComplete ? '2px solid #D4A574' : '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
+                      <div key={m.id} style={{ background: '#fff', borderRadius: 12, border: (needsComplete && isPast) ? '2px solid #D4A574' : '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
                         <div style={{ padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
                               <span style={{ fontSize: 16 }}>{m.meeting_type === 'google_meet' ? '📹' : '📞'}</span>
                               <p style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>{m.title}</p>
                               <span style={{ background: st.bg, color: st.color, fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600, textTransform: 'capitalize' }}>{m.status}</span>
-                              {needsComplete && <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600 }}>Needs Completion</span>}
+                              {needsComplete && isPast && <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600 }}>Needs Completion</span>}
                             </div>
                             <div style={{ display: 'flex', gap: 16, alignItems: 'center', color: '#717182', fontSize: 12 }}>
                               <span>📅 {start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
@@ -855,13 +921,101 @@ export default function CompanyProfile() {
                               {m.crm_users?.name && <span>👤 {m.crm_users.name}</span>}
                             </div>
                             {m.meet_link && (
-                              <a href={m.meet_link} target="_blank" rel="noreferrer" style={{ color: '#4CAF50', fontSize: 12, marginTop: 6, display: 'inline-block' }}>🔗 Join Google Meet</a>
+                              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6 }}>
+                                <a href={m.meet_link} target="_blank" rel="noreferrer" style={{ color: '#4CAF50', fontSize: 12 }}>🔗 Join Google Meet</a>
+                                {/* Record button — show for scheduled meetings with meet links */}
+                                {(m.status === 'scheduled' || m.status === 'confirmed') && !m.recall_bot_id && !recordingStatus[m.id] && (
+                                  <button onClick={(e) => { e.stopPropagation(); startRecording(m.id); }}
+                                    style={{ background: '#D4183D', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    🔴 Record
+                                  </button>
+                                )}
+                                {/* Recording status indicator */}
+                                {(recordingStatus[m.id] || m.recording_status) && m.recording_status !== 'completed' && (
+                                  <span style={{
+                                    background: (recordingStatus[m.id] || m.recording_status) === 'recording' ? '#FFEBEE' : (recordingStatus[m.id] || m.recording_status) === 'failed' ? '#F8D7DA' : '#FFF3CD',
+                                    color: (recordingStatus[m.id] || m.recording_status) === 'recording' ? '#D4183D' : (recordingStatus[m.id] || m.recording_status) === 'failed' ? '#721C24' : '#856404',
+                                    fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 600,
+                                  }}>
+                                    {(recordingStatus[m.id] || m.recording_status) === 'sending_bot' ? '⏳ Sending bot...' :
+                                     (recordingStatus[m.id] || m.recording_status) === 'recording' ? '⏺️ Recording...' :
+                                     (recordingStatus[m.id] || m.recording_status) === 'processing' ? '⏳ Processing transcript...' :
+                                     (recordingStatus[m.id] || m.recording_status) === 'failed' ? '❌ Recording failed' : ''}
+                                  </span>
+                                )}
+                              </div>
                             )}
+
+                            {/* Meeting Notes */}
                             {m.notes && (
                               <div style={{ marginTop: 10, padding: 12, background: '#F5F3EF', borderRadius: 8, fontSize: 13, color: '#3E423D', lineHeight: 1.6 }}>
                                 <p style={{ color: '#717182', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 6px', fontWeight: 600 }}>Meeting Notes</p>
                                 {m.notes}
                               </div>
+                            )}
+
+                            {/* AI Summary */}
+                            {m.ai_summary && (
+                              <div style={{ marginTop: 10, padding: 16, background: '#EBF4FF', borderRadius: 10, border: '1px solid rgba(26,111,173,0.1)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                  <p style={{ color: '#1a6fad', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', margin: 0, fontWeight: 600 }}>🤖 AI Summary</p>
+                                  <button onClick={() => regenerateSummary(m.id)} disabled={processingTranscript[m.id]}
+                                    style={{ background: 'none', border: 'none', color: '#94B0BC', fontSize: 10, cursor: 'pointer', padding: 0 }}>
+                                    {processingTranscript[m.id] ? '⏳ Regenerating...' : '🔄 Regenerate'}
+                                  </button>
+                                </div>
+                                <p style={{ color: '#3E423D', fontSize: 13, margin: 0, lineHeight: 1.7 }}>{m.ai_summary}</p>
+                              </div>
+                            )}
+
+                            {/* Action Items */}
+                            {m.ai_action_items && m.ai_action_items.length > 0 && (
+                              <div style={{ marginTop: 10, padding: 16, background: '#F5F3EF', borderRadius: 10 }}>
+                                <p style={{ color: '#717182', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 10px', fontWeight: 600 }}>📋 Action Items ({m.ai_action_items.length})</p>
+                                {m.ai_action_items.map((item, idx) => (
+                                  <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
+                                    <span style={{ color: item.priority === 'high' ? '#D4183D' : item.priority === 'medium' ? '#D4A574' : '#8E9B8B', fontSize: 14, flexShrink: 0 }}>
+                                      {item.priority === 'high' ? '🔴' : item.priority === 'medium' ? '🟡' : '🟢'}
+                                    </span>
+                                    <div>
+                                      <p style={{ color: '#3E423D', fontSize: 13, margin: '0 0 2px' }}>{item.task}</p>
+                                      {item.owner && item.owner !== 'TBD' && (
+                                        <span style={{ color: '#717182', fontSize: 11 }}>→ {item.owner}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Transcript (collapsible) */}
+                            {m.transcript && (
+                              <details style={{ marginTop: 10 }}>
+                                <summary style={{ color: '#717182', fontSize: 12, cursor: 'pointer', padding: '8px 0', userSelect: 'none' }}>
+                                  📜 View Full Transcript
+                                </summary>
+                                <div style={{ padding: 16, background: '#fff', borderRadius: 8, border: '1px solid rgba(62,66,61,0.08)', marginTop: 6, maxHeight: 400, overflowY: 'auto' }}>
+                                  {m.transcript_segments ? m.transcript_segments.map((seg, idx) => (
+                                    <div key={idx} style={{ marginBottom: 12 }}>
+                                      <span style={{ color: '#1a6fad', fontSize: 11, fontWeight: 600 }}>{seg.speaker}</span>
+                                      <span style={{ color: '#CBCED4', fontSize: 10, marginLeft: 8 }}>
+                                        {Math.floor(seg.startTime / 60)}:{String(Math.floor(seg.startTime % 60)).padStart(2, '0')}
+                                      </span>
+                                      <p style={{ color: '#3E423D', fontSize: 13, margin: '2px 0 0', lineHeight: 1.6 }}>{seg.text}</p>
+                                    </div>
+                                  )) : (
+                                    <pre style={{ color: '#3E423D', fontSize: 12, margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{m.transcript}</pre>
+                                  )}
+                                </div>
+                              </details>
+                            )}
+
+                            {/* Process transcript button for meetings with recording but no transcript yet */}
+                            {m.recall_bot_id && !m.transcript && m.recording_status !== 'sending_bot' && m.recording_status !== 'recording' && (
+                              <button onClick={() => processTranscript(m.id)} disabled={processingTranscript[m.id]}
+                                style={{ marginTop: 10, background: processingTranscript[m.id] ? '#A5B2A3' : '#1a6fad', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', width: '100%' }}>
+                                {processingTranscript[m.id] ? '⏳ Fetching transcript & generating summary...' : '📝 Fetch Transcript & Generate AI Summary'}
+                              </button>
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>

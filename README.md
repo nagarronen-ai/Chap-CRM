@@ -209,6 +209,7 @@ Gmail Inbox          CRM Database
 - Filters: All / Unread / Received / Sent + search
 - Thread expansion: full conversation chronologically
 - "View Client/Contact" quick-link buttons per thread
+- **Quick Reply** — reply directly from inbox with inline composer, Gmail threading, quoted previous message
 - "Sync Now" button for manual trigger
 - **Unread count badge in sidebar** (polls every 60 seconds)
 
@@ -574,6 +575,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | DELETE | `/api/calendar/meetings/:id` | Cancel meeting |
 | GET | `/api/calendar/upcoming` | Next 7 days (Google Cal + CRM) |
 | GET | `/api/calendar/needs-completion` | Past meetings needing completion |
+| POST | `/api/calendar/import-complete` | Import Google event + mark complete |
 | GET | `/api/calendar/meetings/company/:id` | Meetings for a company |
 | GET | `/api/calendar/meetings/client/:id` | Meetings for a client |
 
@@ -748,26 +750,30 @@ Supabase Storage with two private buckets: `client-documents` and `receipts`. Up
 
 ## Changelog
 
+### v1.4.3 (March 2026) — Quick Reply + Gmail Threading
+- Quick Reply from Email Inbox — reply directly from thread without navigating to profile
+- Inline reply composer: recipient display, textarea, send/cancel buttons
+- Gmail threading support: `In-Reply-To` + `References` headers + `threadId` for proper conversation threading
+- Quoted previous message in reply body (classic email format with left border)
+- Optimistic update: sent reply appears immediately in expanded thread
+- Updated `sendViaGmail` to support `threadId` and `inReplyTo` parameters
+- Version tag displayed in sidebar footer (v1.4.3)
+
+### v1.4.2 (March 2026) — Calendar Completion Flow
+- Calendar event popup: completion prompt for past meetings (yellow banner with Complete/No-show)
+- Import & Complete: auto-creates CRM meeting record from Google-only Calendar events on completion
+- Meeting notes displayed in calendar event popup for completed meetings
+- Fixed HTML description rendering in event detail popup (`dangerouslySetInnerHTML`)
+- Backend: `POST /api/calendar/import-complete` endpoint
+
 ### v1.4.1 (March 2026) — Meeting Management Workflow
 - Pipeline auto-update: auto-moves company to "Meeting Scheduled" on meeting creation (if stage is earlier)
 - Needs Completion widget on Dashboard: past meetings with Complete/No-show buttons and inline notes
-- Meetings tab on Company Profile: summary cards, full history, completion flow, notes display
+- Meetings tab on Company Profile: summary cards (total/completed/scheduled/cancelled), full history, completion flow, notes display
 - Meetings tab on Client Profile: same as Company Profile
 - Backend: `GET /api/calendar/needs-completion` endpoint (past 30 days, scheduled status)
-- Backend: pipeline stage auto-update in `POST /api/calendar/meetings`
 - Activity log entries on meeting completion and cancellation
-- Dashboard layout fix: Needs Completion full-width above 3-column grid
-```
-
-In the **Roadmap**, change this line:
-```
-| Meeting Management Workflow (Task 7) | 🔵 Pending |
-```
-To:
-```
-| Meeting Management Workflow (Task 7) | ✅ Done (foundation) |
-| Recall.ai recording + transcription + AI summary | 🔵 Next session |
-| Calendar page completion flow | 🔵 Pending |
+- Dashboard layout: Needs Completion full-width above 3-column grid
 
 ### v1.4.0 (March 2026) — Gmail + Calendar + Polish
 **Gmail OAuth & Connected Accounts**
@@ -864,8 +870,12 @@ To:
 | Dashboard upcoming meetings | ✅ Done |
 | Sidebar unread badge | ✅ Done |
 | Marketing Reply Routing (Task 4) | ⏭️ Waiting for marketing@ email |
-| Meeting Management Workflow (Task 7) | 🔵 Pending |
-| Quick Reply from Email Inbox | 🔵 Pending |
+| Meeting Management Workflow (Task 7) | ✅ Done |
+| Quick Reply from Email Inbox | ✅ Done |
+| Gmail threading (In-Reply-To + threadId) | ✅ Done |
+| Calendar completion flow + Google event import | ✅ Done |
+| Version tag in sidebar | ✅ Done |
+| Recall.ai recording + transcription + AI summary | 🔵 Next |
 | Production Google OAuth redirect URI | 🔵 Pending |
 | Stripe integration | 🔵 Pending API key |
 

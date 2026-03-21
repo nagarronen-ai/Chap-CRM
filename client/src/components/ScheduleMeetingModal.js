@@ -83,6 +83,7 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
     end_min: '00',
     person_id: '',
     attendee_emails: '',
+    auto_record: false,
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -150,6 +151,7 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
         person_id: form.person_id || null,
         attendee_emails,
         is_internal: false,
+        auto_record: form.auto_record || false,
       }, { headers: getHeaders() });
 
       setSuccess(true);
@@ -295,9 +297,15 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
 
           {/* Google Meet info */}
           {form.meeting_type === 'google_meet' && (
-            <div style={{ background: '#EBF4FF', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 14 }}>📹</span>
-              <span style={{ color: '#1a6fad', fontSize: 12 }}>A Google Meet link will be auto-generated and included in the invite</span>
+            <div style={{ background: '#EBF4FF', borderRadius: 8, padding: '10px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 14 }}>📹</span>
+                <span style={{ color: '#1a6fad', fontSize: 12 }}>A Google Meet link will be auto-generated and included in the invite</span>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.auto_record || false} onChange={e => setForm(prev => ({ ...prev, auto_record: e.target.checked }))} style={{ accentColor: '#D4183D' }} />
+                <span style={{ color: '#1a6fad', fontSize: 12, fontWeight: 500 }}>🔴 Auto-record this meeting (Planfor Assistant will join and transcribe)</span>
+              </label>
             </div>
           )}
         </div>

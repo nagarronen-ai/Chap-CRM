@@ -193,10 +193,13 @@ export default function Calendar() {
       company_id: '', client_id: '', person_id: '',
       attendee_emails: '', is_internal: false,
       client_timezone: null, client_state: '',
+      auto_record: false,
     });
     setShowCreateModal(true);
   };
 
+
+  
   const createMeeting = async () => {
     if (!form.title || !form.date) return;
 
@@ -244,6 +247,7 @@ export default function Calendar() {
         person_id: form.person_id || null,
         attendee_emails,
         is_internal: form.is_internal,
+        auto_record: form.auto_record || false,
       }, { headers: getHeaders() });
 
       setShowCreateModal(false);
@@ -637,6 +641,26 @@ export default function Calendar() {
                     <a href={selectedEvent.meet_link} target="_blank" rel="noreferrer" style={{ color: '#1a6fad', fontSize: 13, textDecoration: 'none' }}>
                       Join Google Meet
                     </a>
+                    {selectedEvent.crm_meeting_id && (selectedEvent.crm_status === 'scheduled' || selectedEvent.crm_status === 'confirmed') && !selectedEvent.recall_bot_id && (
+                      <button onClick={async () => {
+                        try {
+                          await axios.post(`${API}/calendar/meetings/${selectedEvent.crm_meeting_id}/record`, {}, { headers: getHeaders() });
+                          alert('🎙️ Recording bot sent! Planfor Assistant will join the call shortly.');
+                          fetchEvents();
+                        } catch (err) {
+                          alert('Failed: ' + (err.response?.data?.error || err.message));
+                        }
+                      }}
+                        style={{ background: '#D4183D', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer' }}>
+                        🔴 Record
+                      </button>
+                    )}
+                    {selectedEvent.recording_status === 'recording' && (
+                      <span style={{ background: '#FFEBEE', color: '#D4183D', fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>⏺️ Recording...</span>
+                    )}
+                    {selectedEvent.recording_status === 'processing' && (
+                      <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>⏳ Processing...</span>
+                    )}
                   </div>
                 )}
                 {selectedEvent.company_name && (
@@ -879,9 +903,15 @@ export default function Calendar() {
                 </div>
 
                 {form.meeting_type === 'google_meet' && !form.is_internal && (
-                  <div style={{ background: '#EBF4FF', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 14 }}>📹</span>
-                    <span style={{ color: '#1a6fad', fontSize: 12 }}>A Google Meet link will be auto-generated and included in the invite</span>
+                  <div style={{ background: '#EBF4FF', borderRadius: 8, padding: '10px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 14 }}>📹</span>
+                      <span style={{ color: '#1a6fad', fontSize: 12 }}>A Google Meet link will be auto-generated and included in the invite</span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={form.auto_record || false} onChange={e => setForm(prev => ({ ...prev, auto_record: e.target.checked }))} style={{ accentColor: '#D4183D' }} />
+                      <span style={{ color: '#1a6fad', fontSize: 12, fontWeight: 500 }}>🔴 Auto-record this meeting (Planfor Assistant will join and transcribe)</span>
+                    </label>
                   </div>
                 )}
               </div>
