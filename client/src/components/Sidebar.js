@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 
 export default function Sidebar() {
-  const APP_VERSION = 'v1.4.4';
+  const APP_VERSION = 'v1.5.0';
   const navigate = useNavigate();
   const location = useLocation();
   const { can, role } = useRole();
@@ -24,7 +24,7 @@ export default function Sidebar() {
     };
     fetchUnread();
     const interval = setInterval(fetchUnread, 60000);
-    return () => clearInterval(interval);
+    return () => clearInterval(interval); 
   }, []);
 
   const ROLE_COLORS = {
