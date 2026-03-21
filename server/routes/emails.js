@@ -9,7 +9,7 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // ─── GMAIL SEND HELPER ───────────────────────────────────────────────────────
 
-async function sendViaGmail(googleAccountId, { to, toName, from, fromName, subject, htmlBody }) {
+async function sendViaGmail(googleAccountId, { to, toName, from, fromName, subject, htmlBody, threadId, inReplyTo }) {
   const googleRoute = require('./google');
   const { oauth2Client, account } = await googleRoute.getAuthenticatedClient(googleAccountId);
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
@@ -21,9 +21,16 @@ async function sendViaGmail(googleAccountId, { to, toName, from, fromName, subje
     `Subject: ${subject}`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=utf-8',
-    '',
-    htmlBody,
   ];
+
+  // Add threading headers for replies
+  if (inReplyTo) {
+    messageParts.splice(3, 0, `In-Reply-To: ${inReplyTo}`);
+    messageParts.splice(4, 0, `References: ${inReplyTo}`);
+  }
+
+  messageParts.push('', htmlBody);
+
   const rawMessage = messageParts.join('\r\n');
   const encodedMessage = Buffer.from(rawMessage)
     .toString('base64')
@@ -31,9 +38,12 @@ async function sendViaGmail(googleAccountId, { to, toName, from, fromName, subje
     .replace(/\//g, '_')
     .replace(/=+$/, '');
 
+  const requestBody = { raw: encodedMessage };
+  if (threadId) requestBody.threadId = threadId;
+
   const result = await gmail.users.messages.send({
     userId: 'me',
-    requestBody: { raw: encodedMessage },
+    requestBody,
   });
 
   return {
@@ -215,6 +225,8 @@ ${body_html}
           fromName: sender.name,
           subject,
           htmlBody: gmailHtml,
+          threadId: req.body.gmail_thread_id || null,
+          inReplyTo: req.body.in_reply_to || null,
         });
         sendSuccess = true;
         sendMethod = 'gmail';

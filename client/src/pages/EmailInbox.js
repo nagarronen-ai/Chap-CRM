@@ -13,6 +13,9 @@ export default function EmailInbox() {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
   const navigate = useNavigate();
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -67,6 +70,64 @@ export default function EmailInbox() {
     } else if (email.company_id) {
       navigate(`/companies/${email.company_id}`);
     }
+  };
+
+  const sendReply = async (thread) => {
+    if (!replyText.trim()) return;
+    setSendingReply(true);
+    try {
+      const latestInbound = thread.emails.find(e => e.direction === 'inbound') || thread.emails[0];
+      const replyTo = latestInbound.from_email;
+      const replyName = latestInbound.from_name || replyTo;
+      const subject = latestInbound.subject?.startsWith('Re:') ? latestInbound.subject : `Re: ${latestInbound.subject}`;
+
+      await axios.post(`${API}/emails/send`, {
+        company_id: latestInbound.company_id || null,
+        person_id: latestInbound.person_id || null,
+        subject,
+        body_html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #222; line-height: 1.6;">${replyText.replace(/\n/g, '<br>')}</div>
+        <br>
+        <div style="padding-left: 12px; border-left: 2px solid #ccc; margin-top: 16px; color: #666; font-size: 13px;">
+          <p style="margin: 0 0 8px; color: #999; font-size: 12px;">On ${new Date(latestInbound.email_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}, ${latestInbound.from_name || latestInbound.from_email} wrote:</p>
+          ${latestInbound.body_html || latestInbound.body_snippet || ''}
+        </div>`,
+        recipient_email: replyTo,
+        recipient_name: replyName,
+        gmail_thread_id: thread.threadId || null,
+        in_reply_to: latestInbound.gmail_message_id || null,
+      }, { headers: getHeaders() });;
+
+      // Add the sent reply to the thread immediately (optimistic update)
+      const now = new Date().toISOString();
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      setEmails(prev => [...prev, {
+        id: `sent-${Date.now()}`,
+        gmail_thread_id: thread.threadId,
+        direction: 'outbound',
+        from_email: user.email || '',
+        from_name: user.name || '',
+        to_emails: [{ email: replyTo }],
+        subject,
+        body_snippet: replyText.substring(0, 100),
+        body_html: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #222; line-height: 1.6;">${replyText.replace(/\n/g, '<br>')}</div>`,
+        email_date: now,
+        is_read: true,
+        has_attachments: false,
+        attachment_count: 0,
+        company_id: latestInbound.company_id,
+        client_id: latestInbound.client_id,
+        person_id: latestInbound.person_id,
+        crm_companies: latestInbound.crm_companies,
+        crm_clients: latestInbound.crm_clients,
+        crm_people: latestInbound.crm_people,
+      }]);
+      setReplyingTo(null);
+      setReplyText('');
+    } catch (err) {
+      console.error(err);
+      alert('Reply failed: ' + (err.response?.data?.error || err.message));
+    }
+    setSendingReply(false);
   };
 
   const unreadCount = emails.filter(e => !e.is_read && e.direction === 'inbound').length;
@@ -315,24 +376,82 @@ export default function EmailInbox() {
                       ))}
 
                       {/* Quick action bar */}
-                      <div style={{
-                        padding: '12px 20px 12px 62px', borderTop: '1px solid rgba(62,66,61,0.08)',
-                        display: 'flex', gap: 8, background: '#F5F3EF',
-                      }}>
-                        <button
-                          onClick={() => goToProfile(latestEmail)}
-                          style={{
-                            background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8,
-                            padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
-                            display: 'flex', alignItems: 'center', gap: 6,
-                          }}
-                        >
-                          {latestEmail.client_id ? '🤝 View Client' : '🏢 View Contact'} → {thread.company_name}
-                        </button>
-                        {thread.person_name && (
-                          <span style={{ color: '#717182', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                            👤 {thread.person_name}
-                          </span>
+                      <div style={{ borderTop: '1px solid rgba(62,66,61,0.08)', background: '#F5F3EF' }}>
+                        <div style={{ padding: '12px 20px 12px 62px', display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <button
+                            onClick={() => goToProfile(latestEmail)}
+                            style={{
+                              background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8,
+                              padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                              display: 'flex', alignItems: 'center', gap: 6,
+                            }}
+                          >
+                            {latestEmail.client_id ? '🤝 View Client' : '🏢 View Contact'} → {thread.company_name}
+                          </button>
+                          <button
+                            onClick={() => { setReplyingTo(replyingTo === thread.threadId ? null : thread.threadId); setReplyText(''); }}
+                            style={{
+                              background: replyingTo === thread.threadId ? '#3E423D' : '#fff', 
+                              color: replyingTo === thread.threadId ? '#fff' : '#3E423D',
+                              border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8,
+                              padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                              display: 'flex', alignItems: 'center', gap: 6,
+                            }}
+                          >
+                            ↩ Reply
+                          </button>
+                          {thread.person_name && (
+                            <span style={{ color: '#717182', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              👤 {thread.person_name}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Reply composer */}
+                        {replyingTo === thread.threadId && (
+                          <div style={{ padding: '0 20px 16px 62px' }}>
+                            <div style={{ background: '#fff', borderRadius: 10, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
+                              <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(62,66,61,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ color: '#717182', fontSize: 12 }}>To:</span>
+                                <span style={{ color: '#3E423D', fontSize: 12, fontWeight: 500 }}>
+                                  {(() => {
+                                    const inbound = thread.emails.find(e => e.direction === 'inbound');
+                                    return inbound ? `${inbound.from_name || ''} <${inbound.from_email}>` : thread.person_name || '—';
+                                  })()}
+                                </span>
+                              </div>
+                              <textarea
+                                value={replyText}
+                                onChange={e => setReplyText(e.target.value)}
+                                placeholder="Type your reply..."
+                                rows={4}
+                                autoFocus
+                                style={{
+                                  width: '100%', border: 'none', padding: '12px 14px', fontSize: 13,
+                                  resize: 'vertical', outline: 'none', fontFamily: 'Inter, sans-serif',
+                                  lineHeight: 1.6, boxSizing: 'border-box', minHeight: 100,
+                                }}
+                              />
+                              <div style={{ padding: '10px 14px', borderTop: '1px solid rgba(62,66,61,0.06)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                <button
+                                  onClick={() => { setReplyingTo(null); setReplyText(''); }}
+                                  style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer' }}>
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => sendReply(thread)}
+                                  disabled={sendingReply || !replyText.trim()}
+                                  style={{
+                                    background: sendingReply ? '#A5B2A3' : !replyText.trim() ? '#D5CEC0' : '#8E9B8B',
+                                    color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px',
+                                    fontSize: 12, cursor: !replyText.trim() ? 'default' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                  }}>
+                                  {sendingReply ? '⏳ Sending...' : '📤 Send Reply'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>
