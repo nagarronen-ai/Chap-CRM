@@ -219,6 +219,7 @@ try {
   } catch (err) {}
     fetchTemplates();
     fetchMeetings();
+    
     setLoading(false);
     try {
         const gmailRes = await axios.get(`${API}/emails/gmail-status`, { headers: getHeaders() });

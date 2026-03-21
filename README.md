@@ -150,6 +150,7 @@ Gmail Inbox          CRM Database
 - Client overview with stage breakdown (Onboarding, Active, Paused, Churned)
 - Email performance: sent, open rate, click rate, bounced + campaign stats
 - **Upcoming Meetings widget** — next 7 days, pulls from Google Calendar API + enriched with CRM data
+- **Needs Completion widget** — past meetings needing completion, with inline Complete/No-show buttons and notes
 - Stale leads section (contacts with no activity in 7+ days)
 - Paginated activity feed (5 per page)
 - Team performance: per-person leads + clients count
@@ -169,6 +170,7 @@ Gmail Inbox          CRM Database
 - **Overview tab** — Contact Info, Business, Social in 3-column grid, inline editing, people list, quick notes
 - **People tab** — full contact list with add/edit/remove
 - **Activity tab** — paginated timeline (5/10/25/50 per page), filterable by person, expandable email view
+- **Meetings tab** — meeting history with summary cards (total/completed/scheduled/cancelled), completion flow with notes, status badges, Google Meet links
 - **Emails tab** — unified direct + campaign emails with delivery/open/click tracking
 - **Marketing tab** — per-contact campaign history, per-person unsubscribe management
 - **📧 Send Email** button — Gmail API (primary) or SendGrid (fallback), with Gmail/SendGrid indicator badge
@@ -181,6 +183,7 @@ Gmail Inbox          CRM Database
 - Contract management (RevShare, Commission, Subscription) with dynamic fields
 - **Overview** — full details, people from original contact, quick notes
 - **Activity** — combined CRM activity + synced Gmail emails, sorted chronologically
+- **Meetings** — meeting history with summary cards, completion flow, notes display, status badges
 - **Documents** — upload/manage contracts, proposals, invoices with file attachments
 - **Emails** — 3 sections: Client emails (since conversion), Contact history (before conversion), Campaign history
 - **Vendor Page** — marketplace listing editor (amenities, venue types, ceremonies, pricing, publish toggle)
@@ -570,6 +573,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | PUT | `/api/calendar/meetings/:id` | Update meeting |
 | DELETE | `/api/calendar/meetings/:id` | Cancel meeting |
 | GET | `/api/calendar/upcoming` | Next 7 days (Google Cal + CRM) |
+| GET | `/api/calendar/needs-completion` | Past meetings needing completion |
 | GET | `/api/calendar/meetings/company/:id` | Meetings for a company |
 | GET | `/api/calendar/meetings/client/:id` | Meetings for a client |
 
@@ -680,6 +684,14 @@ All routes require `Authorization: Bearer <token>` header (except webhooks).
 - Pulls from Google Calendar API + enriches with CRM company/client data
 - Today/Tomorrow labels, meeting type icons, click-through to profile
 
+### Meeting Management Workflow
+- **Status tracking:** scheduled → confirmed → completed → cancelled
+- **Needs Completion:** Dashboard shows past meetings needing completion with inline Complete/No-show buttons
+- **Mark Complete with notes:** expand, add meeting notes, save — logged to activity timeline
+- **Pipeline auto-update:** when meeting is created, company auto-moves to "Meeting Scheduled" (if current stage is earlier)
+- **Meeting History tabs:** dedicated Meetings tab on both Company and Client profiles with summary cards and full history
+- **Cancelled meeting handling:** cancel from CRM removes from Google Calendar, logs activity, pipeline NOT auto-reverted
+
 ---
 
 ## Marketing & Campaigns
@@ -735,6 +747,27 @@ Supabase Storage with two private buckets: `client-documents` and `receipts`. Up
 ---
 
 ## Changelog
+
+### v1.4.1 (March 2026) — Meeting Management Workflow
+- Pipeline auto-update: auto-moves company to "Meeting Scheduled" on meeting creation (if stage is earlier)
+- Needs Completion widget on Dashboard: past meetings with Complete/No-show buttons and inline notes
+- Meetings tab on Company Profile: summary cards, full history, completion flow, notes display
+- Meetings tab on Client Profile: same as Company Profile
+- Backend: `GET /api/calendar/needs-completion` endpoint (past 30 days, scheduled status)
+- Backend: pipeline stage auto-update in `POST /api/calendar/meetings`
+- Activity log entries on meeting completion and cancellation
+- Dashboard layout fix: Needs Completion full-width above 3-column grid
+```
+
+In the **Roadmap**, change this line:
+```
+| Meeting Management Workflow (Task 7) | 🔵 Pending |
+```
+To:
+```
+| Meeting Management Workflow (Task 7) | ✅ Done (foundation) |
+| Recall.ai recording + transcription + AI summary | 🔵 Next session |
+| Calendar page completion flow | 🔵 Pending |
 
 ### v1.4.0 (March 2026) — Gmail + Calendar + Polish
 **Gmail OAuth & Connected Accounts**
