@@ -25,6 +25,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [activityPage, setActivityPage] = useState(0);
   const [upcomingMeetings, setUpcomingMeetings] = useState([]);
+  const [needsCompletion, setNeedsCompletion] = useState([]);
+  const [completingMeeting, setCompletingMeeting] = useState(null);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [savingCompletion, setSavingCompletion] = useState(false);
   const navigate = useNavigate();
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -57,7 +61,33 @@ export default function Dashboard() {
     try { const res = await axios.get(`${API}/finance/expenses/summary`, { headers: getHeaders() }); setFinanceStats(res.data); } catch (err) {}
     try { const res = await axios.get(`${API}/users`, { headers: getHeaders() }); setTeamUsers(res.data); } catch (err) {}
     try { const res = await axios.get(`${API}/calendar/upcoming`, { headers: getHeaders() }); setUpcomingMeetings(res.data); } catch (err) {}
+    try { const res = await axios.get(`${API}/calendar/needs-completion`, { headers: getHeaders() }); setNeedsCompletion(res.data); } catch (err) {}
     setLoading(false);
+  };
+  const completeMeeting = async (meetingId) => {
+    setSavingCompletion(true);
+    try {
+      await axios.put(`${API}/calendar/meetings/${meetingId}`, {
+        status: 'completed',
+        notes: completionNotes,
+      }, { headers: getHeaders() });
+      setNeedsCompletion(prev => prev.filter(m => m.id !== meetingId));
+      setCompletingMeeting(null);
+      setCompletionNotes('');
+      fetchData();
+    } catch (err) { console.error(err); }
+    setSavingCompletion(false);
+  };
+
+  const markNoShow = async (meetingId) => {
+    try {
+      await axios.put(`${API}/calendar/meetings/${meetingId}`, {
+        status: 'cancelled',
+        notes: 'No-show',
+      }, { headers: getHeaders() });
+      setNeedsCompletion(prev => prev.filter(m => m.id !== meetingId));
+      fetchData();
+    } catch (err) { console.error(err); }
   };
 
   const totalPeople = companies.reduce((acc, c) => acc + (c.crm_people?.length || 0), 0);
@@ -232,6 +262,55 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+{/* Needs Completion — full width, only shows when meetings need completion */}
+{needsCompletion.length > 0 && (
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)', marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ color: '#1a1d1a', fontSize: 14, fontWeight: 600, margin: 0 }}>Needs Completion</h3>
+              <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 11, fontWeight: 600, borderRadius: 10, padding: '2px 10px' }}>{needsCompletion.length}</span>
+            </div>
+            {needsCompletion.slice(0, 5).map(m => {
+              const endDate = new Date(m.end_time);
+              const daysAgo = Math.floor((Date.now() - endDate) / 86400000);
+              const isExpanded = completingMeeting === m.id;
+              return (
+                <div key={m.id} style={{ borderBottom: '1px solid rgba(62,66,61,0.04)', padding: '8px 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                      onClick={() => m.company_id ? navigate(`/contacts/${m.company_id}`) : m.client_id ? navigate(`/clients/${m.client_id}`) : null}>
+                      <p style={{ color: '#1a1d1a', fontSize: 12, fontWeight: 500, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</p>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span style={{ color: '#717182', fontSize: 10 }}>{m.crm_companies?.company_name || m.crm_clients?.business_name || 'General'}</span>
+                        <span style={{ color: daysAgo > 3 ? '#D4183D' : '#D4A574', fontSize: 10, fontWeight: 600 }}>{daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo}d ago`}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => { setCompletingMeeting(isExpanded ? null : m.id); setCompletionNotes(''); }}
+                        style={{ background: isExpanded ? '#3E423D' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>
+                        {isExpanded ? '▲' : '✓ Complete'}
+                      </button>
+                      <button onClick={() => markNoShow(m.id)}
+                        style={{ background: '#F5F3EF', color: '#D4183D', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 10, cursor: 'pointer' }}>
+                        ✗
+                      </button>
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div style={{ marginTop: 8, padding: 10, background: '#F5F3EF', borderRadius: 8 }}>
+                      <textarea value={completionNotes} onChange={e => setCompletionNotes(e.target.value)}
+                        placeholder="Meeting notes — what was discussed?"
+                        rows={3} style={{ width: '100%', background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '8px 10px', fontSize: 12, resize: 'vertical', outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box' }} />
+                      <button onClick={() => completeMeeting(m.id)} disabled={savingCompletion}
+                        style={{ marginTop: 6, background: savingCompletion ? '#A5B2A3' : '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 11, cursor: 'pointer', width: '100%' }}>
+                        {savingCompletion ? '⏳ Saving...' : '✓ Mark Complete & Save Notes'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Bottom Grid — 3 columns */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
@@ -290,7 +369,7 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Team + Finance */}
+          {/* Team + Upcoming Meetings + Finance */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {/* Team */}
             {teamStats.length > 0 && (
@@ -311,8 +390,8 @@ export default function Dashboard() {
               </div>
             )}
 
-{/* Upcoming Meetings */}
-<div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)' }}>
+            {/* Upcoming Meetings */}
+            <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ color: '#1a1d1a', fontSize: 14, fontWeight: 600, margin: 0 }}>Upcoming Meetings</h3>
                 <button onClick={() => navigate('/calendar')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 12, cursor: 'pointer', padding: 0 }}>View calendar →</button>

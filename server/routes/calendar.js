@@ -189,6 +189,22 @@ router.post('/meetings', auth, async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
+// ── Pipeline auto-update: move to "Meeting Scheduled" if stage is earlier ──
+if (company_id) {
+  const STAGE_ORDER = ['New', 'Contacted', 'No Reply', 'Follow-up'];
+  const { data: comp } = await supabase
+    .from('crm_companies')
+    .select('stage')
+    .eq('id', company_id)
+    .single();
+  if (comp && STAGE_ORDER.includes(comp.stage)) {
+    await supabase
+      .from('crm_companies')
+      .update({ stage: 'Meeting Scheduled', updated_at: new Date().toISOString() })
+      .eq('id', company_id);
+  }
+}
+
     // Log to activity timeline
     if (company_id || client_id) {
       await supabase.from('crm_activity_log').insert([{
@@ -458,6 +474,32 @@ router.get('/meetings/client/:clientId', auth, async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET PAST MEETINGS NEEDING COMPLETION ────────────────────────────────────
+
+// GET /api/calendar/needs-completion
+router.get('/needs-completion', auth, async (req, res) => {
+  try {
+    const now = new Date().toISOString();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data, error } = await supabase
+      .from('crm_meetings')
+      .select('*, crm_companies(company_name), crm_clients(business_name), crm_people(first_name, last_name)')
+      .eq('created_by', req.user.id)
+      .in('status', ['scheduled', 'confirmed'])
+      .lt('end_time', now)
+      .gte('end_time', thirtyDaysAgo)
+      .order('end_time', { ascending: false })
+      .limit(20);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    console.error('Needs completion error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

@@ -39,6 +39,7 @@ const GUEST_CAPACITIES = ['0-50', '51-100', '101-150', '151-200', '201-250', '25
 const PRICE_TIERS = ['$', '$$', '$$$', '$$$$'];
 
 
+
 function PeopleFromContact({ companyId, getHeaders }) {
     const [people, setPeople] = useState([]);
     const [editing, setEditing] = useState(null);
@@ -133,6 +134,10 @@ export default function ClientProfile() {
   const [syncedEmails, setSyncedEmails] = useState([]);
   const [expandedSyncedEmail, setExpandedSyncedEmail] = useState({}); 
   const [showMeetingModal, setShowMeetingModal] = useState(false);
+  const [meetings, setMeetings] = useState([]);
+  const [completingMeeting, setCompletingMeeting] = useState(null);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [savingCompletion, setSavingCompletion] = useState(false);
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
@@ -161,6 +166,27 @@ export default function ClientProfile() {
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
+  const fetchMeetings = async () => {
+    try {
+      const res = await axios.get(`${API}/calendar/meetings/client/${id}`, { headers: getHeaders() });
+      setMeetings(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const completeMeeting = async (meetingId) => {
+    setSavingCompletion(true);
+    try {
+      await axios.put(`${API}/calendar/meetings/${meetingId}`, {
+        status: 'completed',
+        notes: completionNotes,
+      }, { headers: getHeaders() });
+      setCompletingMeeting(null);
+      setCompletionNotes('');
+      fetchMeetings();
+      fetchAll();
+    } catch (err) { console.error(err); }
+    setSavingCompletion(false);
+  };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchAll(); }, [id]);
 
@@ -192,6 +218,7 @@ try {
     setUserSignature(sigRes.data.email_signature || '');
   } catch (err) {}
     fetchTemplates();
+    fetchMeetings();
     setLoading(false);
     try {
         const gmailRes = await axios.get(`${API}/emails/gmail-status`, { headers: getHeaders() });
@@ -477,9 +504,11 @@ try {
           {[
             { key: 'overview', label: 'Overview' },
             { key: 'activity', label: `Activity (${activity.length})` },
+            { key: 'meetings', label: `Meetings (${meetings.length})` },
             { key: 'documents', label: `Documents (${documents.length})` },
             { key: 'emails', label: `Emails (${clientEmails.length + contactEmailHistory.length + contactMarketingHistory.length})` },
             { key: 'vendor-page', label: 'Vendor Page' },
+            
             ...(canFinance ? [{ key: 'finance', label: `Finance (${finance.length})` }] : []),
           ].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -859,6 +888,105 @@ try {
     )}
   </div>
 )}
+
+{/* ─── MEETINGS TAB ─── */}
+{activeTab === 'meetings' && (
+          <div>
+            {meetings.length === 0 ? (
+              <div style={{ background: '#fff', borderRadius: 12, padding: 60, textAlign: 'center', border: '1px solid rgba(62,66,61,0.1)' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
+                <p style={{ color: '#3E423D', fontSize: 15, fontWeight: 500, margin: '0 0 6px' }}>No meetings yet</p>
+                <p style={{ color: '#717182', fontSize: 13, margin: '0 0 16px' }}>Schedule a meeting to track your interactions with this client.</p>
+                <button onClick={() => setShowMeetingModal(true)} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>📅 Schedule Meeting</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+                  {[
+                    { label: 'Total', count: meetings.length, color: '#717182' },
+                    { label: 'Completed', count: meetings.filter(m => m.status === 'completed').length, color: '#4CAF50' },
+                    { label: 'Scheduled', count: meetings.filter(m => m.status === 'scheduled' || m.status === 'confirmed').length, color: '#B4A5D6' },
+                    { label: 'Cancelled', count: meetings.filter(m => m.status === 'cancelled').length, color: '#D4183D' },
+                  ].map((card, i) => (
+                    <div key={i} style={{ background: '#fff', borderRadius: 10, padding: '16px 20px', border: '1px solid rgba(62,66,61,0.1)' }}>
+                      <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 6px' }}>{card.label}</p>
+                      <p style={{ color: card.color, fontSize: 22, fontWeight: 700, margin: 0, fontFamily: "'Playfair Display', Georgia, serif" }}>{card.count}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {meetings.map(m => {
+                    const start = new Date(m.start_time);
+                    const end = new Date(m.end_time);
+                    const isPast = end < new Date();
+                    const needsComplete = isPast && (m.status === 'scheduled' || m.status === 'confirmed');
+                    const isExpanded = completingMeeting === m.id;
+                    const statusColors = {
+                      scheduled: { bg: '#F3E8FF', color: '#7C3AED' },
+                      confirmed: { bg: '#E8F5E9', color: '#2E7D32' },
+                      completed: { bg: '#E8F5E9', color: '#4CAF50' },
+                      cancelled: { bg: '#FFEBEE', color: '#C62828' },
+                    };
+                    const st = statusColors[m.status] || { bg: '#F5F3EF', color: '#717182' };
+
+                    return (
+                      <div key={m.id} style={{ background: '#fff', borderRadius: 12, border: needsComplete ? '2px solid #D4A574' : '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
+                        <div style={{ padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                              <span style={{ fontSize: 16 }}>{m.meeting_type === 'google_meet' ? '📹' : '📞'}</span>
+                              <p style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>{m.title}</p>
+                              <span style={{ background: st.bg, color: st.color, fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600, textTransform: 'capitalize' }}>{m.status}</span>
+                              {needsComplete && <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 10, borderRadius: 20, padding: '2px 10px', fontWeight: 600 }}>Needs Completion</span>}
+                            </div>
+                            <div style={{ display: 'flex', gap: 16, alignItems: 'center', color: '#717182', fontSize: 12 }}>
+                              <span>📅 {start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                              <span>🕐 {start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} — {end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                              {m.crm_users?.name && <span>👤 {m.crm_users.name}</span>}
+                            </div>
+                            {m.meet_link && (
+                              <a href={m.meet_link} target="_blank" rel="noreferrer" style={{ color: '#4CAF50', fontSize: 12, marginTop: 6, display: 'inline-block' }}>🔗 Join Google Meet</a>
+                            )}
+                            {m.notes && (
+                              <div style={{ marginTop: 10, padding: 12, background: '#F5F3EF', borderRadius: 8, fontSize: 13, color: '#3E423D', lineHeight: 1.6 }}>
+                                <p style={{ color: '#717182', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 6px', fontWeight: 600 }}>Meeting Notes</p>
+                                {m.notes}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>
+                            {needsComplete && (
+                              <button onClick={() => { setCompletingMeeting(isExpanded ? null : m.id); setCompletionNotes(''); }}
+                                style={{ background: isExpanded ? '#3E423D' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 11, cursor: 'pointer' }}>
+                                {isExpanded ? '▲ Close' : '✓ Complete'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div style={{ borderTop: '1px solid rgba(62,66,61,0.08)', padding: 20, background: '#FAFAF9' }}>
+                            <textarea value={completionNotes} onChange={e => setCompletionNotes(e.target.value)}
+                              placeholder="What was discussed? Key takeaways, next steps..."
+                              rows={4} style={{ width: '100%', background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 14px', fontSize: 13, resize: 'vertical', outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box', lineHeight: 1.6 }} />
+                            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                              <button onClick={() => completeMeeting(m.id)} disabled={savingCompletion}
+                                style={{ flex: 1, background: savingCompletion ? '#A5B2A3' : '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontSize: 13, cursor: 'pointer' }}>
+                                {savingCompletion ? '⏳ Saving...' : '✓ Mark Complete & Save Notes'}
+                              </button>
+                              <button onClick={() => setCompletingMeeting(null)}
+                                style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ─── DOCUMENTS TAB ─── */}
         {activeTab === 'documents' && (
