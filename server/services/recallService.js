@@ -7,7 +7,7 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
-// ─── CREATE BOT (send to a meeting) ──────────────────────────────────────────
+// ─── CREATE BOT (send to a meeting — no transcription, async later) ──────────
 
 async function createBot(meetingUrl, botName = 'Planfor Assistant') {
   const response = await fetch(`${RECALL_BASE_URL}/bot`, {
@@ -16,12 +16,6 @@ async function createBot(meetingUrl, botName = 'Planfor Assistant') {
     body: JSON.stringify({
       meeting_url: meetingUrl,
       bot_name: botName,
-      transcription_options: {
-        provider: 'default',
-      },
-      real_time_transcription: {
-        partial_results: false,
-      },
     }),
   });
 
@@ -60,39 +54,69 @@ async function getBotStatus(botId) {
     meetingUrl: data.meeting_url,
     videoUrl: data.video_url || null,
     recordingUrl: data.recording || null,
+    recordingId: data.recording?.split('/').filter(Boolean).pop() || null,
   };
 }
 
-// ─── GET TRANSCRIPT ──────────────────────────────────────────────────────────
+// ─── CREATE ASYNC TRANSCRIPT ─────────────────────────────────────────────────
 
-async function getTranscript(botId) {
-  const response = await fetch(`${RECALL_BASE_URL}/bot/${botId}/transcript`, {
+async function createAsyncTranscript(recordingId) {
+  const response = await fetch(`${RECALL_BASE_URL}/recording/${recordingId}/create_transcript/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      provider: {
+        recallai_async: {
+          language_code: 'en',
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Recall.ai create transcript failed: ${response.status} — ${error}`);
+  }
+
+  const data = await response.json();
+  console.log('📝 Recall.ai transcript job created for recording:', recordingId);
+  return data;
+}
+
+// ─── FETCH TRANSCRIPT ────────────────────────────────────────────────────────
+
+async function fetchTranscript(transcriptId) {
+  const response = await fetch(`${RECALL_BASE_URL}/transcript/${transcriptId}/`, {
     method: 'GET',
     headers,
   });
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Recall.ai get transcript failed: ${response.status} — ${error}`);
+    throw new Error(`Recall.ai fetch transcript failed: ${response.status} — ${error}`);
   }
 
   const data = await response.json();
 
-  // data is an array of segments: [{ speaker, words: [{ text, start_time, end_time }] }]
-  // Build full transcript text and structured segments
-  const segments = (data || []).map(segment => ({
-    speaker: segment.speaker || 'Unknown',
-    text: (segment.words || []).map(w => w.text).join(' '),
-    startTime: segment.words?.[0]?.start_time || 0,
-    endTime: segment.words?.[segment.words.length - 1]?.end_time || 0,
-  }));
+  // Download the actual transcript from the pre-signed URL
+  if (data.data?.download_url) {
+    const transcriptResponse = await fetch(data.data.download_url);
+    const transcriptData = await transcriptResponse.json();
 
-  const fullText = segments.map(s => `${s.speaker}: ${s.text}`).join('\n\n');
+    // Parse transcript segments with speaker labels
+    const segments = (transcriptData || []).map(segment => ({
+      speaker: segment.speaker || 'Unknown',
+      text: (segment.words || []).map(w => w.text).join(' '),
+      startTime: segment.words?.[0]?.start_time || segment.start_time || 0,
+      endTime: segment.words?.[segment.words.length - 1]?.end_time || segment.end_time || 0,
+    }));
 
-  return {
-    fullText,
-    segments,
-  };
+    const fullText = segments.map(s => `${s.speaker}: ${s.text}`).join('\n\n');
+
+    return { fullText, segments };
+  }
+
+  throw new Error('No transcript download URL available');
 }
 
 // ─── MAP RECALL STATUS TO CRM STATUS ─────────────────────────────────────────
@@ -116,6 +140,7 @@ function mapRecallStatus(recallStatus) {
 module.exports = {
   createBot,
   getBotStatus,
-  getTranscript,
+  createAsyncTranscript,
+  fetchTranscript,
   mapRecallStatus,
 };

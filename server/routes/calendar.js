@@ -800,4 +800,135 @@ router.post('/meetings/:id/regenerate-summary', auth, async (req, res) => {
   }
 });
 
+// ─── RECALL.AI WEBHOOK ───────────────────────────────────────────────────────
+
+// POST /api/calendar/webhook/recall (no auth — called by Recall.ai)
+router.post('/webhook/recall', async (req, res) => {
+  try {
+    const { event, data } = req.body;
+    console.log('🔔 Recall.ai webhook:', event);
+
+    if (event === 'recording.done') {
+      const botId = data?.bot?.id;
+      const recordingId = data?.recording?.id;
+
+      if (!botId || !recordingId) {
+        console.warn('Webhook missing bot or recording ID');
+        return res.json({ received: true });
+      }
+
+      // Find the meeting by recall_bot_id
+      const { data: meeting } = await supabase
+        .from('crm_meetings')
+        .select('id, title')
+        .eq('recall_bot_id', botId)
+        .single();
+
+      if (!meeting) {
+        console.warn('No CRM meeting found for bot:', botId);
+        return res.json({ received: true });
+      }
+
+      // Update recording status
+      await supabase
+        .from('crm_meetings')
+        .update({
+          recording_status: 'processing',
+          recording_url: recordingId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', meeting.id);
+
+      console.log('📹 Recording done for:', meeting.title, '| Creating transcript job...');
+
+      // Trigger async transcription
+      const recallService = require('../services/recallService');
+      await recallService.createAsyncTranscript(recordingId);
+
+      console.log('📝 Transcript job created for:', meeting.title);
+    }
+
+    if (event === 'transcript.done') {
+      const botId = data?.bot?.id;
+      const transcriptId = data?.transcript?.id;
+
+      if (!botId || !transcriptId) {
+        console.warn('Webhook missing bot or transcript ID');
+        return res.json({ received: true });
+      }
+
+      // Find the meeting
+      const { data: meeting } = await supabase
+        .from('crm_meetings')
+        .select('*, crm_companies(company_name), crm_clients(business_name), crm_people(first_name, last_name)')
+        .eq('recall_bot_id', botId)
+        .single();
+
+      if (!meeting) {
+        console.warn('No CRM meeting found for bot:', botId);
+        return res.json({ received: true });
+      }
+
+      console.log('📝 Transcript ready for:', meeting.title, '| Fetching...');
+
+      // Fetch the transcript
+      const recallService = require('../services/recallService');
+      const { fullText, segments } = await recallService.fetchTranscript(transcriptId);
+
+      // Generate AI summary
+      const { generateMeetingSummary } = require('../services/aiSummary');
+      const summary = await generateMeetingSummary(fullText, {
+        title: meeting.title,
+        companyName: meeting.crm_companies?.company_name || meeting.crm_clients?.business_name || '',
+        contactName: meeting.crm_people ? `${meeting.crm_people.first_name} ${meeting.crm_people.last_name}` : '',
+        meetingType: meeting.meeting_type,
+      });
+
+      // Save everything
+      await supabase
+        .from('crm_meetings')
+        .update({
+          transcript: fullText,
+          transcript_segments: segments,
+          ai_summary: summary.summary,
+          ai_action_items: summary.actionItems,
+          recording_status: 'completed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', meeting.id);
+
+      // Log to activity
+      if (meeting.company_id || meeting.client_id) {
+        // Find any user who created this meeting for the activity log
+        await supabase.from('crm_activity_log').insert([{
+          company_id: meeting.company_id || null,
+          client_id: meeting.client_id || null,
+          person_id: meeting.person_id || null,
+          user_id: meeting.created_by,
+          action: 'Meeting Recorded',
+          details: `AI summary generated for "${meeting.title}" — ${summary.actionItems.length} action item(s) identified`,
+        }]);
+      }
+
+      console.log('✅ Transcript + AI summary saved for:', meeting.title);
+    }
+
+    if (event === 'transcript.failed') {
+      const botId = data?.bot?.id;
+      if (botId) {
+        await supabase
+          .from('crm_meetings')
+          .update({ recording_status: 'failed', updated_at: new Date().toISOString() })
+          .filter('recall_bot_id', 'eq', botId);
+        console.error('❌ Transcript failed for bot:', botId);
+      }
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error('Recall webhook error:', err.message);
+    res.json({ received: true }); // Always return 200 to Recall.ai
+  }
+});
+
 module.exports = router;
