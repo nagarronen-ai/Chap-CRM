@@ -17,7 +17,7 @@ app.use('/api/clients', require('./routes/clients'));
 app.use('/api/uploads', require('./routes/uploads'));
 app.use('/api/google', require('./routes/google'));
 app.use('/api/sync', require('./routes/sync'));
-app.use('/api/calendar', require('./routes/Calendar'));
+app.use('/api/calendar', require('./routes/calendar'));
 
 const PORT = process.env.PORT || 5000;
 
