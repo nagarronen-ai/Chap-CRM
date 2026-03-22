@@ -750,30 +750,59 @@ Supabase Storage with two private buckets: `client-documents` and `receipts`. Up
 
 ## Changelog
 
-### v1.4.3 (March 2026) — Quick Reply + Gmail Threading
-- Quick Reply from Email Inbox — reply directly from thread without navigating to profile
-- Inline reply composer: recipient display, textarea, send/cancel buttons
-- Gmail threading support: `In-Reply-To` + `References` headers + `threadId` for proper conversation threading
-- Quoted previous message in reply body (classic email format with left border)
-- Optimistic update: sent reply appears immediately in expanded thread
-- Updated `sendViaGmail` to support `threadId` and `inReplyTo` parameters
-- Version tag displayed in sidebar footer (v1.4.3)
+### v1.5.2 (March 2026) — Profile Consistency + LocationSelector
+**Profile Redesign**
+- Consistent Overview tab layout across Company and Client profiles
+- Unified sections: Contact Info, Business, Marketing, Social (+ Contract on Client)
+- Removed duplicate Business Name from Client Contact Info (already in header)
+- LocationSelector component: reusable country/state dropdown shared by both profiles
 
-### v1.4.2 (March 2026) — Calendar Completion Flow
-- Calendar event popup: completion prompt for past meetings (yellow banner with Complete/No-show)
-- Import & Complete: auto-creates CRM meeting record from Google-only Calendar events on completion
-- Meeting notes displayed in calendar event popup for completed meetings
-- Fixed HTML description rendering in event detail popup (`dangerouslySetInnerHTML`)
-- Backend: `POST /api/calendar/import-complete` endpoint
+**LocationSelector Component**
+- 70+ countries sorted A-Z with timezone mapping
+- Dynamic state/province dropdown for US (50 states + DC), Canada (10 provinces), Australia (8 states)
+- Live clock badge showing current local time for selected country/state (updates every 30s)
+- Timezone-aware: state-level precision for US/CA/AU, country-level for others
 
-### v1.4.1 (March 2026) — Meeting Management Workflow
-- Pipeline auto-update: auto-moves company to "Meeting Scheduled" on meeting creation (if stage is earlier)
-- Needs Completion widget on Dashboard: past meetings with Complete/No-show buttons and inline notes
-- Meetings tab on Company Profile: summary cards (total/completed/scheduled/cancelled), full history, completion flow, notes display
-- Meetings tab on Client Profile: same as Company Profile
-- Backend: `GET /api/calendar/needs-completion` endpoint (past 30 days, scheduled status)
-- Activity log entries on meeting completion and cancellation
-- Dashboard layout: Needs Completion full-width above 3-column grid
+**Database Changes**
+- Renamed `twitter_url` → `instagram_url` in `crm_companies`
+- Added `origin`, `linkedin_url`, `facebook_url`, `instagram_url` columns to `crm_clients`
+
+**New Components:** LocationSelector.js
+
+### v1.5.1 (March 2026) — Recall.ai Webhook + Async Transcription
+- Recall.ai webhook endpoint for `recording.done` and `transcript.done` events
+- Async transcription via Recall.ai built-in transcriber
+- Full end-to-end flow: recording → transcript → AI summary (production tested)
+
+### v1.5.0 (March 2026) — Recall.ai Recording + AI Meeting Summaries
+**Meeting Recording**
+- One-click recording via Recall.ai bot ("Planfor Assistant" joins Google Meet)
+- Recording status polling: sending_bot → recording → processing → completed
+- Auto-record toggle on meeting creation (cron checks every 60s)
+
+**AI Meeting Summaries (OpenAI GPT-4o-mini)**
+- Automatic summary generation from meeting transcripts
+- Key takeaways, action items with priority and owner, sentiment analysis
+- Regenerate summary button · Cost: ~$0.36/meeting
+
+**New Files:** `recallService.js`, `aiSummary.js`
+**New DB Columns:** `recall_bot_id`, `recording_url`, `transcript`, `transcript_segments`, `ai_summary`, `ai_action_items`, `recording_status`, `auto_record`
+**New Env Vars:** `RECALL_API_KEY`, `OPENAI_API_KEY`
+
+### v1.4.2 (March 2026) — Calendar Completion Flow + Import Events
+- Calendar event popup: completion prompt for past meetings
+- Import & Complete: auto-creates CRM record from Google-only Calendar events
+- Client meetings endpoint shows meetings from converted company too
+
+### v1.4.1 (March 2026) — Meeting Management Workflow + Quick Reply
+**Meeting Management (Task 7)**
+- Pipeline auto-update to "Meeting Scheduled" on meeting creation
+- Needs Completion widget on Dashboard
+- Meetings tab on Company + Client profiles
+
+**Quick Reply from Email Inbox**
+- Inline reply composer with Gmail threading (In-Reply-To + References + threadId)
+- Optimistic update: sent reply appears immediately in thread
 
 ### v1.4.0 (March 2026) — Gmail + Calendar + Polish
 **Gmail OAuth & Connected Accounts**
@@ -875,7 +904,7 @@ Supabase Storage with two private buckets: `client-documents` and `receipts`. Up
 | Gmail threading (In-Reply-To + threadId) | ✅ Done |
 | Calendar completion flow + Google event import | ✅ Done |
 | Version tag in sidebar | ✅ Done |
-| Recall.ai recording + transcription + AI summary | 🔵 Next |
+| Recall.ai recording + transcription + AI summary | ✅ Done |
 | Production Google OAuth redirect URI | 🔵 Pending |
 | Stripe integration | 🔵 Pending API key |
 

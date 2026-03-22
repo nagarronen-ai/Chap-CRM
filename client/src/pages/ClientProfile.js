@@ -5,6 +5,7 @@ import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 import TiptapEditor from '../components/TiptapEditor';
 import ScheduleMeetingModal from '../components/ScheduleMeetingModal';
+import LocationSelector from '../components/LocationSelector';
 
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
@@ -576,17 +577,11 @@ try {
 {activeTab === 'overview' && (
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
             <div style={{ background: '#fff', borderRadius: 12, padding: 28, border: '1px solid rgba(62,66,61,0.1)' }}>
-              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contact Info</h3>
+            <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contact Info</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
                 {[
-                  { field: 'business_name', label: 'Business Name' },
-                  { field: 'contact_first_name', label: 'First Name' },
-                  { field: 'contact_last_name', label: 'Last Name' },
-                  { field: 'contact_email', label: 'Email' },
-                  { field: 'contact_phone', label: 'Phone' },
                   { field: 'address', label: 'Address' },
                   { field: 'city', label: 'City' },
-                  { field: 'state', label: 'State' },
                 ].map(({ field, label }) => (
                   <div key={field}>
                     <label style={labelStyle}>{label}</label>
@@ -596,7 +591,38 @@ try {
                         autoFocus style={inputStyle} />
                     ) : (
                       <p onClick={() => isAdmin && setEditField(field)}
-                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '9px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        {client[field] || '—'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                <LocationSelector
+                  country={client.country}
+                  state={client.state}
+                  onCountryChange={v => updateField('country', v)}
+                  onStateChange={v => updateField('state', v)}
+                  editable={isAdmin}
+                  labelStyle={labelStyle}
+                  inputStyle={{ width: '100%', background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '6px 10px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' }}
+                />
+              </div>
+
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Business</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
+                {[
+                  { field: 'category', label: 'Category' },
+                  { field: 'business_type', label: 'Business Type' },
+                ].map(({ field, label }) => (
+                  <div key={field}>
+                    <label style={labelStyle}>{label}</label>
+                    {editField === field ? (
+                      <input type="text" value={client[field] || ''} onChange={e => setClient(prev => ({ ...prev, [field]: e.target.value }))}
+                        onBlur={e => updateField(field, e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField(field, e.target.value)}
+                        autoFocus style={inputStyle} />
+                    ) : (
+                      <p onClick={() => isAdmin && setEditField(field)}
+                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '9px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
                         {client[field] || '—'}
                       </p>
                     )}
@@ -604,11 +630,33 @@ try {
                 ))}
               </div>
 
-              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Business</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Marketing</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px 16px', marginBottom: 20 }}>
                 {[
-                  { field: 'category', label: 'Category' },
-                  { field: 'business_type', label: 'Business Type' },
+                  { field: 'origin', label: 'Origin' },
+                ].map(({ field, label }) => (
+                  <div key={field}>
+                    <label style={labelStyle}>{label}</label>
+                    {editField === field ? (
+                      <input type="text" value={client[field] || ''} onChange={e => setClient(prev => ({ ...prev, [field]: e.target.value }))}
+                        onBlur={e => updateField(field, e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField(field, e.target.value)}
+                        autoFocus style={inputStyle} />
+                    ) : (
+                      <p onClick={() => isAdmin && setEditField(field)}
+                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '9px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        {client[field] || '—'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Social</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
+                {[
+                  { field: 'linkedin_url', label: 'LinkedIn' },
+                  { field: 'facebook_url', label: 'Facebook' },
+                  { field: 'instagram_url', label: 'Instagram' },
                   { field: 'website', label: 'Website' },
                 ].map(({ field, label }) => (
                   <div key={field}>
@@ -619,7 +667,7 @@ try {
                         autoFocus style={inputStyle} />
                     ) : (
                       <p onClick={() => isAdmin && setEditField(field)}
-                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '9px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
                         {client[field] || '—'}
                       </p>
                     )}
@@ -628,65 +676,26 @@ try {
               </div>
 
               <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contract</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
-                <div>
-                  <label style={labelStyle}>Contract Type</label>
-                  {editField === 'contract_type' ? (
-                    <select value={client.contract_type || ''} onChange={e => updateField('contract_type', e.target.value)} onBlur={() => setEditField(null)} autoFocus style={inputStyle}>
-                      <option value="RevShare">RevShare ($ + %)</option>
-                      <option value="Commission">Commission (%)</option>
-                      <option value="Subscription">Subscription ($/month)</option>
-                    </select>
-                  ) : (
-                    <p onClick={() => isAdmin && setEditField('contract_type')}
-                      style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 500, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
-                      {client.contract_type || '—'}
-                    </p>
-                  )}
-                </div>
-                {(client.contract_type === 'RevShare' || client.contract_type === 'Commission') && (
-                  <div>
-                    <label style={labelStyle}>{client.contract_type === 'RevShare' ? 'Revenue Share (%)' : 'Commission Rate (%)'}</label>
-                    {editField === 'commission_rate' ? (
-                      <input type="number" value={client.commission_rate || ''} onChange={e => setClient(prev => ({ ...prev, commission_rate: e.target.value }))}
-                        onBlur={e => updateField('commission_rate', e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField('commission_rate', e.target.value)}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px' }}>
+                {[
+                  { field: 'contract_type', label: 'Contract Type' },
+                  { field: 'contract_amount', label: 'Monthly Amount ($)' },
+                  { field: 'contract_signed_date', label: 'Contract Signed' },
+                ].map(({ field, label }) => (
+                  <div key={field}>
+                    <label style={labelStyle}>{label}</label>
+                    {editField === field ? (
+                      <input type={field === 'contract_signed_date' ? 'date' : 'text'} value={client[field] || ''} onChange={e => setClient(prev => ({ ...prev, [field]: e.target.value }))}
+                        onBlur={e => updateField(field, e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField(field, e.target.value)}
                         autoFocus style={inputStyle} />
                     ) : (
-                      <p onClick={() => isAdmin && setEditField('commission_rate')}
-                        style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 500, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
-                        {client.commission_rate ? `${client.commission_rate}%` : '—'}
+                      <p onClick={() => isAdmin && setEditField(field)}
+                        style={{ color: client[field] ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '9px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
+                        {client[field] || '—'}
                       </p>
                     )}
                   </div>
-                )}
-                {(client.contract_type === 'RevShare' || client.contract_type === 'Subscription') && (
-                  <div>
-                    <label style={labelStyle}>{client.contract_type === 'RevShare' ? 'Base Amount ($)' : 'Monthly Amount ($)'}</label>
-                    {editField === 'contract_amount' ? (
-                      <input type="number" value={client.contract_amount || ''} onChange={e => setClient(prev => ({ ...prev, contract_amount: e.target.value }))}
-                        onBlur={e => updateField('contract_amount', e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField('contract_amount', e.target.value)}
-                        autoFocus style={inputStyle} />
-                    ) : (
-                      <p onClick={() => isAdmin && setEditField('contract_amount')}
-                        style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 500, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
-                        {client.contract_amount ? `$${client.contract_amount}` : '—'}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <div>
-                  <label style={labelStyle}>Contract Signed</label>
-                  {editField === 'contract_signed_date' ? (
-                    <input type="date" value={client.contract_signed_date || ''} onChange={e => setClient(prev => ({ ...prev, contract_signed_date: e.target.value }))}
-                      onBlur={e => updateField('contract_signed_date', e.target.value)}
-                      autoFocus style={inputStyle} />
-                  ) : (
-                    <p onClick={() => isAdmin && setEditField('contract_signed_date')}
-                      style={{ color: client.contract_signed_date ? '#1a1d1a' : '#CBCED4', fontSize: 13, fontWeight: client.contract_signed_date ? 500 : 400, margin: 0, padding: '6px 10px', background: '#F5F3EF', borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
-                      {client.contract_signed_date || '—'}
-                    </p>
-                  )}
-                </div>
+                ))}
               </div>
             </div>
             <div>

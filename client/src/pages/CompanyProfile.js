@@ -5,6 +5,7 @@ import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 import TiptapEditor from '../components/TiptapEditor';
 import ScheduleMeetingModal from '../components/ScheduleMeetingModal';
+import LocationSelector from '../components/LocationSelector';
 
 const STAGES = ['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'];
 const ORIGINS = ['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'];
@@ -616,40 +617,45 @@ export default function CompanyProfile() {
  {activeTab === 'overview' && (
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
             <div style={{ background: '#fff', borderRadius: 12, padding: 28, border: '1px solid rgba(62,66,61,0.1)' }}>
-              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contact Info</h3>
+            <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contact Info</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
+                <InlineField label="Address" value={company.company_address} onSave={v => updateField('company_address', v)} />
+                <InlineField label="City" value={company.city} onSave={v => updateField('city', v)} />
+                <LocationSelector
+                  country={company.country}
+                  state={company.state}
+                  onCountryChange={v => updateField('country', v)}
+                  onStateChange={v => updateField('state', v)}
+                  labelStyle={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}
+                  inputStyle={{ width: '100%', background: '#F5F3EF', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '6px 10px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' }}                />
+              </div>
+
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Business</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
                 {[
-                  { field: 'company_name', label: 'Company Name' },
-                  { field: 'city', label: 'City' },
-                  { field: 'state', label: 'State' },
-                  { field: 'country', label: 'Country', options: COUNTRIES },
-                  { field: 'company_address', label: 'Address' },
+                  { field: 'category', label: 'Category', options: Object.keys(CATEGORIES) },
+                  { field: 'business_type', label: 'Business Type', options: company.category ? CATEGORIES[company.category] : [] },
+                ].map(({ field, label, options }) => (
+                  <InlineField key={field} label={label} value={company[field]} onSave={v => updateField(field, v)} options={options} />
+                ))}
+              </div>
+
+              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Marketing</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px 16px', marginBottom: 20 }}>
+                {[
                   { field: 'origin', label: 'Origin', options: ORIGINS },
                 ].map(({ field, label, options }) => (
                   <InlineField key={field} label={label} value={company[field]} onSave={v => updateField(field, v)} options={options} />
                 ))}
               </div>
 
-              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Business</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
-                {[
-                  { field: 'category', label: 'Category', options: Object.keys(CATEGORIES) },
-                  { field: 'business_type', label: 'Business Type', options: company.category ? CATEGORIES[company.category] : [] },
-                  { field: 'website', label: 'Website' },
-                  { field: 'industry', label: 'Industry' },
-                  { field: 'employees', label: 'Employees' },
-                  { field: 'annual_revenue', label: 'Annual Revenue' },
-                ].map(({ field, label, options }) => (
-                  <InlineField key={field} label={label} value={company[field]} onSave={v => updateField(field, v)} options={options} />
-                ))}
-              </div>
-
               <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Social</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
                 {[
                   { field: 'company_linkedin', label: 'LinkedIn' },
                   { field: 'facebook_url', label: 'Facebook' },
-                  { field: 'twitter_url', label: 'Twitter' },
+                  { field: 'instagram_url', label: 'Instagram' },
+                  { field: 'website', label: 'Website' },
                 ].map(({ field, label }) => (
                   <InlineField key={field} label={label} value={company[field]} onSave={v => updateField(field, v)} />
                 ))}
