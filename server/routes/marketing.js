@@ -286,6 +286,14 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
 });
 
 router.post('/webhook', async (req, res) => {
+  // ── DEBUG — remove after testing ──
+  console.log('🔍 req.body type:', typeof req.body);
+  console.log('🔍 req.body value:', req.body);
+  console.log('🔍 content-type:', req.headers['content-type']);
+  console.log('🔍 signature header:', req.headers['x-twilio-email-event-webhook-signature']);
+  console.log('🔍 timestamp header:', req.headers['x-twilio-email-event-webhook-timestamp']);
+  // ── END DEBUG ──
+
   // ── Signature verification ──────────────────────────────────────────────────
   const publicKey = process.env.SENDGRID_WEBHOOK_KEY_MARKETING;
 
