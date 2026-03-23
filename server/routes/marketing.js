@@ -301,8 +301,8 @@ router.post('/webhook', async (req, res) => {
     try {
       const wh = new EventWebhook();
       const key = wh.convertPublicKeyToECDSA(publicKey);
-      const signature = req.headers[EventWebhookHeader.SIGNATURE()];
-      const timestamp  = req.headers[EventWebhookHeader.TIMESTAMP()];
+      const signature = req.headers['x-twilio-email-event-webhook-signature'];
+      const timestamp = req.headers['x-twilio-email-event-webhook-timestamp'];
 
       const isValid = wh.verifySignature(key, req.body, signature, timestamp);
 
