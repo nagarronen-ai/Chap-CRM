@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
 const auth = require('../middleware/auth');
+const { EventWebhook, EventWebhookHeader } = require('@sendgrid/eventwebhook');
 
 // ─── RECIPIENT BUILDER ────────────────────────────────────────────────────────
 
@@ -284,14 +285,42 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
   }
 });
 
-// ─── SENDGRID WEBHOOK ─────────────────────────────────────────────────────────
-
 router.post('/webhook', async (req, res) => {
-  console.log('📣 Marketing webhook hit:', JSON.stringify(req.body).slice(0, 500));
+  // ── Signature verification ──────────────────────────────────────────────────
+  const publicKey = process.env.SENDGRID_WEBHOOK_KEY_MARKETING;
 
-  let events = req.body;
-  if (Buffer.isBuffer(events)) events = JSON.parse(events.toString());
-  if (typeof events === 'string') events = JSON.parse(events);
+  if (publicKey) {
+    try {
+      const wh = new EventWebhook();
+      const key = wh.convertPublicKeyToECDSA(publicKey);
+      const signature = req.headers[EventWebhookHeader.SIGNATURE()];
+      const timestamp  = req.headers[EventWebhookHeader.TIMESTAMP()];
+
+      const isValid = wh.verifySignature(key, req.body, signature, timestamp);
+
+      if (!isValid) {
+        console.warn('⚠️ SendGrid webhook signature verification FAILED');
+        return res.sendStatus(403);
+      }
+      console.log('✅ SendGrid webhook signature valid');
+    } catch (err) {
+      console.error('SendGrid signature verification error:', err.message);
+      return res.sendStatus(403);
+    }
+  } else {
+    console.warn('⚠️ SENDGRID_WEBHOOK_PUBLIC_KEY not set — skipping verification');
+  }
+
+  // ── Parse body (Buffer from express.raw) ────────────────────────────────────
+  let events;
+  try {
+    events = JSON.parse(req.body.toString());
+  } catch {
+    return res.sendStatus(400);
+  }
+
+  console.log('📣 Marketing webhook hit:', JSON.stringify(events).slice(0, 500));
+
   if (!Array.isArray(events)) return res.sendStatus(200);
 
   for (const event of events) {
@@ -312,7 +341,6 @@ router.post('/webhook', async (req, res) => {
 
         let emailRecord = null;
         
-        // Try matching by sendgrid_message_id first (most accurate)
         if (sg_message_id) {
           const { data } = await supabase
             .from('crm_emails_sent')
@@ -322,7 +350,6 @@ router.post('/webhook', async (req, res) => {
           emailRecord = data;
         }
         
-        // Fallback: match by company + user + most recent
         if (!emailRecord) {
           const { data } = await supabase
             .from('crm_emails_sent')
@@ -336,38 +363,36 @@ router.post('/webhook', async (req, res) => {
           emailRecord = data;
         }
 
-          if (emailRecord) {
-            // Only update if it's a higher-priority status (avoid downgrading clicked → opened)
-            const priority = { sent: 0, delivered: 1, opened: 2, clicked: 3, bounced: 4 };
-            const { data: current } = await supabase.from('crm_emails_sent').select('email_status').eq('id', emailRecord.id).single();
-            const currentPriority = priority[current?.email_status] || 0;
-            const newPriority = priority[updateData.email_status] || 0;
-  
-            if (newPriority >= currentPriority) {
-              await supabase.from('crm_emails_sent').update(updateData).eq('id', emailRecord.id);
+        if (emailRecord) {
+          const priority = { sent: 0, delivered: 1, opened: 2, clicked: 3, bounced: 4 };
+          const { data: current } = await supabase.from('crm_emails_sent').select('email_status').eq('id', emailRecord.id).single();
+          const currentPriority = priority[current?.email_status] || 0;
+          const newPriority = priority[updateData.email_status] || 0;
+
+          if (newPriority >= currentPriority) {
+            await supabase.from('crm_emails_sent').update(updateData).eq('id', emailRecord.id);
+          }
+
+          if (['open', 'click', 'bounce'].includes(eventType)) {
+            const { data: existingLog } = await supabase
+              .from('crm_activity_log')
+              .select('id')
+              .eq('company_id', company_id)
+              .ilike('action', `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`)
+              .limit(1);
+
+            if (!existingLog || existingLog.length === 0) {
+              await supabase.from('crm_activity_log').insert([{
+                company_id,
+                user_id,
+                action: `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`,
+                details: `Recipient ${eventType === 'bounce' ? 'bounced' : eventType + 'ed'} the email`
+              }]);
             }
-  
-            // Only log activity once per event type per email
-            if (['open', 'click', 'bounce'].includes(eventType)) {
-              const { data: existingLog } = await supabase
-                .from('crm_activity_log')
-                .select('id')
-                .eq('company_id', company_id)
-                .ilike('action', `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`)
-                .limit(1);
-  
-              if (!existingLog || existingLog.length === 0) {
-                await supabase.from('crm_activity_log').insert([{
-                  company_id,
-                  user_id,
-                  action: `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`,
-                  details: `Recipient ${eventType === 'bounce' ? 'bounced' : eventType + 'ed'} the email`
-                }]);
-              }
-            }
-  
-            console.log('📣 Updated direct email:', emailRecord.id, eventType);
-          } else {
+          }
+
+          console.log('📣 Updated direct email:', emailRecord.id, eventType);
+        } else {
           console.log('📣 No matching email record found for direct event:', eventType, company_id, user_id);
         }
       }
@@ -402,12 +427,12 @@ router.post('/webhook', async (req, res) => {
       .eq('campaign_id', campaign_id)
       .eq('email', email);
 
-      if (eventType === 'unsubscribe' && email) {
-        await supabase
-          .from('crm_people')
-          .update({ marketing_unsubscribed: true, marketing_unsubscribed_at: eventTime })
-          .eq('email', email);
-      }
+    if (eventType === 'unsubscribe' && email) {
+      await supabase
+        .from('crm_people')
+        .update({ marketing_unsubscribed: true, marketing_unsubscribed_at: eventTime })
+        .eq('email', email);
+    }
   }
 
   res.sendStatus(200);
