@@ -294,15 +294,29 @@ router.post('/webhook', async (req, res) => {
   console.log('🔍 timestamp header:', req.headers['x-twilio-email-event-webhook-timestamp']);
   // ── END DEBUG ──
 
-  // ── Signature verification ──────────────────────────────────────────────────
   const publicKey = process.env.SENDGRID_WEBHOOK_KEY_MARKETING;
 
   if (publicKey) {
     try {
+      // ── DEBUG ──
+      console.log('🔍 publicKey exists:', !!publicKey);
+      console.log('🔍 publicKey length:', publicKey?.length);
+      // ── END DEBUG ──
+
       const wh = new EventWebhook();
       const key = wh.convertPublicKeyToECDSA(publicKey);
+
+      // ── DEBUG ──
+      console.log('🔍 key converted:', !!key);
+      // ── END DEBUG ──
+
       const signature = req.headers['x-twilio-email-event-webhook-signature'];
       const timestamp = req.headers['x-twilio-email-event-webhook-timestamp'];
+
+      // ── DEBUG ──
+      console.log('🔍 signature:', signature);
+      console.log('🔍 timestamp:', timestamp);
+      // ── END DEBUG ──
 
       const isValid = wh.verifySignature(key, req.body, signature, timestamp);
 
