@@ -4,10 +4,12 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+
 app.use(cors());
+
 // ─── RAW BODY FOR SENDGRID WEBHOOK ───────────────────────────────────────────
 // Must come BEFORE express.json() — SendGrid signature verification needs raw body
-app.use('/api/marketing/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/marketing/webhook', express.raw({ type: '*/*' }));
 
 // ─── GLOBAL JSON PARSER ───────────────────────────────────────────────────────
 app.use(express.json());
