@@ -286,37 +286,14 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
 });
 
 router.post('/webhook', async (req, res) => {
-  // ── DEBUG — remove after testing ──
-  console.log('🔍 req.body type:', typeof req.body);
-  console.log('🔍 req.body value:', req.body);
-  console.log('🔍 content-type:', req.headers['content-type']);
-  console.log('🔍 signature header:', req.headers['x-twilio-email-event-webhook-signature']);
-  console.log('🔍 timestamp header:', req.headers['x-twilio-email-event-webhook-timestamp']);
-  // ── END DEBUG ──
-
   const publicKey = process.env.SENDGRID_WEBHOOK_KEY_MARKETING;
 
   if (publicKey) {
     try {
-      // ── DEBUG ──
-      console.log('🔍 publicKey exists:', !!publicKey);
-      console.log('🔍 publicKey length:', publicKey?.length);
-      // ── END DEBUG ──
-
       const wh = new EventWebhook();
       const key = wh.convertPublicKeyToECDSA(publicKey);
-
-      // ── DEBUG ──
-      console.log('🔍 key converted:', !!key);
-      // ── END DEBUG ──
-
       const signature = req.headers['x-twilio-email-event-webhook-signature'];
       const timestamp = req.headers['x-twilio-email-event-webhook-timestamp'];
-
-      // ── DEBUG ──
-      console.log('🔍 signature:', signature);
-      console.log('🔍 timestamp:', timestamp);
-      // ── END DEBUG ──
 
       const isValid = wh.verifySignature(key, req.body, signature, timestamp);
 
@@ -324,16 +301,12 @@ router.post('/webhook', async (req, res) => {
         console.warn('⚠️ SendGrid webhook signature verification FAILED');
         return res.sendStatus(403);
       }
-      console.log('✅ SendGrid webhook signature valid');
     } catch (err) {
       console.error('SendGrid signature verification error:', err.message);
       return res.sendStatus(403);
     }
-  } else {
-    console.warn('⚠️ SENDGRID_WEBHOOK_PUBLIC_KEY not set — skipping verification');
   }
 
-  // ── Parse body (Buffer from express.raw) ────────────────────────────────────
   let events;
   try {
     events = JSON.parse(req.body.toString());
@@ -341,7 +314,7 @@ router.post('/webhook', async (req, res) => {
     return res.sendStatus(400);
   }
 
-  console.log('📣 Marketing webhook hit:', JSON.stringify(events).slice(0, 500));
+  console.log('📣 Marketing webhook hit:', JSON.stringify(events).slice(0, 200));
 
   if (!Array.isArray(events)) return res.sendStatus(200);
 
