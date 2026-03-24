@@ -3,6 +3,7 @@ import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 import TiptapEditor from '../components/TiptapEditor';
+import HtmlEditor from '../components/HtmlEditor';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 const CATEGORIES = ['Outreach', 'Follow-up', 'Proposal', 'Meeting Confirmation', 'General'];
@@ -349,15 +350,11 @@ export default function Emails() {
                         </div>
                       </div>
                     ) : activeTab === 'html' ? (
-                      <textarea
-                        ref={editorRef}
-                        value={form.body_html}
-                        onChange={e => { setForm({ ...form, body_html: e.target.value }); setFormErrors(prev => prev.filter(f => f !== 'body_html')); }}
-                        onFocus={() => setActiveField('body')}
-                        onDragOver={e => e.preventDefault()}
-                        onDrop={handleBodyDrop}
-                        style={{ ...inputStyle, minHeight: 340, fontFamily: 'monospace', fontSize: 12, resize: 'vertical', lineHeight: 1.6, border: formErrors.includes('body_html') ? '1px solid #D4183D' : activeField === 'body' ? '1px solid #8E9B8B' : '1px solid rgba(62,66,61,0.1)' }}
-                      />
+                      <HtmlEditor
+  value={form.body_html}
+  onChange={val => { setForm(prev => ({ ...prev, body_html: val })); setFormErrors(prev => prev.filter(f => f !== 'body_html')); }}
+  minHeight="340px"
+/>
                     ) : (
                       <TiptapEditor
                         content={form.body_html}

@@ -3,6 +3,7 @@ import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 import TiptapEditor from '../components/TiptapEditor';
+import HtmlEditor from '../components/HtmlEditor';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
@@ -351,9 +352,11 @@ export default function Marketing() {
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
                       <span style={{ fontSize: 11, color: '#717182', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>HTML Code</span>
                     </div>
-                    <textarea value={prettifyHTML(form.body_html)} onChange={e => setForm({ ...form, body_html: e.target.value })}
-                      style={{ ...inputStyle, fontFamily: "'SF Mono', 'Fira Code', monospace", fontSize: 11, lineHeight: 1.5, resize: 'none', height: 'auto', minHeight: 392, flex: 1, background: '#1E1E2E', color: '#CDD6F4', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: 16 }}
-                      placeholder="HTML will appear here as you type..." />
+                    <HtmlEditor
+  value={prettifyHTML(form.body_html)}
+  onChange={val => setForm({ ...form, body_html: val })}
+  minHeight="392px"
+/>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12, padding: '12px 16px', background: '#F5F3EF', borderRadius: 8, border: '1px solid rgba(62,66,61,0.08)' }}>
