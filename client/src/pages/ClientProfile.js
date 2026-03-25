@@ -6,6 +6,8 @@ import { useRole } from '../hooks/useRole';
 import TiptapEditor from '../components/TiptapEditor';
 import ScheduleMeetingModal from '../components/ScheduleMeetingModal';
 import LocationSelector from '../components/LocationSelector';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
@@ -139,7 +141,9 @@ export default function ClientProfile() {
   const [completingMeeting, setCompletingMeeting] = useState(null);
   const [completionNotes, setCompletionNotes] = useState('');
   const [savingCompletion, setSavingCompletion] = useState(false);
-
+  const [activityFilter, setActivityFilter] = useState('all');
+  const [editingNotes, setEditingNotes] = useState(null); // meeting id being edited
+  const [editingNotesText, setEditingNotesText] = useState('');
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
   const [emailRecipient, setEmailRecipient] = useState(null);
@@ -202,6 +206,16 @@ export default function ClientProfile() {
       alert('Failed to start recording: ' + (err.response?.data?.error || err.message));
       setRecordingStatus(prev => ({ ...prev, [meetingId]: null }));
     }
+  };
+
+  const saveNotes = async (meetingId) => {
+    try {
+      await axios.put(`${API}/calendar/meetings/${meetingId}`, {
+        notes: editingNotesText,
+      }, { headers: getHeaders() });
+      setEditingNotes(null);
+      fetchMeetings();
+    } catch (err) { console.error(err); }
   };
 
   const pollRecordingStatus = (meetingId) => {
@@ -874,19 +888,51 @@ try {
           </div>
         )}
 
-        {/* ─── ACTIVITY TAB ─── */}
-        {activeTab === 'activity' && (
+{/* ─── ACTIVITY TAB ─── */}
+{activeTab === 'activity' && (
   <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)' }}>
+
+    {/* Filter buttons */}
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+      {[
+        { key: 'all', label: 'All' },
+        { key: 'meetings', label: '📅 Meetings' },
+        { key: 'emails', label: '📧 Emails' },
+        { key: 'notes', label: '📌 Notes' },
+      ].map(f => (
+        <button key={f.key} onClick={() => setActivityFilter(f.key)}
+          style={{
+            background: activityFilter === f.key ? (f.key === 'meetings' ? '#B4A5D6' : '#8E9B8B') : '#F5F3EF',
+            color: activityFilter === f.key ? '#fff' : '#5A6059',
+            border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer'
+          }}>
+          {f.label}
+        </button>
+      ))}
+    </div>
+
     {activity.length === 0 && syncedEmails.length === 0 ? (
       <p style={{ color: '#CBCED4', fontSize: 13, textAlign: 'center', padding: '40px 0' }}>No activity yet</p>
     ) : (
       <>
-        {/* Combine activity + synced emails, sorted by date */}
         {[
           ...activity.map(a => ({ ...a, type: 'activity', sortDate: new Date(a.created_at) })),
           ...syncedEmails.map(e => ({ ...e, type: 'synced_email', sortDate: new Date(e.email_date) })),
         ]
           .sort((a, b) => b.sortDate - a.sortDate)
+          .filter(item => {
+            if (activityFilter === 'all') return true;
+            if (activityFilter === 'meetings') {
+              return item.type === 'activity' && ['Meeting Scheduled', 'Meeting Completed', 'Meeting Cancelled', 'Meeting No-show', 'Meeting Recorded'].includes(item.action);
+            }
+            if (activityFilter === 'emails') {
+              return item.type === 'synced_email' || (item.type === 'activity' && ['Email Sent', 'Email Received', 'Email Opened', 'Email Clicked', 'Email Bounced'].includes(item.action));
+            }
+            if (activityFilter === 'notes') {
+              return item.type === 'activity' && item.action === 'Note Added';
+            }
+            return true;
+          })
           .map(item => {
             if (item.type === 'synced_email') {
               const isExpanded = expandedSyncedEmail[item.id];
@@ -930,7 +976,6 @@ try {
               );
             }
 
-            // Regular activity item (existing rendering)
             return (
               <div key={item.id} style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: '1px solid rgba(62,66,61,0.06)', alignItems: 'flex-start' }}>
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#F5F3EF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
@@ -1036,11 +1081,57 @@ try {
 
                             {/* Meeting Notes */}
                             {m.notes && (
-                              <div style={{ marginTop: 10, padding: 12, background: '#F5F3EF', borderRadius: 8, fontSize: 13, color: '#3E423D', lineHeight: 1.6 }}>
-                                <p style={{ color: '#717182', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 6px', fontWeight: 600 }}>Meeting Notes</p>
-                                {m.notes}
-                              </div>
-                            )}
+  <div style={{ marginTop: 10, padding: 12, background: '#F5F3EF', borderRadius: 8, fontSize: 13, color: '#3E423D', lineHeight: 1.6 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+      <p style={{ color: '#717182', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', margin: 0, fontWeight: 600 }}>Meeting Notes</p>
+      {m.status === 'completed' && editingNotes !== m.id && (
+        <button onClick={() => { setEditingNotes(m.id); setEditingNotesText(m.notes); }}
+          style={{ background: 'none', border: 'none', color: '#94B0BC', fontSize: 11, cursor: 'pointer', padding: 0 }}>
+          ✏️ Edit
+        </button>
+      )}
+    </div>
+    {editingNotes === m.id ? (
+      <div>
+        <textarea value={editingNotesText} onChange={e => setEditingNotesText(e.target.value)}
+          rows={4} autoFocus
+          style={{ width: '100%', background: '#fff', border: '1px solid #8E9B8B', borderRadius: 8, padding: '10px 14px', fontSize: 13, resize: 'vertical', outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box', lineHeight: 1.6 }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button onClick={() => saveNotes(m.id)}
+            style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 12, cursor: 'pointer' }}>
+            Save
+          </button>
+          <button onClick={() => setEditingNotes(null)}
+            style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    ) : (
+      <div style={{ fontSize: 13, color: '#3E423D', lineHeight: 1.7 }}>
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      h1: ({node, ...props}) => <h1 style={{ fontSize: 16, fontWeight: 700, margin: '12px 0 6px', color: '#3E423D' }} {...props} />,
+      h2: ({node, ...props}) => <h2 style={{ fontSize: 15, fontWeight: 600, margin: '10px 0 6px', color: '#3E423D' }} {...props} />,
+      h3: ({node, ...props}) => <h3 style={{ fontSize: 14, fontWeight: 600, margin: '8px 0 4px', color: '#3E423D' }} {...props} />,
+      p: ({node, ...props}) => <p style={{ margin: '0 0 8px' }} {...props} />,
+      ul: ({node, ...props}) => <ul style={{ paddingLeft: 20, margin: '4px 0 8px' }} {...props} />,
+      ol: ({node, ...props}) => <ol style={{ paddingLeft: 20, margin: '4px 0 8px' }} {...props} />,
+      li: ({node, ...props}) => <li style={{ marginBottom: 4 }} {...props} />,
+      table: ({node, ...props}) => <table style={{ borderCollapse: 'collapse', width: '100%', margin: '10px 0', fontSize: 12 }} {...props} />,
+      th: ({node, ...props}) => <th style={{ background: '#E5E1D8', padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)' }} {...props} />,
+      td: ({node, ...props}) => <td style={{ padding: '8px 12px', color: '#5A6059', border: '1px solid rgba(62,66,61,0.1)', verticalAlign: 'top' }} {...props} />,
+      strong: ({node, ...props}) => <strong style={{ fontWeight: 600, color: '#3E423D' }} {...props} />,
+      hr: ({node, ...props}) => <hr style={{ border: 'none', borderTop: '1px solid rgba(62,66,61,0.1)', margin: '12px 0' }} {...props} />,
+    }}
+  >
+    {m.notes}
+  </ReactMarkdown>
+</div>
+    )}
+  </div>
+)}
 
                             {/* AI Summary */}
                             {m.ai_summary && (

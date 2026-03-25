@@ -16,6 +16,8 @@ export default function EmailInbox() {
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
+  const [selectedThreads, setSelectedThreads] = useState(new Set());
+  const [markingRead, setMarkingRead] = useState(false);
   const navigate = useNavigate();
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -37,15 +39,8 @@ export default function EmailInbox() {
     setSyncing(true);
     try {
       await axios.post(`${API}/sync/gmail`, {}, { headers: getHeaders() });
-      // Wait a few seconds then refresh
-      setTimeout(() => {
-        fetchInbox();
-        setSyncing(false);
-      }, 5000);
-    } catch (err) {
-      console.error(err);
-      setSyncing(false);
-    }
+      setTimeout(() => { fetchInbox(); setSyncing(false); }, 5000);
+    } catch (err) { console.error(err); setSyncing(false); }
   };
 
   const markAsRead = async (emailId) => {
@@ -53,6 +48,62 @@ export default function EmailInbox() {
       await axios.put(`${API}/sync/emails/${emailId}/read`, {}, { headers: getHeaders() });
       setEmails(prev => prev.map(e => e.id === emailId ? { ...e, is_read: true } : e));
     } catch (err) { console.error(err); }
+  };
+
+  // ── Compute threads FIRST so markBulkAsRead can use it ──────────────────────
+  const unreadCount = emails.filter(e => !e.is_read && e.direction === 'inbound').length;
+
+  const threadMap = {};
+  emails.forEach(e => {
+    const threadId = e.gmail_thread_id || e.id;
+    if (!threadMap[threadId]) {
+      threadMap[threadId] = {
+        threadId,
+        emails: [],
+        latestDate: e.email_date,
+        subject: e.subject,
+        company_name: e.crm_companies?.company_name || e.crm_clients?.business_name || '',
+        company_id: e.company_id,
+        client_id: e.client_id,
+        person_name: e.crm_people ? `${e.crm_people.first_name} ${e.crm_people.last_name}` : '',
+        hasUnread: false,
+      };
+    }
+    threadMap[threadId].emails.push(e);
+    if (!e.is_read && e.direction === 'inbound') threadMap[threadId].hasUnread = true;
+    if (new Date(e.email_date) > new Date(threadMap[threadId].latestDate)) {
+      threadMap[threadId].latestDate = e.email_date;
+    }
+  });
+
+  const threads = Object.values(threadMap).sort((a, b) => new Date(b.latestDate) - new Date(a.latestDate));
+
+  // ── Now markBulkAsRead can safely reference threads ──────────────────────────
+  const markBulkAsRead = async () => {
+    if (selectedThreads.size === 0) return;
+    setMarkingRead(true);
+    try {
+      const emailIds = threads
+        .filter(t => selectedThreads.has(t.threadId))
+        .flatMap(t => t.emails.map(e => e.id));
+
+      await axios.put(`${API}/sync/emails/bulk-read`, { email_ids: emailIds }, { headers: getHeaders() });
+
+      setEmails(prev => prev.map(e =>
+        emailIds.includes(e.id) ? { ...e, is_read: true } : e
+      ));
+      setSelectedThreads(new Set());
+    } catch (err) { console.error(err); }
+    setMarkingRead(false);
+  };
+
+  const toggleThreadSelect = (e, threadId) => {
+    e.stopPropagation();
+    setSelectedThreads(prev => {
+      const next = new Set(prev);
+      next.has(threadId) ? next.delete(threadId) : next.add(threadId);
+      return next;
+    });
   };
 
   const toggleExpand = (email) => {
@@ -65,11 +116,8 @@ export default function EmailInbox() {
   };
 
   const goToProfile = (email) => {
-    if (email.client_id) {
-      navigate(`/clients/${email.client_id}`);
-    } else if (email.company_id) {
-      navigate(`/companies/${email.company_id}`);
-    }
+    if (email.client_id) navigate(`/clients/${email.client_id}`);
+    else if (email.company_id) navigate(`/companies/${email.company_id}`);
   };
 
   const sendReply = async (thread) => {
@@ -95,9 +143,8 @@ export default function EmailInbox() {
         recipient_name: replyName,
         gmail_thread_id: thread.threadId || null,
         in_reply_to: latestInbound.gmail_message_id || null,
-      }, { headers: getHeaders() });;
+      }, { headers: getHeaders() });
 
-      // Add the sent reply to the thread immediately (optimistic update)
       const now = new Date().toISOString();
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       setEmails(prev => [...prev, {
@@ -129,34 +176,6 @@ export default function EmailInbox() {
     }
     setSendingReply(false);
   };
-
-  const unreadCount = emails.filter(e => !e.is_read && e.direction === 'inbound').length;
-
-  // Group emails by thread
-  const threadMap = {};
-  emails.forEach(e => {
-    const threadId = e.gmail_thread_id || e.id;
-    if (!threadMap[threadId]) {
-      threadMap[threadId] = {
-        threadId,
-        emails: [],
-        latestDate: e.email_date,
-        subject: e.subject,
-        company_name: e.crm_companies?.company_name || e.crm_clients?.business_name || '',
-        company_id: e.company_id,
-        client_id: e.client_id,
-        person_name: e.crm_people ? `${e.crm_people.first_name} ${e.crm_people.last_name}` : '',
-        hasUnread: false,
-      };
-    }
-    threadMap[threadId].emails.push(e);
-    if (!e.is_read && e.direction === 'inbound') threadMap[threadId].hasUnread = true;
-    if (new Date(e.email_date) > new Date(threadMap[threadId].latestDate)) {
-      threadMap[threadId].latestDate = e.email_date;
-    }
-  });
-
-  const threads = Object.values(threadMap).sort((a, b) => new Date(b.latestDate) - new Date(a.latestDate));
 
   const formatTime = (dateStr) => {
     const d = new Date(dateStr);
@@ -227,6 +246,26 @@ export default function EmailInbox() {
           />
         </div>
 
+        {/* Bulk action bar */}
+        {selectedThreads.size > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: '#3E423D', borderRadius: 8, padding: '10px 16px', marginBottom: 12,
+          }}>
+            <span style={{ color: '#fff', fontSize: 13, fontWeight: 500 }}>
+              {selectedThreads.size} thread{selectedThreads.size > 1 ? 's' : ''} selected
+            </span>
+            <button onClick={markBulkAsRead} disabled={markingRead}
+              style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
+              {markingRead ? 'Marking...' : '✓ Mark as Read'}
+            </button>
+            <button onClick={() => setSelectedThreads(new Set())}
+              style={{ background: 'transparent', color: '#CBCED4', border: 'none', fontSize: 12, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        )}
+
         {/* Email List */}
         {loading ? (
           <div style={{ padding: 60, textAlign: 'center', color: '#717182' }}>Loading...</div>
@@ -243,6 +282,7 @@ export default function EmailInbox() {
             {threads.map((thread, idx) => {
               const latestEmail = thread.emails[0];
               const isExpanded = expandedId === latestEmail.id;
+              const isSelected = selectedThreads.has(thread.threadId);
 
               return (
                 <div key={thread.threadId} style={{ borderBottom: idx < threads.length - 1 ? '1px solid rgba(62,66,61,0.06)' : 'none' }}>
@@ -251,14 +291,30 @@ export default function EmailInbox() {
                     onClick={() => toggleExpand(latestEmail)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px',
-                      cursor: 'pointer', background: isExpanded ? '#FAFAF9' : thread.hasUnread ? '#F8F9FF' : '#fff',
+                      cursor: 'pointer',
+                      background: isSelected ? '#F0F4F0' : isExpanded ? '#FAFAF9' : thread.hasUnread ? '#F8F9FF' : '#fff',
                       transition: 'background 0.1s',
                     }}
                   >
-                    {/* Unread dot */}
-                    <div style={{ width: 8, flexShrink: 0 }}>
-                      {thread.hasUnread && (
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1a6fad' }} />
+                    {/* Checkbox */}
+                    <div
+                      onClick={e => toggleThreadSelect(e, thread.threadId)}
+                      style={{ width: 20, flexShrink: 0, cursor: 'pointer' }}
+                    >
+                      {isSelected ? (
+                        <div style={{
+                          width: 18, height: 18, borderRadius: 4,
+                          background: '#8E9B8B', border: '2px solid #8E9B8B',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <span style={{ color: '#fff', fontSize: 11, lineHeight: 1 }}>✓</span>
+                        </div>
+                      ) : (
+                        <div style={{
+                          width: 18, height: 18, borderRadius: 4,
+                          border: `2px solid ${thread.hasUnread ? '#1a6fad' : 'rgba(62,66,61,0.2)'}`,
+                          background: thread.hasUnread ? '#EBF4FF' : '#fff',
+                        }} />
                       )}
                     </div>
 
@@ -332,7 +388,6 @@ export default function EmailInbox() {
                           padding: '16px 20px 16px 62px',
                           borderBottom: emailIdx < thread.emails.length - 1 ? '1px solid rgba(62,66,61,0.06)' : 'none',
                         }}>
-                          {/* Email header */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <div style={{
@@ -365,7 +420,6 @@ export default function EmailInbox() {
                               {new Date(email.email_date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          {/* Email body */}
                           <div style={{
                             background: '#fff', borderRadius: 8, padding: 16,
                             border: '1px solid rgba(62,66,61,0.08)', fontSize: 14, lineHeight: 1.6,
@@ -391,7 +445,7 @@ export default function EmailInbox() {
                           <button
                             onClick={() => { setReplyingTo(replyingTo === thread.threadId ? null : thread.threadId); setReplyText(''); }}
                             style={{
-                              background: replyingTo === thread.threadId ? '#3E423D' : '#fff', 
+                              background: replyingTo === thread.threadId ? '#3E423D' : '#fff',
                               color: replyingTo === thread.threadId ? '#fff' : '#3E423D',
                               border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8,
                               padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif',
