@@ -90,6 +90,9 @@ export default function Calendar() {
   const [completingEvent, setCompletingEvent] = useState(false);
   const [completionNotes, setCompletionNotes] = useState('');
   const [savingCompletion, setSavingCompletion] = useState(false);
+  const [showZoomInput, setShowZoomInput] = useState(false);
+  const [zoomLinkInput, setZoomLinkInput] = useState('');
+  const [formPeople, setFormPeople] = useState([]);
 
   const [form, setForm] = useState({
     title: '', description: '', meeting_type: 'google_meet',
@@ -99,6 +102,14 @@ export default function Calendar() {
     attendee_emails: '', is_internal: false,
     client_timezone: null, client_state: '',
   });
+
+  const fetchPeopleForCompany = async (companyId) => {
+    if (!companyId) { setFormPeople([]); return; }
+    try {
+      const res = await axios.get(`${API}/contacts/companies/${companyId}`, { headers: getHeaders() });
+      setFormPeople(res.data.crm_people || []);
+    } catch (err) { setFormPeople([]); }
+  };
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -221,13 +232,12 @@ export default function Calendar() {
       ? form.attendee_emails.split(',').map(e => e.trim()).filter(Boolean)
       : [];
 
-    if (form.person_id) {
-      const company = companies.find(c => c.id === form.company_id);
-      const person = company?.crm_people?.find(p => p.id === form.person_id);
-      if (person?.email && !attendee_emails.includes(person.email)) {
-        attendee_emails.push(person.email);
+      if (form.person_id) {
+        const person = formPeople.find(p => p.id === form.person_id);
+        if (person?.email && !attendee_emails.includes(person.email)) {
+          attendee_emails.push(person.email);
+        }
       }
-    }
     if (form.client_id) {
       const client = clients.find(c => c.id === form.client_id);
       if (client?.contact_email && !attendee_emails.includes(client.contact_email)) {
@@ -604,7 +614,7 @@ export default function Calendar() {
         {/* Event Detail Popup */}
         {selectedEvent && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-          onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); }}
+          onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); setShowZoomInput(false); setZoomLinkInput(''); }}
           >
             <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 32, width: 480, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -636,61 +646,80 @@ export default function Calendar() {
                   </div>
                 </div>
                 {selectedEvent.meet_link && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 16 }}>📹</span>
-                    <a href={selectedEvent.meet_link} target="_blank" rel="noreferrer" style={{ color: '#1a6fad', fontSize: 13, textDecoration: 'none' }}>
-                      Join Google Meet
-                    </a>
-                    {selectedEvent.crm_meeting_id && (selectedEvent.crm_status === 'scheduled' || selectedEvent.crm_status === 'confirmed') && !selectedEvent.recall_bot_id && (
-                      <button onClick={async () => {
-                        try {
-                          await axios.post(`${API}/calendar/meetings/${selectedEvent.crm_meeting_id}/record`, {}, { headers: getHeaders() });
-                          alert('🎙️ Recording bot sent! Planfor Assistant will join the call shortly.');
-                          fetchEvents();
-                        } catch (err) {
-                          alert('Failed: ' + (err.response?.data?.error || err.message));
-                        }
-                      }}
-                        style={{ background: '#D4183D', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer' }}>
-                        🔴 Record
-                      </button>
-                    )}
-                    {selectedEvent.recording_status === 'recording' && (
-                      <span style={{ background: '#FFEBEE', color: '#D4183D', fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>⏺️ Recording...</span>
-                    )}
-                    {selectedEvent.recording_status === 'processing' && (
-                      <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>⏳ Processing...</span>
-                    )}
-                  </div>
-                )}
-                {selectedEvent.company_name && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 16 }}>{selectedEvent.client_id ? '🤝' : '🏢'}</span>
-                    <button onClick={() => {
-                      setSelectedEvent(null);
-                      if (selectedEvent.client_id) navigate(`/clients/${selectedEvent.client_id}`);
-                      else if (selectedEvent.company_id) navigate(`/companies/${selectedEvent.company_id}`);
-                    }} style={{ background: 'none', border: 'none', color: '#1a6fad', fontSize: 13, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-                      {selectedEvent.company_name}
-                    </button>
-                  </div>
-                )}
-                {selectedEvent.description && (
-                  <div style={{ background: '#F5F3EF', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#3E423D', lineHeight: 1.5 }}
-                    dangerouslySetInnerHTML={{ __html: selectedEvent.description }} />
-                )}
-                {selectedEvent.attendees?.length > 0 && (
-                  <div>
-                    <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 6px' }}>Attendees</p>
-                    {selectedEvent.attendees.filter(a => !a.self).map((a, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: a.status === 'accepted' ? '#4CAF50' : a.status === 'declined' ? '#D4183D' : '#D4A574' }} />
-                        <span style={{ color: '#3E423D', fontSize: 12 }}>{a.name || a.email}</span>
-                        <span style={{ color: '#CBCED4', fontSize: 11 }}>{a.status}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+    <span style={{ fontSize: 16 }}>📹</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <a href={selectedEvent.meet_link} target="_blank" rel="noreferrer" style={{ color: '#1a6fad', fontSize: 13, textDecoration: 'none' }}>
+        Join Google Meet
+      </a>
+      {selectedEvent.crm_meeting_id && (selectedEvent.crm_status === 'scheduled' || selectedEvent.crm_status === 'confirmed') && !selectedEvent.recall_bot_id && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button onClick={async () => {
+              try {
+                await axios.post(`${API}/calendar/meetings/${selectedEvent.crm_meeting_id}/record`,
+                  { meeting_url: selectedEvent.meet_link },
+                  { headers: getHeaders() }
+                );
+                alert('🎙️ Recording bot sent! Planfor Assistant will join the Google Meet shortly.');
+                setSelectedEvent(null);
+                fetchEvents();
+              } catch (err) {
+                alert('Failed: ' + (err.response?.data?.error || err.message));
+              }
+            }} style={{ background: '#D4183D', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              🔴 Google Meet
+            </button>
+            <button onClick={() => setShowZoomInput(prev => !prev)}
+              style={{ background: showZoomInput ? '#2D8CFF' : '#F5F3EF', color: showZoomInput ? '#fff' : '#2D8CFF', border: '1px solid #2D8CFF', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer' }}>
+              🎥 Zoom
+            </button>
+          </div>
+          {showZoomInput && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                value={zoomLinkInput}
+                onChange={e => setZoomLinkInput(e.target.value)}
+                placeholder="Paste Zoom meeting link..."
+                style={{ flex: 1, background: '#fff', border: '1px solid #2D8CFF', borderRadius: 6, padding: '5px 10px', fontSize: 11, outline: 'none', fontFamily: 'Inter, sans-serif' }}
+              />
+              <button
+                onClick={async () => {
+                  if (!zoomLinkInput || !zoomLinkInput.includes('zoom')) {
+                    alert('Please paste a valid Zoom meeting link');
+                    return;
+                  }
+                  try {
+                    await axios.post(`${API}/calendar/meetings/${selectedEvent.crm_meeting_id}/record`,
+                      { meeting_url: zoomLinkInput },
+                      { headers: getHeaders() }
+                    );
+                    alert('🎙️ Recording bot sent! Planfor Assistant will join the Zoom shortly.');
+                    setShowZoomInput(false);
+                    setZoomLinkInput('');
+                    setSelectedEvent(null);
+                    fetchEvents();
+                  } catch (err) {
+                    alert('Failed: ' + (err.response?.data?.error || err.message));
+                  }
+                }}
+                disabled={!zoomLinkInput}
+                style={{ background: zoomLinkInput ? '#2D8CFF' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: zoomLinkInput ? 'pointer' : 'default' }}>
+                Send Bot
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {selectedEvent.recording_status === 'recording' && (
+        <span style={{ background: '#FFEBEE', color: '#D4183D', fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>⏺️ Recording...</span>
+      )}
+      {selectedEvent.recording_status === 'processing' && (
+        <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 11, borderRadius: 20, padding: '3px 10px', fontWeight: 600 }}>⏳ Processing...</span>
+      )}
+    </div>
+  </div>
+)}
               </div>
 
               {/* Completion flow for past CRM meetings */}
@@ -854,6 +883,7 @@ export default function Calendar() {
                           const state = company?.state || '';
                           const tz = getClientTimezone(state);
                           setForm(prev => ({ ...prev, company_id: companyId, client_id: '', person_id: '', client_timezone: tz, client_state: state }));
+                          fetchPeopleForCompany(companyId);
                         }} style={inputStyle}>
                           <option value="">None</option>
                           {companies.map(c => <option key={c.id} value={c.id}>🏢 {c.company_name} {c.state ? `(${c.state})` : ''}</option>)}
@@ -867,6 +897,8 @@ export default function Calendar() {
                           const state = client?.state || '';
                           const tz = getClientTimezone(state);
                           setForm(prev => ({ ...prev, client_id: clientId, company_id: '', person_id: '', client_timezone: tz, client_state: state }));
+                          if (client?.converted_from) fetchPeopleForCompany(client.converted_from);
+                          else setFormPeople([]);
                         }} style={inputStyle}>
                           <option value="">None</option>
                           {clients.map(c => <option key={c.id} value={c.id}>🤝 {c.business_name} {c.state ? `(${c.state})` : ''}</option>)}
@@ -874,20 +906,19 @@ export default function Calendar() {
                       </div>
                     </div>
 
-                    {form.company_id && (() => {
-                      const company = companies.find(c => c.id === form.company_id);
-                      const people = company?.crm_people || [];
-                      if (people.length === 0) return null;
-                      return (
-                        <div>
-                          <label style={labelStyle}>Contact Person</label>
-                          <select value={form.person_id} onChange={e => setForm(prev => ({ ...prev, person_id: e.target.value }))} style={inputStyle}>
-                            <option value="">Select person...</option>
-                            {people.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name} {p.email ? `— ${p.email}` : ''}</option>)}
-                          </select>
-                        </div>
-                      );
-                    })()}
+                    {(form.company_id || form.client_id) && formPeople.length > 0 && (
+                      <div>
+                        <label style={labelStyle}>Contact Person</label>
+                        <select value={form.person_id} onChange={e => setForm(prev => ({ ...prev, person_id: e.target.value }))} style={inputStyle}>
+                          <option value="">Select who to invite...</option>
+                          {formPeople.filter(p => p.email).map(p => (
+                            <option key={p.id} value={p.id}>👤 {p.first_name} {p.last_name} — {p.email}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+
                   </>
                 )}
 
