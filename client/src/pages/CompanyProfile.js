@@ -124,6 +124,8 @@ export default function CompanyProfile() {
   const [savingCompletion, setSavingCompletion] = useState(false);
   const [editingNotes, setEditingNotes] = useState(null); // meeting id being edited
   const [editingNotesText, setEditingNotesText] = useState('');
+  const [zoomLinkInput, setZoomLinkInput] = useState({}); // { [meetingId]: url }
+  const [showZoomInput, setShowZoomInput] = useState({}); // { [meetingId]: bool }
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
@@ -235,10 +237,13 @@ export default function CompanyProfile() {
   const [recordingStatus, setRecordingStatus] = useState({});
   const [processingTranscript, setProcessingTranscript] = useState({});
 
-  const startRecording = async (meetingId) => {
+  const startRecording = async (meetingId, meetingUrl) => {
     try {
       setRecordingStatus(prev => ({ ...prev, [meetingId]: 'sending_bot' }));
-      await axios.post(`${API}/calendar/meetings/${meetingId}/record`, {}, { headers: getHeaders() });
+      await axios.post(`${API}/calendar/meetings/${meetingId}/record`, 
+        { meeting_url: meetingUrl },
+        { headers: getHeaders() }
+      );
       // Poll for status updates
       pollRecordingStatus(meetingId);
     } catch (err) {
@@ -961,11 +966,48 @@ export default function CompanyProfile() {
                                 <a href={m.meet_link} target="_blank" rel="noreferrer" style={{ color: '#4CAF50', fontSize: 12 }}>🔗 Join Google Meet</a>
                                 {/* Record button — show for scheduled meetings with meet links */}
                                 {(m.status === 'scheduled' || m.status === 'confirmed') && !m.recall_bot_id && !recordingStatus[m.id] && (
-                                  <button onClick={(e) => { e.stopPropagation(); startRecording(m.id); }}
-                                    style={{ background: '#D4183D', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    🔴 Record
-                                  </button>
-                                )}
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      {/* Google Meet button */}
+      <button onClick={(e) => { e.stopPropagation(); startRecording(m.id, m.meet_link); }}
+        style={{ background: '#D4183D', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+        🔴 Google Meet
+      </button>
+      {/* Zoom button */}
+      <button onClick={(e) => { e.stopPropagation(); setShowZoomInput(prev => ({ ...prev, [m.id]: !prev[m.id] })); }}
+        style={{ background: showZoomInput[m.id] ? '#2D8CFF' : '#F5F3EF', color: showZoomInput[m.id] ? '#fff' : '#2D8CFF', border: '1px solid #2D8CFF', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+        🎥 Zoom
+      </button>
+    </div>
+    {/* Zoom link input — appears when Zoom is clicked */}
+    {showZoomInput[m.id] && (
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input
+          value={zoomLinkInput[m.id] || ''}
+          onChange={e => setZoomLinkInput(prev => ({ ...prev, [m.id]: e.target.value }))}
+          placeholder="Paste Zoom meeting link..."
+          style={{ flex: 1, background: '#fff', border: '1px solid #2D8CFF', borderRadius: 6, padding: '5px 10px', fontSize: 11, outline: 'none', fontFamily: 'Inter, sans-serif' }}
+        />
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            const zoomUrl = zoomLinkInput[m.id];
+            if (!zoomUrl || !zoomUrl.includes('zoom')) {
+              alert('Please paste a valid Zoom meeting link');
+              return;
+            }
+            startRecording(m.id, zoomUrl);
+            setShowZoomInput(prev => ({ ...prev, [m.id]: false }));
+            setZoomLinkInput(prev => ({ ...prev, [m.id]: '' }));
+          }}
+          disabled={!zoomLinkInput[m.id]}
+          style={{ background: zoomLinkInput[m.id] ? '#2D8CFF' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: zoomLinkInput[m.id] ? 'pointer' : 'default' }}>
+          Send Bot
+        </button>
+      </div>
+    )}
+  </div>
+)}
                                 {/* Recording status indicator */}
                                 {(recordingStatus[m.id] || m.recording_status) && m.recording_status !== 'completed' && (
                                   <span style={{
