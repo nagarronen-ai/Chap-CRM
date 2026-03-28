@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 
 export default function Sidebar() {
-  const APP_VERSION = 'v1.5.2';
+  const APP_VERSION = 'v1.6.0';
   const navigate = useNavigate();
   const location = useLocation();
   const { can, role } = useRole();
@@ -47,7 +47,7 @@ export default function Sidebar() {
     { path: '/team', label: 'Team', icon: '👥', show: can('users:manage') },
     { path: '/marketing', label: 'Marketing', icon: '📣', show: can('marketing:view') },
     { path: '/finance', label: 'Finance', icon: '💰', show: can('finance:general') },
-    { path: '/ai/log', label: '🧠 AI Assistant', icon: '🧠' },
+    { path: '/ai/log', label: 'AI Assistant', icon: '🧠', show: true },
     { path: '/settings', label: 'Settings', icon: '⚙️', show: true },
   ];
 
