@@ -57,11 +57,11 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'search_contacts',
-      description: 'Search for a company or contact person by name',
+description: 'Search for a company, client, or contact person by name or email. After finding results, extract and store the person_id, company_id, and client_id — you MUST pass these to any subsequent send_email, book_meeting, add_note or other tool calls.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Name to search for — company name or person name' },
+          query: { type: 'string', description: 'Name or email to search for — can be a full name like "Dan Sitbon", company name, or email address' },
         },
         required: ['query'],
       },
@@ -84,7 +84,7 @@ const toolDefinitions = [
   {
     type: 'function',
     function: {
-      name:'get_client_status',
+      name: 'get_client_status',
       description: 'Get full details about a specific client including stage, contract, finance',
       parameters: {
         type: 'object',
@@ -168,7 +168,7 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'send_email',
-      description: 'Send an email to a contact or client — REQUIRES USER CONFIRMATION',
+description: 'Send an email to a contact or client — REQUIRES USER CONFIRMATION. IMPORTANT: Always include person_id and company_id or client_id from search results when available. Never leave these null if you found the person via search_contacts.',
       parameters: {
         type: 'object',
         properties: {
@@ -178,6 +178,7 @@ const toolDefinitions = [
           body: { type: 'string', description: 'Email body in plain text' },
           company_id: { type: 'string', description: 'Company UUID if sending to a contact' },
           client_id: { type: 'string', description: 'Client UUID if sending to a client' },
+          person_id: { type: 'string', description: 'Person UUID if sending to a specific person' },
         },
         required: ['recipient_email', 'recipient_name', 'subject', 'body'],
       },
@@ -242,7 +243,7 @@ const toolDefinitions = [
   },
 ];
 
-// ─── TOOL EXECUTORS (read tools only — write tools go through confirmation) ──
+// ─── TOOL EXECUTORS ───────────────────────────────────────────────────────────
 
 const CONFIRMATION_REQUIRED = ['send_email', 'book_meeting', 'cancel_meeting', 'reschedule_meeting'];
 
@@ -337,20 +338,35 @@ async function getMyMeetings(userId, period) {
 }
 
 async function searchContacts(userId, query) {
+  const parts = query.trim().split(' ');
+  const firstName = parts[0] || '';
+  const lastName = parts[parts.length - 1] || '';
+
   const [companies, clients, people] = await Promise.all([
-    supabase.from('crm_companies').select('id, company_name, stage, city, state').ilike('company_name', `%${query}%`).limit(5),
-    supabase.from('crm_clients').select('id, business_name, stage, contact_email, contact_first_name, contact_last_name')
-      .or(`business_name.ilike.%${query}%,contact_first_name.ilike.%${query}%,contact_last_name.ilike.%${query}%`).limit(5),
-    supabase.from('crm_people').select('id, first_name, last_name, email, company_id, crm_companies(id, company_name, stage, city, state)')
-      .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%`).limit(5),
+    supabase
+      .from('crm_companies')
+      .select('id, company_name, stage, city, state')
+      .ilike('company_name', `%${query}%`)
+      .limit(5),
+
+    supabase
+      .from('crm_clients')
+      .select('id, business_name, stage, contact_email, contact_first_name, contact_last_name, converted_from')
+      .or(`business_name.ilike.%${query}%,contact_first_name.ilike.%${firstName}%,contact_last_name.ilike.%${lastName}%`)
+      .limit(5),
+
+    supabase
+      .from('crm_people')
+      .select('id, first_name, last_name, email, company_id, crm_companies(id, company_name, stage, city, state)')
+      .or(`first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%,email.ilike.%${query}%`)
+      .limit(5),
   ]);
 
-  // If people found, also include their companies in results
+  // If people found, also surface their companies
   const peopleCompanies = (people.data || [])
     .filter(p => p.crm_companies)
     .map(p => p.crm_companies);
 
-  // Merge company results — deduplicate by id
   const allCompanies = [...(companies.data || []), ...peopleCompanies];
   const uniqueCompanies = allCompanies.filter((c, index, self) =>
     index === self.findIndex(x => x.id === c.id)
@@ -393,7 +409,6 @@ async function getClientStatus(userId, clientId) {
     .eq('client_id', clientId)
     .limit(10);
 
-  // Fetch all people from original company
   let people = [];
   if (data?.converted_from) {
     const { data: company } = await supabase
@@ -404,16 +419,16 @@ async function getClientStatus(userId, clientId) {
     people = company?.crm_people || [];
   }
 
-  return { 
-    client: data, 
-    finance: finance || [], 
-    people: people.map(p => ({ 
-      name: `${p.first_name} ${p.last_name}`, 
-      title: p.title || 'No title', 
+  return {
+    client: data,
+    finance: finance || [],
+    people: people.map(p => ({
+      name: `${p.first_name} ${p.last_name}`,
+      title: p.title || 'No title',
       email: p.email,
       work_phone: p.work_phone,
-      mobile_phone: p.mobile_phone 
-    }))
+      mobile_phone: p.mobile_phone,
+    })),
   };
 }
 

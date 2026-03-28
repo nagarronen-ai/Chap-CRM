@@ -75,21 +75,14 @@ async function getOrCreateConversation(userId) {
   if (data) {
     // Clean any orphaned tool_calls from history
     const messages = (data.messages || []);
-    const cleaned = [];
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i];
-      // Skip assistant messages with tool_calls that have no following tool messages
-      if (msg.role === 'assistant' && msg.tool_calls) {
-        const nextMsg = messages[i + 1];
-        if (!nextMsg || nextMsg.role !== 'tool') continue;
-      }
-      // Skip orphaned tool messages
-      if (msg.role === 'tool') {
-        const prevMsg = cleaned[cleaned.length - 1];
-        if (!prevMsg || prevMsg.role !== 'assistant') continue;
-      }
-      cleaned.push(msg);
-    }
+    // Keep only user and assistant text messages — strip all tool_calls and tool results
+// This gives a clean readable history without any orphaned tool messages
+const cleaned = messages.filter(m => 
+  (m.role === 'user' || m.role === 'assistant') && 
+  !m.tool_calls && 
+  typeof m.content === 'string' &&
+  m.content.length > 0
+);
     // Save cleaned history back if it changed
     if (cleaned.length !== messages.length) {
       await supabase
@@ -228,9 +221,9 @@ for (const tc of instantTools) {
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           ...history.slice(-30),
-          { role: 'user', content: 'Summarize exactly what actions you are about to take and ask for confirmation. Be specific.' },
+          { role: 'user', content: 'Briefly describe what you are about to do in one sentence. Do not ask for confirmation again — the user will see confirm/cancel buttons.' },
         ],
-        max_tokens: 500,
+        max_tokens: 200,
       });
 
       const summaryContent = summaryResponse.choices[0].message.content;
@@ -322,23 +315,15 @@ async function executeConfirmedWriteAction(userId, toolName, args) {
 
   switch (toolName) {
     case 'send_email': {
-      const sgMail = require('@sendgrid/mail');
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-      await sgMail.send({
-        to: args.recipient_email,
-        from: { email: process.env.SENDGRID_FROM_EMAIL, name: process.env.SENDGRID_FROM_NAME || 'Planfor' },
+      await axios.post(`${API_BASE}/emails/send`, {
+        company_id: args.company_id || null,
+        client_id: args.client_id || null,
+        person_id: args.person_id || null,
         subject: args.subject,
-        text: args.body,
-      });
-      if (args.company_id || args.client_id) {
-        await supabase.from('crm_activity_log').insert([{
-          company_id: args.company_id || null,
-          client_id: args.client_id || null,
-          user_id: userId,
-          action: 'Email Sent',
-          details: `Email sent to ${args.recipient_name} (${args.recipient_email}): "${args.subject}" via AI Assistant`,
-        }]);
-      }
+        body_html: `<p>${args.body.replace(/\n/g, '<br>')}</p>`,
+        recipient_email: args.recipient_email,
+        recipient_name: args.recipient_name,
+      }, { headers });
       return { sent: true, to: args.recipient_email };
     }
 
