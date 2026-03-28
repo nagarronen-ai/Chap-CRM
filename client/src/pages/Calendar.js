@@ -93,6 +93,9 @@ export default function Calendar() {
   const [showZoomInput, setShowZoomInput] = useState(false);
   const [zoomLinkInput, setZoomLinkInput] = useState('');
   const [formPeople, setFormPeople] = useState([]);
+  const [reschedulingEvent, setReschedulingEvent] = useState(false);
+  const [rescheduleForm, setRescheduleForm] = useState({ date: '', start_hour: '10', start_min: '00', end_hour: '11', end_min: '00' });
+  const [savingReschedule, setSavingReschedule] = useState(false);
 
   const [form, setForm] = useState({
     title: '', description: '', meeting_type: 'google_meet',
@@ -290,6 +293,20 @@ export default function Calendar() {
       fetchEvents();
     } catch (err) { console.error(err); }
     setSavingCompletion(false);
+  };
+
+  const rescheduleMeeting = async (meetingId) => {
+    if (!rescheduleForm.date) return;
+    setSavingReschedule(true);
+    try {
+      const start_time = new Date(`${rescheduleForm.date}T${String(rescheduleForm.start_hour).padStart(2, '0')}:${rescheduleForm.start_min}:00`).toISOString();
+      const end_time = new Date(`${rescheduleForm.date}T${String(rescheduleForm.end_hour).padStart(2, '0')}:${rescheduleForm.end_min}:00`).toISOString();
+      await axios.put(`${API}/calendar/meetings/${meetingId}/reschedule`, { start_time, end_time }, { headers: getHeaders() });
+      setSelectedEvent(null);
+      setReschedulingEvent(false);
+      fetchEvents();
+    } catch (err) { console.error(err); alert('Reschedule failed'); }
+    setSavingReschedule(false);
   };
 
   const importAndCompleteMeeting = async (event) => {
@@ -614,7 +631,7 @@ export default function Calendar() {
         {/* Event Detail Popup */}
         {selectedEvent && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-          onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); setShowZoomInput(false); setZoomLinkInput(''); }}
+          onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); setShowZoomInput(false); setZoomLinkInput(''); setReschedulingEvent(false); }}
           >
             <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 32, width: 480, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -630,7 +647,7 @@ export default function Calendar() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); }} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#717182' }}>✕</button>
+                <button onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); setShowZoomInput(false); setZoomLinkInput(''); setReschedulingEvent(false); }} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#717182' }}>✕</button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
@@ -721,7 +738,54 @@ export default function Calendar() {
   </div>
 )}
               </div>
-
+                {/* Reschedule flow */}
+                {selectedEvent.crm_meeting_id && (selectedEvent.crm_status === 'scheduled' || selectedEvent.crm_status === 'confirmed') && (
+                  <div style={{ marginBottom: 12 }}>
+                    {!reschedulingEvent ? (
+                      <button onClick={() => { setReschedulingEvent(true); setRescheduleForm({ date: '', start_hour: '10', start_min: '00', end_hour: '11', end_min: '00' }); }}
+                        style={{ background: '#F5F3EF', color: '#717182', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', width: '100%' }}>
+                        📅 Reschedule Meeting
+                      </button>
+                    ) : (
+                      <div style={{ background: '#F8F9FF', borderRadius: 10, padding: 16 }}>
+                        <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 12px', fontWeight: 600 }}>New Date & Time</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <input type="date" value={rescheduleForm.date} onChange={e => setRescheduleForm(prev => ({ ...prev, date: e.target.value }))}
+                            style={{ background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none', fontFamily: 'Inter, sans-serif', width: '100%', boxSizing: 'border-box' }} />
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <select value={rescheduleForm.start_hour} onChange={e => setRescheduleForm(prev => ({ ...prev, start_hour: e.target.value }))}
+                              style={{ flex: 1, background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px', fontSize: 12, outline: 'none' }}>
+                              {Array.from({ length: 24 }, (_, i) => <option key={i} value={String(i)}>{i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}</option>)}
+                            </select>
+                            <select value={rescheduleForm.start_min} onChange={e => setRescheduleForm(prev => ({ ...prev, start_min: e.target.value }))}
+                              style={{ width: 70, background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px', fontSize: 12, outline: 'none' }}>
+                              {['00', '15', '30', '45'].map(m => <option key={m} value={m}>:{m}</option>)}
+                            </select>
+                            <span style={{ color: '#717182', fontSize: 12 }}>→</span>
+                            <select value={rescheduleForm.end_hour} onChange={e => setRescheduleForm(prev => ({ ...prev, end_hour: e.target.value }))}
+                              style={{ flex: 1, background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px', fontSize: 12, outline: 'none' }}>
+                              {Array.from({ length: 24 }, (_, i) => <option key={i} value={String(i)}>{i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}</option>)}
+                            </select>
+                            <select value={rescheduleForm.end_min} onChange={e => setRescheduleForm(prev => ({ ...prev, end_min: e.target.value }))}
+                              style={{ width: 70, background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px', fontSize: 12, outline: 'none' }}>
+                              {['00', '15', '30', '45'].map(m => <option key={m} value={m}>:{m}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => rescheduleMeeting(selectedEvent.crm_meeting_id)} disabled={savingReschedule || !rescheduleForm.date}
+                              style={{ flex: 1, background: rescheduleForm.date ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '9px', fontSize: 12, cursor: rescheduleForm.date ? 'pointer' : 'default' }}>
+                              {savingReschedule ? '⏳ Rescheduling...' : '✓ Confirm & Notify Contact'}
+                            </button>
+                            <button onClick={() => setReschedulingEvent(false)}
+                              style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 14px', fontSize: 12, cursor: 'pointer' }}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               {/* Completion flow for past CRM meetings */}
               {new Date(selectedEvent.end_time) < new Date() && selectedEvent.crm_status !== 'completed' && selectedEvent.crm_status !== 'cancelled' && (
                 <div style={{ background: '#FFF3CD', borderRadius: 10, padding: 16, marginBottom: 12 }}>

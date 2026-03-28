@@ -47,6 +47,7 @@ export default function Sidebar() {
     { path: '/team', label: 'Team', icon: '👥', show: can('users:manage') },
     { path: '/marketing', label: 'Marketing', icon: '📣', show: can('marketing:view') },
     { path: '/finance', label: 'Finance', icon: '💰', show: can('finance:general') },
+    { path: '/ai/log', label: '🧠 AI Assistant', icon: '🧠' },
     { path: '/settings', label: 'Settings', icon: '⚙️', show: true },
   ];
 

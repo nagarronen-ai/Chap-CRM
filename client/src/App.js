@@ -1,4 +1,3 @@
-// client/src/App.js
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -14,31 +13,48 @@ import ClientProfile from './pages/ClientProfile';
 import Settings from './pages/Settings';
 import EmailInbox from './pages/EmailInbox';
 import CalendarPage from './pages/Calendar';
-
+import AiBrain from './components/AiBrain';
+import AiLog from './pages/AiLog';
 
 const PrivateRoute = ({ children }) => {
   return localStorage.getItem('token') ? children : <Navigate to="/login" />;
 };
+
+function AuthenticatedApp() {
+  return (
+    <>
+      <Routes>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/contacts" element={<Contacts />} />
+        <Route path="/companies/:id" element={<CompanyProfile />} />
+        <Route path="/import" element={<Import />} />
+        <Route path="/emails" element={<Emails />} />
+        <Route path="/team" element={<Team />} />
+        <Route path="/marketing" element={<Marketing />} />
+        <Route path="/finance" element={<Finance />} />
+        <Route path="/clients" element={<Clients />} />
+        <Route path="/clients/:id" element={<ClientProfile />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/inbox" element={<EmailInbox />} />
+        <Route path="/calendar" element={<CalendarPage />} />
+        <Route path="/ai/log" element={<AiLog />} />
+        <Route path="*" element={<Navigate to="/dashboard" />} />
+      </Routes>
+      <AiBrain />
+    </>
+  );
+}
 
 export default function App() {
   return (
     <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-        <Route path="/contacts" element={<PrivateRoute><Contacts /></PrivateRoute>} />
-        <Route path="/companies/:id" element={<PrivateRoute><CompanyProfile /></PrivateRoute>} />
-        <Route path="/import" element={<PrivateRoute><Import /></PrivateRoute>} />
-        <Route path="/emails" element={<PrivateRoute><Emails /></PrivateRoute>} />
-        <Route path="/team" element={<PrivateRoute><Team /></PrivateRoute>} />
-        <Route path="/marketing" element={<PrivateRoute><Marketing /></PrivateRoute>} />
-        <Route path="/finance" element={<PrivateRoute><Finance /></PrivateRoute>} />
-        <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
-        <Route path="/clients/:id" element={<PrivateRoute><ClientProfile /></PrivateRoute>} />
-        <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
-        <Route path="/inbox" element={<PrivateRoute><EmailInbox /></PrivateRoute>} />
-        <Route path="/calendar" element={<PrivateRoute><CalendarPage /></PrivateRoute>} />
-        <Route path="*" element={<Navigate to="/dashboard" />} />
+        <Route path="*" element={
+          <PrivateRoute>
+            <AuthenticatedApp />
+          </PrivateRoute>
+        } />
       </Routes>
     </Router>
   );

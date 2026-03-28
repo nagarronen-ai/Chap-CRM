@@ -1,6 +1,6 @@
 # Planfor CRM
 
-Internal sales CRM built for the Planfor.io team to manage wedding vendor outreach, convert leads to clients, send emails via Gmail API or SendGrid, sync inbox conversations, run marketing campaigns, schedule meetings with Google Calendar, record meetings with AI-powered summaries, manage client relationships, and track internal company finances — all in one place.
+Internal sales CRM built for the Planfor.io team to manage wedding vendor outreach, convert leads to clients, send emails via Gmail API or SendGrid, sync inbox conversations, run marketing campaigns, schedule meetings with Google Calendar, manage client relationships, and track internal company finances — all in one place.
 
 **Live:** [crm.planfor.io](https://crm.planfor.io) · **API:** [planfor-crm-api.onrender.com](https://planfor-crm-api.onrender.com)
 
@@ -29,7 +29,6 @@ Internal sales CRM built for the Planfor.io team to manage wedding vendor outrea
 - [Changelog](#changelog)
 - [Roadmap](#roadmap)
 
-
 ---
 
 ## Overview
@@ -43,11 +42,9 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 - Two-way email sync — automatically capture inbound/outbound emails matching CRM contacts
 - View a dedicated Email Inbox page with thread grouping and unread badges
 - Schedule meetings with Google Calendar integration (Google Meet auto-link, timezone conversion)
-- Record meetings via Recall.ai with automatic AI-powered summaries, action items, and full transcripts
 - Run bulk marketing campaigns with open/click tracking via SendGrid
 - Manage client vendor pages, documents, and finance
 - Upload documents and receipts to Supabase Storage
-- Track vendor locations across 70+ countries with live timezone clocks
 - Track internal company expenses (servers, domains, tools, etc.)
 - Monitor pipeline health, upcoming meetings, and team performance from a real-time dashboard
 - Manage marketing unsubscribes with bulk resubscribe capabilities
@@ -66,8 +63,6 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 | Email — Direct | Gmail API (primary), SendGrid (fallback) |
 | Email — Marketing | SendGrid (bulk send with webhook tracking) |
 | Calendar | Google Calendar API (read/write sync) |
-| Meeting Recording | Recall.ai (bot joins Google Meet, records + transcribes) |
-| AI Summaries | OpenAI GPT-4o-mini (meeting transcript → summary + action items) |
 | OAuth | Google OAuth 2.0 (Gmail + Calendar scopes) |
 | Rich Text | Tiptap (ProseMirror-based, React 19 compatible) |
 | Styling | Inline styles with custom design system |
@@ -106,7 +101,7 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 │   │        Activity Timeline            │                      │
 │   └─────────────────────────────────────┘                      │
 ├─────────────────────────────────────────────────────────────────┤
-│   CALENDAR + MEETINGS                                           │
+│   CALENDAR                                                      │
 │                                                                  │
 │   Google Calendar API ◄──► CRM Calendar Page                    │
 │        │                    (Month/Week/Day)                     │
@@ -114,10 +109,7 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 │        ├── Create meetings from CRM → Push to Google Calendar   │
 │        ├── Google Meet link auto-generated                       │
 │        ├── Timezone conversion (US state → IANA)                │
-│        ├── Upcoming widget on Dashboard (next 7 days)           │
-│        └── Recall.ai bot → Recording → Transcript → AI Summary │
-│                                                                  │
-│   LocationSelector: 70+ countries, dynamic states, live clock   │
+│        └── Upcoming widget on Dashboard (next 7 days)           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,23 +167,23 @@ Gmail Inbox          CRM Database
 ### Company Profile
 - Pipeline stepper — click any stage to update instantly
 - Status bar: Last Activity, Next Action, Origin + Location, Assigned To (reassignable)
-- **Overview tab** — Contact Info (Address, City, Country via LocationSelector with live clock), Business, Marketing, Social in organized sections, inline editing, people list, quick notes
+- **Overview tab** — Contact Info, Business, Social in 3-column grid, inline editing, people list, quick notes
 - **People tab** — full contact list with add/edit/remove
 - **Activity tab** — paginated timeline (5/10/25/50 per page), filterable by person, expandable email view
-- **Meetings tab** — meeting history with summary cards (total/completed/scheduled/cancelled), completion flow with notes, status badges, Google Meet links, 🔴 Record button, AI summary + action items + transcript
+- **Meetings tab** — meeting history with summary cards (total/completed/scheduled/cancelled), completion flow with notes, status badges, Google Meet links
 - **Emails tab** — unified direct + campaign emails with delivery/open/click tracking
 - **Marketing tab** — per-contact campaign history, per-person unsubscribe management
 - **📧 Send Email** button — Gmail API (primary) or SendGrid (fallback), with Gmail/SendGrid indicator badge
-- **📅 Schedule Meeting** button — opens reusable modal with timezone conversion, contact person selection, auto-record toggle
+- **📅 Schedule Meeting** button — opens reusable modal with timezone conversion, contact person selection
 - **🤝 Convert to Client** button (Closed Won stage) — contract type, commission/amount, signed date
 - Global signature toggle in email composer (include/exclude)
 
 ### Client Profile
 - Client stage stepper (Onboarding → Active → Paused → Churned)
 - Contract management (RevShare, Commission, Subscription) with dynamic fields
-- **Overview** — Contact Info (Address, City, Country via LocationSelector with live clock), Business, Marketing, Social, Contract sections, people from original contact, quick notes
+- **Overview** — full details, people from original contact, quick notes
 - **Activity** — combined CRM activity + synced Gmail emails, sorted chronologically
-- **Meetings** — meeting history with summary cards, completion flow, notes display, status badges, 🔴 Record button, AI summary + action items + transcript
+- **Meetings** — meeting history with summary cards, completion flow, notes display, status badges
 - **Documents** — upload/manage contracts, proposals, invoices with file attachments
 - **Emails** — 3 sections: Client emails (since conversion), Contact history (before conversion), Campaign history
 - **Vendor Page** — marketplace listing editor (amenities, venue types, ceremonies, pricing, publish toggle)
@@ -229,19 +221,6 @@ Gmail Inbox          CRM Database
 - Meetings linked to companies/clients, logged to activity timeline
 - Cancel meeting removes from Google Calendar
 - Fixed-height cells (month + week) — events don't expand layout
-- **Completion flow** — complete past meetings directly from calendar popup with notes
-- **Import & Complete** — bring Google-only events into CRM as completed meetings
-
-### Meeting Recording & AI Summaries
-- **One-click recording** — 🔴 Record button sends Recall.ai bot ("Planfor Assistant") to Google Meet
-- **Recording status** — real-time polling: sending_bot → recording → processing → completed/failed
-- **Auto-record** — toggle on meeting creation, server cron checks every 60s for upcoming meetings
-- **Automatic transcription** — Recall.ai async transcriber with speaker labels and timestamps
-- **AI Summary (OpenAI GPT-4o-mini)** — key takeaways, action items with priority (🔴 high / 🟡 medium / 🟢 low) and owner, sentiment analysis, next steps
-- **Regenerate** — re-run AI summary on existing transcript
-- **Full transcript** — collapsible view with speaker labels and timestamps
-- **Webhook flow** — Recall.ai sends `recording.done` → server creates async transcript → `transcript.done` → server fetches transcript → OpenAI generates summary → saved to DB
-- **Cost** — ~$0.36/meeting (Recall.ai ~$0.33 + OpenAI ~$0.03)
 
 ### Marketing Campaigns
 - Campaign builder: Content → Recipients → Review & Send
@@ -261,6 +240,7 @@ Gmail Inbox          CRM Database
 - View, invite, manage CRM users
 - Role assignment: admin, sales, marketing, csm, support, finance
 - Admin-only access
+
 ---
 
 ## Project Structure
@@ -275,44 +255,41 @@ venueflow-crm/
 │   │   ├── emails.js        # Templates, sent emails, Gmail/SendGrid dual send
 │   │   ├── google.js        # Gmail OAuth flow, token management, refresh
 │   │   ├── sync.js          # Gmail inbox sync, unread count, inbox queries
-│   │   ├── calendar.js      # Google Calendar events, meetings CRUD, Recall.ai recording, webhooks
+│   │   ├── calendar.js      # Google Calendar events, meetings CRUD, upcoming
 │   │   ├── marketing.js     # Campaigns, bulk send, webhook, stats, unsub mgmt
 │   │   ├── finance.js       # Company expenses
 │   │   ├── uploads.js       # Supabase Storage file upload/delete
 │   │   └── users.js         # Team mgmt, user profile, signature, timezone
 │   ├── services/
-│   │   ├── gmailSync.js     # Smart selective sync engine (polling + incremental)
-│   │   ├── recallService.js # Recall.ai API (create bot, get status, transcripts)
-│   │   └── aiSummary.js     # OpenAI GPT-4o-mini meeting summary generation
+│   │   └── gmailSync.js     # Smart selective sync engine (polling + incremental)
 │   ├── middleware/
 │   │   ├── auth.js          # JWT verification middleware
 │   │   └── rbac.js          # Role-based access control
 │   ├── db.js                # Supabase client
-│   └── index.js             # Express app entry point + sync interval + auto-record cron
+│   └── index.js             # Express app entry point + sync interval
 ├── client/
 │   └── src/
 │       ├── hooks/
 │       │   └── useRole.js   # Frontend permission hook
 │       ├── pages/
 │       │   ├── Login.js
-│       │   ├── Dashboard.js         # v3 — with upcoming meetings + needs-completion widget
+│       │   ├── Dashboard.js         # v3 — with upcoming meetings widget
 │       │   ├── Contacts.js          # Company list with Converted badge
-│       │   ├── CompanyProfile.js    # Overview, email composer, meeting modal, recording
+│       │   ├── CompanyProfile.js    # Overview, email composer, meeting modal
 │       │   ├── Clients.js           # Client list with stage filters
-│       │   ├── ClientProfile.js     # 7-tab profile, synced emails, meeting modal, recording
+│       │   ├── ClientProfile.js     # 6-tab profile, synced emails, meeting modal
 │       │   ├── Import.js
 │       │   ├── Emails.js            # Templates with global signature preview
-│       │   ├── EmailInbox.js        # Synced email threads, filters, unread, quick reply
-│       │   ├── Calendar.js          # Month/Week/Day views, Google Calendar sync, completion flow
+│       │   ├── EmailInbox.js        # Synced email threads, filters, unread
+│       │   ├── Calendar.js          # Month/Week/Day views, Google Calendar sync
 │       │   ├── Settings.js          # Gmail accounts, signature, timezone
 │       │   ├── Marketing.js         # Campaigns + Unsubscribed sub-tabs
 │       │   ├── Finance.js           # Expenses with receipt upload
 │       │   └── Team.js
 │       ├── components/
-│       │   ├── Sidebar.js               # Nav with unread email badge + version tag
-│       │   ├── TiptapEditor.js          # Reusable Tiptap rich text editor
-│       │   ├── ScheduleMeetingModal.js  # Reusable meeting creation modal + auto-record toggle
-│       │   └── LocationSelector.js      # Country/state dropdown with live timezone clock
+│       │   ├── Sidebar.js           # Nav with unread email badge
+│       │   ├── TiptapEditor.js      # Reusable Tiptap rich text editor
+│       │   └── ScheduleMeetingModal.js  # Reusable meeting creation modal
 │       └── App.js
 ├── .env
 ├── .gitignore
@@ -347,7 +324,7 @@ venueflow-crm/
 | stage | text | Pipeline stage (incl. "Converted") |
 | origin | text | Upload / Cold / Hot / Instagram / Google / Referral |
 | city, state, country, company_address | text | Location |
-| company_linkedin, facebook_url, instagram_url | text | Social *(renamed from twitter_url in v1.5.2)* |
+| company_linkedin, facebook_url, twitter_url | text | Social |
 | next_action | text | Inline editable |
 | marketing_unsubscribed | boolean | Legacy (per-person now) |
 | created_at, updated_at | timestamp | |
@@ -412,7 +389,7 @@ venueflow-crm/
 | attachment_count | integer | |
 | synced_at | timestamp | |
 
-### `crm_meetings` *(new in v1.4, recording columns added in v1.5)*
+### `crm_meetings` *(new in v1.4)*
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | PK |
@@ -429,15 +406,7 @@ venueflow-crm/
 | location, meet_link | text | |
 | attendees | jsonb | Array of attendee objects |
 | is_internal | boolean | |
-| notes | text | Completion notes |
-| recall_bot_id | text | Recall.ai bot ID *(new in v1.5)* |
-| recording_url | text | Recall.ai recording reference *(new in v1.5)* |
-| transcript | text | Full transcript text *(new in v1.5)* |
-| transcript_segments | jsonb | Array of {speaker, text, startTime, endTime} *(new in v1.5)* |
-| ai_summary | text | OpenAI-generated summary *(new in v1.5)* |
-| ai_action_items | jsonb | Array of {task, owner, priority} *(new in v1.5)* |
-| recording_status | text | sending_bot / recording / processing / completed / failed *(new in v1.5)* |
-| auto_record | boolean | Auto-send bot when meeting starts *(new in v1.5)* |
+| notes | text | |
 | created_at, updated_at | timestamp | |
 
 ### `crm_clients`
@@ -447,14 +416,12 @@ venueflow-crm/
 | converted_from | uuid | FK → crm_companies |
 | assigned_to | uuid | FK → crm_users |
 | business_name, contact_first_name, contact_last_name, contact_email, contact_phone | text | |
-| website, address, city, state, country, category, business_type | text | |
+| website, address, city, state, category, business_type | text | |
 | stage | text | Onboarding / Active / Paused / Churned |
 | contract_type | text | RevShare / Commission / Subscription |
 | commission_rate | numeric | |
 | contract_amount | numeric | |
 | contract_signed_date | date | |
-| origin | text | Lead origin *(new in v1.5.2)* |
-| linkedin_url, facebook_url, instagram_url | text | Social links *(new in v1.5.2)* |
 | notes | text | |
 | created_by | uuid | FK → crm_users |
 | created_at, updated_at | timestamp | |
@@ -504,8 +471,6 @@ GOOGLE_CLIENT_ID=your_google_oauth_client_id
 GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
 GOOGLE_REDIRECT_URI=http://localhost:5000/api/google/callback
 CLIENT_URL=http://localhost:3000
-RECALL_API_KEY=your_recall_ai_api_key
-OPENAI_API_KEY=your_openai_api_key
 ```
 
 > ⚠️ Never commit `.env` to GitHub. It is listed in `.gitignore`.
@@ -520,8 +485,6 @@ OPENAI_API_KEY=your_openai_api_key
 - SendGrid account with verified sender domain
 - Google Cloud project with Gmail API + Calendar API enabled
 - OAuth 2.0 consent screen configured
-- Recall.ai account (for meeting recording)
-- OpenAI API key (for AI meeting summaries)
 
 ```bash
 git clone https://github.com/4st3r1x/venueflow-crm.git
@@ -603,7 +566,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | GET | `/api/sync/inbox` | Get inbox threads |
 | GET | `/api/sync/unread-count` | Unread email count |
 
-### Calendar *(new in v1.4, recording routes added in v1.5)*
+### Calendar *(new in v1.4)*
 | Method | Route | Description |
 |---|---|---|
 | GET | `/api/calendar/events` | Google Calendar events (CRM-enriched) |
@@ -615,11 +578,6 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | POST | `/api/calendar/import-complete` | Import Google event + mark complete |
 | GET | `/api/calendar/meetings/company/:id` | Meetings for a company |
 | GET | `/api/calendar/meetings/client/:id` | Meetings for a client |
-| POST | `/api/calendar/meetings/:id/record` | Send Recall.ai bot to record *(new in v1.5)* |
-| GET | `/api/calendar/meetings/:id/recording-status` | Poll recording status *(new in v1.5)* |
-| POST | `/api/calendar/meetings/:id/process-transcript` | Fetch transcript + generate AI summary *(new in v1.5)* |
-| POST | `/api/calendar/meetings/:id/regenerate-summary` | Re-run OpenAI on existing transcript *(new in v1.5)* |
-| POST | `/api/calendar/webhook/recall` | Recall.ai webhook (recording.done + transcript.done) *(new in v1.5)* |
 
 ### Clients
 | Method | Route | Description |
@@ -722,7 +680,6 @@ All routes require `Authorization: Bearer <token>` header (except webhooks).
 - Select which contact person to invite (not all contacts)
 - Auto-fill company context in description (editable before sending)
 - Timezone conversion: auto-detect client timezone from US state, preview shows both times
-- Auto-record toggle: opt-in to automatically send Recall.ai bot when meeting starts
 
 ### Dashboard Widget
 - Next 7 days rolling from now
@@ -737,20 +694,6 @@ All routes require `Authorization: Bearer <token>` header (except webhooks).
 - **Meeting History tabs:** dedicated Meetings tab on both Company and Client profiles with summary cards and full history
 - **Cancelled meeting handling:** cancel from CRM removes from Google Calendar, logs activity, pipeline NOT auto-reverted
 
-### Meeting Recording (Recall.ai) *(new in v1.5)*
-- **One-click recording:** 🔴 Record button on any scheduled meeting with a Google Meet link
-- **Bot behavior:** Recall.ai sends "Planfor Assistant" bot to the Google Meet room
-- **Status tracking:** sending_bot → recording → processing → completed / failed (polled every 10s)
-- **Auto-record:** toggle on meeting creation; server cron checks every 60s for meetings starting in next 2 minutes
-- **Webhook:** `POST /api/calendar/webhook/recall` receives `recording.done` and `transcript.done` events (NO auth middleware)
-- **Region:** US West (Oregon) — `https://us-west-2.recall.ai/api/v1`
-
-### AI Meeting Summaries (OpenAI) *(new in v1.5)*
-- **Automatic:** triggered after transcript is received via webhook
-- **Model:** GPT-4o-mini — cost-efficient at ~$0.03/meeting
-- **Output:** summary text, key takeaways, action items with priority (high/medium/low) and owner, sentiment, next steps
-- **Regenerate:** button to re-run OpenAI on existing transcript
-- **Frontend:** 🤖 AI Summary (blue card), 📋 Action Items (priority-colored), 📜 Collapsible transcript with speaker labels + timestamps
 ---
 
 ## Marketing & Campaigns
@@ -828,55 +771,37 @@ Supabase Storage with two private buckets: `client-documents` and `receipts`. Up
 
 ### v1.5.1 (March 2026) — Recall.ai Webhook + Async Transcription
 - Recall.ai webhook endpoint for `recording.done` and `transcript.done` events
-- Async transcription via Recall.ai built-in transcriber (`recallai_async`, language: `en`)
+- Async transcription via Recall.ai built-in transcriber
 - Full end-to-end flow: recording → transcript → AI summary (production tested)
-- Webhook URL: `https://planfor-crm-api.onrender.com/api/calendar/webhook/recall`
 
 ### v1.5.0 (March 2026) — Recall.ai Recording + AI Meeting Summaries
 **Meeting Recording**
 - One-click recording via Recall.ai bot ("Planfor Assistant" joins Google Meet)
 - Recording status polling: sending_bot → recording → processing → completed
-- Auto-record toggle on meeting creation (cron checks every 60s for upcoming meetings)
+- Auto-record toggle on meeting creation (cron checks every 60s)
 
 **AI Meeting Summaries (OpenAI GPT-4o-mini)**
 - Automatic summary generation from meeting transcripts
-- Key takeaways, action items with priority (high/medium/low) and owner
-- Sentiment analysis and next steps extraction
-- Regenerate summary button for re-processing
-- Cost: ~$0.36/meeting (Recall.ai ~$0.33 + OpenAI ~$0.03)
+- Key takeaways, action items with priority and owner, sentiment analysis
+- Regenerate summary button · Cost: ~$0.36/meeting
 
-**Frontend**
-- 🔴 Record button on scheduled meetings with Google Meet links
-- Recording status badges (sending bot, recording, processing, completed, failed)
-- 🤖 AI Summary section (blue card) with regenerate option
-- 📋 Action Items with priority-colored indicators
-- 📜 Collapsible full transcript with speaker labels and timestamps
-
-**New Files:** `server/services/recallService.js`, `server/services/aiSummary.js`
-**New Routes:** `POST /meetings/:id/record`, `GET /meetings/:id/recording-status`, `POST /meetings/:id/process-transcript`, `POST /meetings/:id/regenerate-summary`, `POST /webhook/recall`
-**New DB Columns:** `recall_bot_id`, `recording_url`, `transcript`, `transcript_segments`, `ai_summary`, `ai_action_items`, `recording_status`, `auto_record` on `crm_meetings`
+**New Files:** `recallService.js`, `aiSummary.js`
+**New DB Columns:** `recall_bot_id`, `recording_url`, `transcript`, `transcript_segments`, `ai_summary`, `ai_action_items`, `recording_status`, `auto_record`
 **New Env Vars:** `RECALL_API_KEY`, `OPENAI_API_KEY`
 
 ### v1.4.2 (March 2026) — Calendar Completion Flow + Import Events
-- Calendar event popup: completion prompt for past meetings (yellow banner)
-- Complete button available anytime (not just after meeting ends)
+- Calendar event popup: completion prompt for past meetings
 - Import & Complete: auto-creates CRM record from Google-only Calendar events
-- Backend: `POST /api/calendar/import-complete`
-- Fixed HTML description rendering in Calendar popup
-- Client meetings endpoint shows meetings from converted company too (`converted_from` join)
+- Client meetings endpoint shows meetings from converted company too
 
 ### v1.4.1 (March 2026) — Meeting Management Workflow + Quick Reply
 **Meeting Management (Task 7)**
-- Pipeline auto-update: auto-moves company to "Meeting Scheduled" on meeting creation
-- Needs Completion widget on Dashboard (past meetings with Complete/No-show + inline notes)
-- Meetings tab on Company Profile + Client Profile (summary cards, completion flow, notes)
-- Backend: `GET /api/calendar/needs-completion`
+- Pipeline auto-update to "Meeting Scheduled" on meeting creation
+- Needs Completion widget on Dashboard
+- Meetings tab on Company + Client profiles
 
 **Quick Reply from Email Inbox**
-- Reply button on email threads in Inbox page
-- Inline reply composer with recipient display, textarea, send/cancel
-- Gmail threading: `In-Reply-To` + `References` headers + `threadId`
-- Quoted previous message in reply body
+- Inline reply composer with Gmail threading (In-Reply-To + References + threadId)
 - Optimistic update: sent reply appears immediately in thread
 
 ### v1.4.0 (March 2026) — Gmail + Calendar + Polish
@@ -973,14 +898,14 @@ Supabase Storage with two private buckets: `client-documents` and `receipts`. Up
 | Gmail/SendGrid indicator | ✅ Done |
 | Dashboard upcoming meetings | ✅ Done |
 | Sidebar unread badge | ✅ Done |
+| Marketing Reply Routing (Task 4) | ⏭️ Waiting for marketing@ email |
 | Meeting Management Workflow (Task 7) | ✅ Done |
 | Quick Reply from Email Inbox | ✅ Done |
 | Gmail threading (In-Reply-To + threadId) | ✅ Done |
 | Calendar completion flow + Google event import | ✅ Done |
 | Version tag in sidebar | ✅ Done |
 | Recall.ai recording + transcription + AI summary | ✅ Done |
-| Profile Consistency + LocationSelector | ✅ Done |
-| Marketing Reply Routing (Task 4) | ⏭️ Waiting for marketing@ email |
+| Production Google OAuth redirect URI | 🔵 Pending |
 | Stripe integration | 🔵 Pending API key |
 
 ---

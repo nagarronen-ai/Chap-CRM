@@ -228,6 +228,95 @@ if (company_id) {
   }
 });
 
+// PUT /api/calendar/meetings/:id/reschedule
+router.put('/meetings/:id/reschedule', auth, async (req, res) => {
+  try {
+    const { start_time, end_time } = req.body;
+    if (!start_time || !end_time) return res.status(400).json({ error: 'start_time and end_time required' });
+
+    // Get meeting
+    const { data: meeting } = await supabase
+      .from('crm_meetings')
+      .select('*, crm_companies(company_name), crm_clients(business_name, contact_email, contact_first_name, contact_last_name), crm_people(first_name, last_name, email)')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    if (!['scheduled', 'confirmed'].includes(meeting.status)) {
+      return res.status(400).json({ error: 'Only scheduled or confirmed meetings can be rescheduled' });
+    }
+
+    // Update Google Calendar event
+    if (meeting.google_event_id) {
+      try {
+        const { calendar } = await getCalendarClient(req.user.id);
+        await calendar.events.patch({
+          calendarId: 'primary',
+          eventId: meeting.google_event_id,
+          requestBody: {
+            start: { dateTime: start_time, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+            end: { dateTime: end_time, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+          },
+          sendUpdates: 'all',
+        });
+      } catch (calErr) {
+        console.error('Google Calendar update failed:', calErr.message);
+      }
+    }
+
+    // Update CRM
+    const { data: updated } = await supabase
+      .from('crm_meetings')
+      .update({ start_time, end_time, updated_at: new Date().toISOString() })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    // Log activity
+    const companyId = meeting.company_id;
+    const clientId = meeting.client_id;
+    if (companyId || clientId) {
+      await supabase.from('crm_activity_log').insert([{
+        company_id: companyId || null,
+        client_id: clientId || null,
+        user_id: req.user.id,
+        action: 'Meeting Rescheduled',
+        details: `"${meeting.title}" rescheduled to ${new Date(start_time).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+      }]);
+    }
+
+    // Send notification email to contact
+    const contactEmail = meeting.crm_people?.email || meeting.crm_clients?.contact_email;
+    const contactName = meeting.crm_people
+      ? `${meeting.crm_people.first_name} ${meeting.crm_people.last_name}`
+      : meeting.crm_clients
+      ? `${meeting.crm_clients.contact_first_name} ${meeting.crm_clients.contact_last_name}`
+      : null;
+    const companyName = meeting.crm_companies?.company_name || meeting.crm_clients?.business_name || '';
+
+    if (contactEmail) {
+      const newDate = new Date(start_time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      const newTime = new Date(start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      const user = await supabase.from('crm_users').select('name, email').eq('id', req.user.id).single();
+      const senderName = user.data?.name || 'The Planfor Team';
+
+      const sgMail = require('@sendgrid/mail');
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      await sgMail.send({
+        to: contactEmail,
+        from: { email: process.env.SENDGRID_FROM_EMAIL, name: process.env.SENDGRID_FROM_NAME || 'Planfor' },
+        subject: `Meeting Rescheduled: ${meeting.title}`,
+        text: `Hi ${contactName || 'there'},\n\nI wanted to let you know that our meeting "${meeting.title}" has been rescheduled.\n\nNew date: ${newDate}\nNew time: ${newTime}\n\n${meeting.meet_link ? `Google Meet link: ${meeting.meet_link}\n\n` : ''}Please let me know if this new time doesn't work for you.\n\nBest,\n${senderName}`,
+      });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    console.error('Reschedule error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── UPDATE MEETING ──────────────────────────────────────────────────────────
 
 // PUT /api/calendar/meetings/:id
@@ -305,6 +394,8 @@ router.put('/meetings/:id', auth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
 
 // ─── CANCEL MEETING ──────────────────────────────────────────────────────────
 
@@ -603,13 +694,16 @@ router.post('/meetings/:id/record', auth, async (req, res) => {
       .single();
 
     if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
-    if (!meeting.meet_link) return res.status(400).json({ error: 'No Google Meet link on this meeting' });
+
+    // Use provided URL (Zoom override) or fall back to stored meet_link
+    const meetingUrl = req.body.meeting_url || meeting.meet_link;
+    if (!meetingUrl) return res.status(400).json({ error: 'No meeting link available' });
     if (meeting.recording_status === 'recording' || meeting.recording_status === 'sending_bot') {
       return res.status(400).json({ error: 'Recording already in progress' });
     }
 
     const recallService = require('../services/recallService');
-    const { botId } = await recallService.createBot(meeting.meet_link, 'Planfor Assistant');
+    const { botId } = await recallService.createBot(meetingUrl, 'Planfor Assistant');
 
     // Update meeting with bot ID and status
     const { data, error } = await supabase

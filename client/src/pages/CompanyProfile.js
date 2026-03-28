@@ -126,6 +126,9 @@ export default function CompanyProfile() {
   const [editingNotesText, setEditingNotesText] = useState('');
   const [zoomLinkInput, setZoomLinkInput] = useState({}); // { [meetingId]: url }
   const [showZoomInput, setShowZoomInput] = useState({}); // { [meetingId]: bool }
+  const [reschedulingMeeting, setReschedulingMeeting] = useState(null);
+  const [rescheduleForm, setRescheduleForm] = useState({ date: '', start_hour: '10', start_min: '00', end_hour: '11', end_min: '00' });
+  const [savingReschedule, setSavingReschedule] = useState(false);
 
   // Email composer state
   const [showEmailStep1, setShowEmailStep1] = useState(false);
@@ -232,6 +235,20 @@ export default function CompanyProfile() {
       fetchActivity();
     } catch (err) { console.error(err); }
     setSavingCompletion(false);
+  };
+
+  const rescheduleMeeting = async (meetingId) => {
+    if (!rescheduleForm.date) return;
+    setSavingReschedule(true);
+    try {
+      const start_time = new Date(`${rescheduleForm.date}T${String(rescheduleForm.start_hour).padStart(2, '0')}:${rescheduleForm.start_min}:00`).toISOString();
+      const end_time = new Date(`${rescheduleForm.date}T${String(rescheduleForm.end_hour).padStart(2, '0')}:${rescheduleForm.end_min}:00`).toISOString();
+      await axios.put(`${API}/calendar/meetings/${meetingId}/reschedule`, { start_time, end_time }, { headers: getHeaders() });
+      setReschedulingMeeting(null);
+      fetchMeetings();
+      fetchActivity();
+    } catch (err) { console.error(err); alert('Reschedule failed'); }
+    setSavingReschedule(false);
   };
 
   const [recordingStatus, setRecordingStatus] = useState({});
@@ -1144,6 +1161,12 @@ export default function CompanyProfile() {
                           </div>
                           <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>
                             {needsComplete && (
+                              <button onClick={() => { setReschedulingMeeting(reschedulingMeeting === m.id ? null : m.id); setRescheduleForm({ date: '', start_hour: '10', start_min: '00', end_hour: '11', end_min: '00' }); }}
+                                style={{ background: reschedulingMeeting === m.id ? '#3E423D' : '#F5F3EF', color: reschedulingMeeting === m.id ? '#fff' : '#717182', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '6px 14px', fontSize: 11, cursor: 'pointer' }}>
+                                {reschedulingMeeting === m.id ? '▲ Close' : '📅 Reschedule'}
+                              </button>
+                            )}
+                            {needsComplete && (
                               <button onClick={() => { setCompletingMeeting(isExpanded ? null : m.id); setCompletionNotes(''); }}
                                 style={{ background: isExpanded ? '#3E423D' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 11, cursor: 'pointer' }}>
                                 {isExpanded ? '▲ Close' : '✓ Complete'}
@@ -1151,6 +1174,42 @@ export default function CompanyProfile() {
                             )}
                           </div>
                         </div>
+                        {reschedulingMeeting === m.id && (
+                          <div style={{ borderTop: '1px solid rgba(62,66,61,0.08)', padding: 20, background: '#F8F9FF' }}>
+                            <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 12px', fontWeight: 600 }}>New Date & Time</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              <input type="date" value={rescheduleForm.date} onChange={e => setRescheduleForm(prev => ({ ...prev, date: e.target.value }))}
+                                style={{ background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none', fontFamily: 'Inter, sans-serif' }} />
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <select value={rescheduleForm.start_hour} onChange={e => setRescheduleForm(prev => ({ ...prev, start_hour: e.target.value }))}
+                                  style={{ flex: 1, background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none' }}>
+                                  {Array.from({ length: 24 }, (_, i) => <option key={i} value={String(i)}>{i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}</option>)}
+                                </select>
+                                <select value={rescheduleForm.start_min} onChange={e => setRescheduleForm(prev => ({ ...prev, start_min: e.target.value }))}
+                                  style={{ width: 80, background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none' }}>
+                                  {['00', '15', '30', '45'].map(m => <option key={m} value={m}>:{m}</option>)}
+                                </select>
+                                <span style={{ color: '#717182', fontSize: 13 }}>to</span>
+                                <select value={rescheduleForm.end_hour} onChange={e => setRescheduleForm(prev => ({ ...prev, end_hour: e.target.value }))}
+                                  style={{ flex: 1, background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none' }}>
+                                  {Array.from({ length: 24 }, (_, i) => <option key={i} value={String(i)}>{i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}</option>)}
+                                </select>
+                                <select value={rescheduleForm.end_min} onChange={e => setRescheduleForm(prev => ({ ...prev, end_min: e.target.value }))}
+                                  style={{ width: 80, background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', fontSize: 13, outline: 'none' }}>
+                                  {['00', '15', '30', '45'].map(m => <option key={m} value={m}>:{m}</option>)}
+                                </select>
+                              </div>
+                              <div style={{ display: 'flex', gap: 10 }}>
+                                <button onClick={() => rescheduleMeeting(m.id)} disabled={savingReschedule || !rescheduleForm.date}
+                                  style={{ flex: 1, background: rescheduleForm.date ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontSize: 13, cursor: rescheduleForm.date ? 'pointer' : 'default' }}>
+                                  {savingReschedule ? '⏳ Rescheduling...' : '✓ Confirm & Notify Contact'}
+                                </button>
+                                <button onClick={() => setReschedulingMeeting(null)}
+                                  style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         {isExpanded && (
                           <div style={{ borderTop: '1px solid rgba(62,66,61,0.08)', padding: 20, background: '#FAFAF9' }}>
                             <textarea value={completionNotes} onChange={e => setCompletionNotes(e.target.value)}
