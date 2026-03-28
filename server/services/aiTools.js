@@ -6,6 +6,21 @@ const toolDefinitions = [
   {
     type: 'function',
     function: {
+      name: 'get_last_thread',
+      description: 'Get the last email thread with a specific person — returns gmail_thread_id needed for replying',
+      parameters: {
+        type: 'object',
+        properties: {
+          person_id: { type: 'string', description: 'The person UUID' },
+          company_id: { type: 'string', description: 'The company UUID' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_pipeline_summary',
       description: 'Get a summary of the sales pipeline — stages, counts, and recent activity',
       parameters: { type: 'object', properties: {}, required: [] },
@@ -57,7 +72,7 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'search_contacts',
-description: 'Search for a company, client, or contact person by name or email. After finding results, extract and store the person_id, company_id, and client_id — you MUST pass these to any subsequent send_email, book_meeting, add_note or other tool calls.',
+      description: 'Search for a company, client, or contact person by name or email. After finding results, extract and store the person_id, company_id, and client_id — you MUST pass these to any subsequent send_email, book_meeting, add_note or other tool calls.',
       parameters: {
         type: 'object',
         properties: {
@@ -168,7 +183,7 @@ description: 'Search for a company, client, or contact person by name or email. 
     type: 'function',
     function: {
       name: 'send_email',
-description: 'Send an email to a contact or client — REQUIRES USER CONFIRMATION. IMPORTANT: Always include person_id and company_id or client_id from search results when available. Never leave these null if you found the person via search_contacts.',
+      description: 'Send an email to a contact or client — REQUIRES USER CONFIRMATION. IMPORTANT: Always include person_id and company_id or client_id from search results when available. Never leave these null if you found the person via search_contacts.',
       parameters: {
         type: 'object',
         properties: {
@@ -179,6 +194,7 @@ description: 'Send an email to a contact or client — REQUIRES USER CONFIRMATIO
           company_id: { type: 'string', description: 'Company UUID if sending to a contact' },
           client_id: { type: 'string', description: 'Client UUID if sending to a client' },
           person_id: { type: 'string', description: 'Person UUID if sending to a specific person' },
+          thread_id: { type: 'string', description: 'Gmail thread ID for replying to an existing thread. Get this from get_last_thread tool first.' },
         },
         required: ['recipient_email', 'recipient_name', 'subject', 'body'],
       },
@@ -261,8 +277,57 @@ async function executeTool(toolName, args, userId) {
     case 'update_client_stage': return await updateClientStage(userId, args.client_id, args.stage);
     case 'update_next_action': return await updateNextAction(userId, args.company_id, args.next_action);
     case 'get_marketing_history': return await getMarketingHistory(userId, args.company_id);
+    case 'get_last_thread': return await getLastThread(userId, args.person_id, args.company_id);
     default: return { error: `Unknown tool: ${toolName}` };
   }
+}
+
+async function getLastThread(userId, personId, companyId) {
+  // Check sent emails first — direct emails only, not campaigns
+  let sentQuery = supabase
+    .from('crm_emails_sent')
+    .select('gmail_thread_id, subject, sent_at')
+    .not('gmail_thread_id', 'is', null)
+    .order('sent_at', { ascending: false })
+    .limit(5);
+
+  if (personId) sentQuery = sentQuery.eq('person_id', personId);
+  else if (companyId) sentQuery = sentQuery.eq('company_id', companyId);
+
+  const { data: sent } = await sentQuery;
+
+  // Check inbound synced emails
+  let syncQuery = supabase
+    .from('crm_synced_emails')
+    .select('gmail_thread_id, subject, email_date, from_email')
+    .not('gmail_thread_id', 'is', null)
+    .order('email_date', { ascending: false })
+    .limit(5);
+
+  if (companyId) syncQuery = syncQuery.eq('company_id', companyId);
+
+  const { data: synced } = await syncQuery;
+
+  // Combine all threads and pick the most recent
+  const allThreads = [
+    ...(sent || []).map(t => ({ ...t, date: new Date(t.sent_at), source: 'sent' })),
+    ...(synced || []).map(t => ({ ...t, date: new Date(t.email_date), source: 'received' })),
+  ].filter(t => t.gmail_thread_id);
+
+  if (allThreads.length === 0) {
+    return { thread_id: null, message: 'No previous email thread found with this person' };
+  }
+
+  // Sort by date descending and pick most recent
+  allThreads.sort((a, b) => b.date - a.date);
+  const latest = allThreads[0];
+
+  return {
+    thread_id: latest.gmail_thread_id,
+    subject: latest.subject,
+    source: latest.source,
+    message: `Found thread: "${latest.subject}"`,
+  };
 }
 
 // ─── READ TOOL IMPLEMENTATIONS ────────────────────────────────────────────────

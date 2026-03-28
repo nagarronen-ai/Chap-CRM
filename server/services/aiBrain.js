@@ -40,6 +40,10 @@ TOOL USAGE GUIDE — when to call what:
 - User asks about marketing emails or campaigns → get_marketing_history
 - User asks to prep for a meeting → search_contacts + get_company_brief or get_client_status + get_my_meetings, all in one shot
 - User asks a multi-topic question → call every relevant tool before responding
+- When user asks to "reply" to someone or "follow up" or reference a previous email, always call search_contacts first to get person_id and company_id, then call get_last_thread with those IDs to get the correct gmail_thread_id, then pass it as thread_id to send_email.
+- get_last_thread returns the most recent direct email thread — always use this for replies, never guess the thread.
+- When replying to an existing thread, the subject MUST start with "Re: " followed by the original subject from get_last_thread. Never create a new subject for replies.
+- Always pass the thread_id from get_last_thread to send_email. If thread_id is null, tell the user no previous thread was found.
 
 PROACTIVE INTELLIGENCE:
 - If you notice something important while fetching data (stale lead, overdue payment, cancelled meeting), mention it.
@@ -304,7 +308,8 @@ async function executeConfirmedActions(userId, conversation, history, actionsTak
 }
 
 // Execute write actions that required confirmation
-async function executeConfirmedWriteAction(userId, toolName, args) {
+async function executeConfirmedActions(userId, conversation, history, actionsTaken, actions) {
+  console.log('executeConfirmedActions called with actions:', JSON.stringify(actions)); // ← add here
   const axios = require('axios');
   const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
 
@@ -315,6 +320,7 @@ async function executeConfirmedWriteAction(userId, toolName, args) {
 
   switch (toolName) {
     case 'send_email': {
+      console.log('Chappie send_email args:', JSON.stringify(args));
       await axios.post(`${API_BASE}/emails/send`, {
         company_id: args.company_id || null,
         client_id: args.client_id || null,
@@ -323,6 +329,7 @@ async function executeConfirmedWriteAction(userId, toolName, args) {
         body_html: `<p>${args.body.replace(/\n/g, '<br>')}</p>`,
         recipient_email: args.recipient_email,
         recipient_name: args.recipient_name,
+        thread_id: args.thread_id || null,
       }, { headers });
       return { sent: true, to: args.recipient_email };
     }
