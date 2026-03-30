@@ -9,24 +9,29 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // ─── GMAIL SEND HELPER ───────────────────────────────────────────────────────
 
-async function sendViaGmail(googleAccountId, { to, toName, from, fromName, subject, htmlBody, threadId, inReplyTo }) {
+async function sendViaGmail(googleAccountId, { to, toName, from, fromName, subject, htmlBody, threadId, inReplyTo, cc }) {
   const googleRoute = require('./google');
   const { oauth2Client, account } = await googleRoute.getAuthenticatedClient(googleAccountId);
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-  // Build RFC 2822 email
   const messageParts = [
     `From: ${fromName} <${from}>`,
     `To: ${toName ? `${toName} <${to}>` : to}`,
+  ];
+
+  if (cc && cc.length > 0) {
+    messageParts.push(`Cc: ${cc.join(', ')}`);
+  }
+
+  messageParts.push(
     `Subject: ${subject}`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=utf-8',
-  ];
+  );
 
-  // Add threading headers for replies
   if (inReplyTo) {
-    messageParts.splice(3, 0, `In-Reply-To: ${inReplyTo}`);
-    messageParts.splice(4, 0, `References: ${inReplyTo}`);
+    messageParts.push(`In-Reply-To: ${inReplyTo}`);
+    messageParts.push(`References: ${inReplyTo}`);
   }
 
   messageParts.push('', htmlBody);
@@ -172,7 +177,7 @@ router.post('/send', auth, async (req, res) => {
   const { role, id: userId } = req.user;
   if (role === 'finance') return res.status(403).json({ error: 'Forbidden' });
 
-  const { company_id, person_id, template_id, subject, body_html, recipient_email, recipient_name } = req.body;
+  const { company_id, client_id, person_id, template_id, subject, body_html, recipient_email, recipient_name, cc, thread_id } = req.body;
 
   const { data: sender } = await supabase
     .from('crm_users')
@@ -225,9 +230,10 @@ ${body_html}
           fromName: sender.name,
           subject,
           htmlBody: gmailHtml,
-          threadId: req.body.gmail_thread_id || null,
+          threadId: thread_id || req.body.gmail_thread_id || null,
           inReplyTo: req.body.in_reply_to || null,
-        });
+          cc: cc || [],
+        });;
         sendSuccess = true;
         sendMethod = 'gmail';
         gmailMessageId = result.messageId;
@@ -288,21 +294,59 @@ ${body_html}
 
   const status = sendSuccess ? 'sent' : 'draft';
 
+  // Validate company_id exists in crm_companies
+  let validCompanyId = company_id || null;
+  if (validCompanyId) {
+    const { data: companyCheck } = await supabase
+      .from('crm_companies')
+      .select('id')
+      .eq('id', validCompanyId)
+      .single();
+    if (!companyCheck) {
+      console.warn('company_id not found in crm_companies, setting to null:', validCompanyId);
+      validCompanyId = null;
+    }
+  }
+
+  // Validate person_id exists in crm_people
+  let validPersonId = person_id || null;
+  if (validPersonId) {
+    const { data: personCheck } = await supabase
+      .from('crm_people')
+      .select('id')
+      .eq('id', validPersonId)
+      .single();
+    if (!personCheck) {
+      console.warn('person_id not found in crm_people, setting to null:', validPersonId);
+      validPersonId = null;
+    }
+  }
+
+  const insertPayload = {
+    user_id: userId,
+    company_id: validCompanyId,
+    client_id: client_id || null,
+    person_id: validPersonId,
+    template_id: template_id || null,
+    subject,
+    body_html,
+    status,
+    send_method: sendMethod,
+    gmail_message_id: gmailMessageId,
+    gmail_thread_id: gmailThreadId,
+    sent_at: sendSuccess ? new Date() : null,
+    created_at: new Date()
+  };
+  console.log('DB insert payload:', JSON.stringify(insertPayload));
+
   const { data, error } = await supabase
     .from('crm_emails_sent')
-    .insert([{
-      user_id: userId,
-      company_id, person_id, template_id,
-      subject, body_html,
-      status,
-      send_method: sendMethod,
-      gmail_message_id: gmailMessageId,
-      gmail_thread_id: gmailThreadId,
-      sent_at: sendSuccess ? new Date() : null,
-      created_at: new Date()
-    }])
+    .insert([insertPayload])
     .select().single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    console.error('DB insert error:', error.message, error.details, error.hint);
+    return res.status(500).json({ error: error.message });
+  }
 
   await supabase.from('crm_activity_log').insert([{
     company_id,

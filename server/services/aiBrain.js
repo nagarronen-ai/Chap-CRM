@@ -3,99 +3,105 @@ const supabase = require('../db');
 const { toolDefinitions, executeTool, CONFIRMATION_REQUIRED } = require('./aiTools');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY_BRAIN });
 
-const SYSTEM_PROMPT = `You are an AI assistant built into VenueFlow CRM, the internal operating system for Planfor.io — a wedding and event venue marketplace platform. You serve the entire company: sales, management, finance, customer success, marketing, and support.
+const SYSTEM_PROMPT = `You are Chappie, the AI assistant built into VenueFlow CRM — the internal operating system for Planfor.io, a wedding and event venue marketplace. You serve the entire company: sales, management, finance, customer success, marketing, and support.
 
 WHO YOU SERVE:
-- Sales reps: pipeline management, lead follow-up, meeting prep, outreach
-- Management: company-wide performance, team activity, revenue overview
-- Finance: transaction tracking, pending payments, revenue summaries
-- Customer Success (CSM): client health, stage management, contract details
-- Marketing: campaign performance, unsubscribes, contact engagement
-- Support: client contact info, meeting history, notes
+Sales reps: pipeline management, lead follow-up, meeting prep, outreach.
+Management: company-wide performance, team activity, revenue overview.
+Finance: transaction tracking, pending payments, revenue summaries.
+Customer Success (CSM): client health, stage management, contract details.
+Marketing: campaign performance, engagement tracking.
+Support: client contact info, meeting history, notes.
 
 BEHAVIOR RULES — NON-NEGOTIABLE:
-1. ALWAYS use tools to get live data. Never answer from memory or assume. If you don't know, use a tool.
-2. For multi-part questions, call ALL needed tools in one go before responding. Never make the user ask twice.
+1. ALWAYS use tools to get live data. Never answer from memory or assumptions.
+2. For multi-part questions, call ALL needed tools before responding. Never make the user ask twice.
 3. Never ask permission to look something up. Just do it immediately.
 4. Never say "I would need to check" or "I don't have access". You have tools — use them.
-5. CRITICAL: Never use markdown under any circumstances. Do not use **asterisks** for bold, do not use - or * for bullet points, do not use # for headers, do not use _underscores_. If you use any markdown formatting your response is wrong. Write everything as plain sentences and paragraphs. Use a new line between topics.
+5. CRITICAL FORMATTING: Never use markdown. No **bold**, no - bullets, no # headers, no _underscores_. Plain conversational text only. Use line breaks between topics.
 6. Always respond in English.
-7. Be direct and concise. Lead with the answer, then add context.
-8. For write actions requiring confirmation, state clearly and specifically what you will do — who, what, when — before asking to confirm.
-9. When a user references any entity by name (company, client, person), always search_contacts first to get the real ID before calling any other tool.
-10. Format all dates as: Tuesday March 28 at 10:00 AM. Never use ISO format in responses.
+7. Be direct and concise. Lead with the answer, then context.
+8. For confirmation actions, state exactly what will happen — who, what, when — before the user sees confirm/cancel buttons.
+9. Always call search_contacts first before any action involving a person or company name.
+10. Format all dates as: Tuesday March 28 at 10:00 AM. Never ISO format.
 
-TOOL USAGE GUIDE — when to call what:
-- User mentions any name (person OR company) → always call search_contacts first
-- After search_contacts returns results, check ALL of: companies, clients, AND people fields
-- If a person is found, their company is included in the result — use that company_id to call get_company_brief immediately
-- If a company is found directly, call get_company_brief with that id
-- If a client is found, call get_client_status with that id
-- NEVER say "not found" after a single search — if companies array is empty, check if people array has results and use their company
-- Example: "Ruth Spirer" → search finds her in people → her company "Weddings and Events by Ruth" is in the result → call get_company_brief with that company id
-- User asks about meetings (any timeframe) → get_my_meetings
-- User asks about pipeline, leads, stages → get_pipeline_summary
-- User asks about stale or inactive leads → get_stale_leads
-- User asks about revenue, payments, transactions → get_finance_summary
-- User asks about marketing emails or campaigns → get_marketing_history
-- User asks to prep for a meeting → search_contacts + get_company_brief or get_client_status + get_my_meetings, all in one shot
-- User asks a multi-topic question → call every relevant tool before responding
-- When user asks to "reply" to someone or "follow up" or reference a previous email, always call search_contacts first to get person_id and company_id, then call get_last_thread with those IDs to get the correct gmail_thread_id, then pass it as thread_id to send_email.
-- get_last_thread returns the most recent direct email thread — always use this for replies, never guess the thread.
-- When replying to an existing thread, the subject MUST start with "Re: " followed by the original subject from get_last_thread. Never create a new subject for replies.
-- Always pass the thread_id from get_last_thread to send_email. If thread_id is null, tell the user no previous thread was found.
+EMAIL RULES — READ CAREFULLY:
+- Send to a named person: search_contacts to get email + person_id + company_id → send_email. Always pass person_id.
+- Send to a company role (e.g. "CEO of QualifAI"): search_contacts to find company → get_company_people → match by title → send_email with that person's person_id.
+- Send to all contacts at a company: search_contacts → get_company_people → send_bulk_email with the full list.
+- Send to one person CC rest of team: search_contacts → get_company_people → send_email with TO = named person, cc = array of all other emails at that company.
+- Reply to last email: search_contacts → get_last_thread → send_email with thread_id from get_last_thread and subject starting "Re: [original subject]".
+- New email (not a reply): do NOT call get_last_thread. Do NOT add "Re:" to subject.
+- CRITICAL: person_id and company_id MUST be real UUIDs from tool results. Never guess or invent IDs. If not found, pass null.
+- Always pass person_id when sending to a named person — it is in the people array of search_contacts results.
+- When sending email, the company_id to use is the person's company_id field from the people array in search_contacts results — NOT from the companies array or clients array. The people array has the correct company_id that links to crm_companies.
+- When user says "CC the CEO" or any role, always call get_company_people first to get the full team list with titles, then match the exact person by title for CC. Never guess who holds a role from memory.
 
-PROACTIVE INTELLIGENCE:
-- If you notice something important while fetching data (stale lead, overdue payment, cancelled meeting), mention it.
-- If a client is Churned or Paused, flag it when discussing them.
-- If a company has no activity in 14+ days, mention it unprompted.
-- When listing contacts for a company or client, always list ALL people by name and title only. Never show just one person unless there is truly only one. Format as: "Name — Title" per line, nothing else unless asked for more.
-- If asked to prep for a meeting, also mention the last interaction, any open action items, and who will be attending.
+
+EMAIL READING RULES:
+- "Did X reply?" → search_contacts → get_last_thread → get_email_thread → check received_messages for replies. Never answer yes/no without reading the thread.
+- "What did X say?" / "What was the reply?" / "Read the email" → search_contacts → get_last_thread → get_email_thread → summarize received_messages. Never say you cannot find it after get_last_thread succeeds.
+
+CAMPAIGN ANALYTICS:
+- "How many opened campaign X?" → get_campaign_stats with campaign name.
+- "Who clicked?" / "Full report?" → get_campaign_stats, present all stats clearly.
+
+OTHER TOOL RULES:
+- User asks about meetings → get_my_meetings.
+- User asks about pipeline/leads/stages → get_pipeline_summary.
+- User asks about stale leads → get_stale_leads.
+- User asks about revenue/payments → get_finance_summary.
+- Prep for a meeting → search_contacts + get_company_brief or get_client_status + get_my_meetings all at once.
+- Multi-topic question → call every relevant tool before responding.
+- After search_contacts: check companies, clients, AND people arrays. If person found, use their company. Never say not found without checking all three.
 
 WRITE ACTIONS:
-- Instant (no confirmation needed): add note, move pipeline stage, update next action, update client stage
-- Requires confirmation: send email, book meeting, cancel meeting, reschedule meeting
-- For confirmation actions: always show who exactly will receive what, with full details, before asking to confirm. Never be vague.
+Instant (no confirmation): add note, update pipeline stage, update next action, update client stage.
+Requires confirmation: send_email, send_bulk_email, book_meeting, cancel_meeting, reschedule_meeting.
+- For book_meeting: always calculate exact dates from today (Monday March 30 2026). "This Thursday" = April 2 2026. "Tomorrow" = March 31 2026. Never guess or use past dates. Always show the exact calculated date in the confirmation card so the user can verify before confirming.
+- If any detail is ambiguous — show your assumption clearly. Never silently guess.
 
 TONE:
-- Speak like a sharp, experienced chief of staff who knows the business inside out.
-- Be direct. Skip pleasantries. Lead with facts.
-- When something is unclear, make a reasonable assumption and state it, rather than asking for clarification.
-- If you genuinely cannot complete a request with available tools, say exactly what's missing in one sentence.
+Speak like a sharp experienced chief of staff. Direct, no pleasantries, lead with facts. Make reasonable assumptions rather than asking for clarification. If you genuinely cannot complete a request, say exactly what is missing in one sentence.
 
-FINAL REMINDER: No markdown. No **bold**. No bullets. No headers. Plain text only. Every single response.`;
+FINAL REMINDER: No markdown. No bold. No bullets. No headers. Plain text only. Every single response.`;
 
+// ─── UUID VALIDATOR ───────────────────────────────────────────────────────────
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const validUUID = (val) => val && uuidRegex.test(val) ? val : null;
 
-// Get or create conversation for user
+// ─── GET OR CREATE CONVERSATION ───────────────────────────────────────────────
 async function getOrCreateConversation(userId) {
-  const { data } = await supabase
-    .from('crm_ai_conversations')
-    .select('*')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single();
+  try {
+    const { data } = await supabase
+      .from('crm_ai_conversations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
 
-  if (data) {
-    // Clean any orphaned tool_calls from history
-    const messages = (data.messages || []);
-    // Keep only user and assistant text messages — strip all tool_calls and tool results
-// This gives a clean readable history without any orphaned tool messages
-const cleaned = messages.filter(m => 
-  (m.role === 'user' || m.role === 'assistant') && 
-  !m.tool_calls && 
-  typeof m.content === 'string' &&
-  m.content.length > 0
-);
-    // Save cleaned history back if it changed
-    if (cleaned.length !== messages.length) {
-      await supabase
-        .from('crm_ai_conversations')
-        .update({ messages: cleaned, updated_at: new Date().toISOString() })
-        .eq('id', data.id);
-      data.messages = cleaned;
+    if (data) {
+      // Strip all tool_calls and tool result messages — keep only clean text messages
+      const messages = (data.messages || []);
+      const cleaned = messages.filter(m =>
+        (m.role === 'user' || m.role === 'assistant') &&
+        !m.tool_calls &&
+        typeof m.content === 'string' &&
+        m.content.length > 0
+      );
+
+      if (cleaned.length !== messages.length) {
+        await supabase
+          .from('crm_ai_conversations')
+          .update({ messages: cleaned, updated_at: new Date().toISOString() })
+          .eq('id', data.id);
+        data.messages = cleaned;
+      }
+      return data;
     }
-    return data;
+  } catch (err) {
+    // No existing conversation — create one
   }
 
   const { data: newConv } = await supabase
@@ -107,39 +113,60 @@ const cleaned = messages.filter(m =>
   return newConv;
 }
 
-// Save messages to conversation
+// ─── SAVE MESSAGES ────────────────────────────────────────────────────────────
 async function saveMessages(conversationId, messages, lastMessage, actionsTaken) {
-  // Keep last 50 messages max
-  const trimmed = messages.slice(-50);
+  // Only save clean text messages — strip any tool_calls or tool results before saving
+  const cleaned = messages.filter(m =>
+    (m.role === 'user' || m.role === 'assistant') &&
+    !m.tool_calls &&
+    typeof m.content === 'string' &&
+    m.content.length > 0
+  );
+
+  const trimmed = cleaned.slice(-50);
+
   await supabase
     .from('crm_ai_conversations')
     .update({
       messages: trimmed,
-      last_message: lastMessage,
+      last_message: lastMessage || null,
       actions_taken: actionsTaken || [],
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversationId);
 }
 
-// Main chat function
+// ─── MAIN CHAT FUNCTION ───────────────────────────────────────────────────────
 async function chat(userId, userMessage, pendingConfirmation = null) {
   const conversation = await getOrCreateConversation(userId);
-  let history = conversation.messages || [];
   const actionsTaken = conversation.actions_taken || [];
 
-  // Handle confirmed action execution
+  // Load history — only clean text messages for OpenAI
+  let history = (conversation.messages || []).filter(m =>
+    (m.role === 'user' || m.role === 'assistant') &&
+    !m.tool_calls &&
+    typeof m.content === 'string' &&
+    m.content.length > 0
+  );
+
+  // ── Handle confirmed action execution ──
   if (pendingConfirmation && pendingConfirmation.confirmed) {
+    if (!pendingConfirmation.actions || pendingConfirmation.actions.length === 0) {
+      return { type: 'text', content: '❌ No actions to execute.', conversationId: conversation.id };
+    }
     return await executeConfirmedActions(userId, conversation, history, actionsTaken, pendingConfirmation.actions);
   }
 
-  // Add user message
-  history = [...history, { role: 'user', content: userMessage }];
+  // ── Regular chat message ──
+  if (!userMessage) {
+    return { type: 'text', content: '❌ No message provided.', conversationId: conversation.id };
+  }
 
-  // Agentic loop — keep calling OpenAI until we get a final text response
-  // or hit a confirmation requirement
+  // Build working history with tool messages (not saved to DB, only used for this session)
+  let workingHistory = [...history, { role: 'user', content: userMessage }];
+
   let iterations = 0;
-  const MAX_ITERATIONS = 5;
+  const MAX_ITERATIONS = 6;
 
   while (iterations < MAX_ITERATIONS) {
     iterations++;
@@ -148,7 +175,7 @@ async function chat(userId, userMessage, pendingConfirmation = null) {
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        ...history.slice(-30),
+        ...workingHistory.slice(-30),
       ],
       tools: toolDefinitions,
       tool_choice: 'auto',
@@ -157,61 +184,64 @@ async function chat(userId, userMessage, pendingConfirmation = null) {
 
     const message = response.choices[0].message;
 
-    // No tool calls — final text response
+    // ── No tool calls — final text response ──
     if (!message.tool_calls || message.tool_calls.length === 0) {
-      history = [...history, { role: 'assistant', content: message.content }];
-      await saveMessages(conversation.id, history, userMessage, actionsTaken);
-      return {
-        type: 'text',
-        content: message.content,
-        conversationId: conversation.id,
-      };
+      const content = message.content || '';
+      const savedHistory = [...history, { role: 'user', content: userMessage }, { role: 'assistant', content }];
+      await saveMessages(conversation.id, savedHistory, userMessage, actionsTaken);
+      return { type: 'text', content, conversationId: conversation.id };
     }
 
-    // Has tool calls — add assistant message to history first
-    history = [...history, message];
+    // ── Has tool calls ──
+    workingHistory = [...workingHistory, message];
 
-    // Separate confirmation vs instant tools
     const confirmationTools = message.tool_calls.filter(tc => CONFIRMATION_REQUIRED.includes(tc.function.name));
     const instantTools = message.tool_calls.filter(tc => !CONFIRMATION_REQUIRED.includes(tc.function.name));
 
-    // Execute ALL instant tools and add their results
-for (const tc of instantTools) {
-  let result;
-  try {
-    const args = JSON.parse(tc.function.arguments);
-    result = await executeTool(tc.function.name, args, userId);
-    actionsTaken.push({
-      tool: tc.function.name,
-      args,
-      result,
-      timestamp: new Date().toISOString(),
-      status: 'executed',
-    });
-  } catch (err) {
-    console.error(`Tool ${tc.function.name} failed:`, err.message);
-    result = { error: err.message };
-  }
-  // Always add tool result to history regardless of success/failure
-  history = [...history, {
-    role: 'tool',
-    tool_call_id: tc.id,
-    content: JSON.stringify(result),
-  }];
-}
+    // Execute all instant tools
+    for (const tc of instantTools) {
+      let result;
+      try {
+        const args = JSON.parse(tc.function.arguments);
+        result = await executeTool(tc.function.name, args, userId);
+        actionsTaken.push({
+          tool: tc.function.name,
+          args,
+          result,
+          timestamp: new Date().toISOString(),
+          status: 'executed',
+        });
+      } catch (err) {
+        console.error(`Tool ${tc.function.name} failed:`, err.message);
+        result = { error: err.message };
+      }
+      workingHistory = [...workingHistory, {
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: JSON.stringify(result),
+      }];
+    }
 
-    // If there are confirmation tools, add placeholder results for them
-    // so history stays valid, then return for user confirmation
+    // ── Confirmation required ──
     if (confirmationTools.length > 0) {
       const pendingActions = [];
+
       for (const tc of confirmationTools) {
-        const args = JSON.parse(tc.function.arguments);
-        // Add placeholder tool result so history is always valid
-        history = [...history, {
+        let args;
+        try {
+          args = JSON.parse(tc.function.arguments);
+        } catch (err) {
+          console.error('Failed to parse tool arguments:', err.message);
+          args = {};
+        }
+
+        // Add placeholder tool result so history stays valid
+        workingHistory = [...workingHistory, {
           role: 'tool',
           tool_call_id: tc.id,
           content: JSON.stringify({ status: 'pending_confirmation' }),
         }];
+
         pendingActions.push({
           tool: tc.function.name,
           args,
@@ -219,21 +249,31 @@ for (const tc of instantTools) {
         });
       }
 
-      // Get a summary message from OpenAI describing what it wants to do
-      const summaryResponse = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...history.slice(-30),
-          { role: 'user', content: 'Briefly describe what you are about to do in one sentence. Do not ask for confirmation again — the user will see confirm/cancel buttons.' },
-        ],
-        max_tokens: 200,
-      });
+      // Get a one-sentence summary of what Chappie is about to do
+      let summaryContent = '';
+      try {
+        const summaryResponse = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            ...workingHistory.slice(-20),
+            { role: 'user', content: 'In one short sentence, describe exactly what you are about to do. Do not ask for confirmation — the user will see confirm/cancel buttons.' },
+          ],
+          max_tokens: 150,
+        });
+        summaryContent = summaryResponse.choices[0].message.content || '';
+      } catch (err) {
+        console.error('Summary generation failed:', err.message);
+        summaryContent = 'Ready to execute the requested action.';
+      }
 
-      const summaryContent = summaryResponse.choices[0].message.content;
-      history = [...history, { role: 'assistant', content: summaryContent }];
-
-      await saveMessages(conversation.id, history, userMessage, actionsTaken);
+      // Save clean history with the summary
+      const savedHistory = [
+        ...history,
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: summaryContent },
+      ];
+      await saveMessages(conversation.id, savedHistory, userMessage, actionsTaken);
 
       return {
         type: 'confirmation',
@@ -243,29 +283,28 @@ for (const tc of instantTools) {
       };
     }
 
-    // All tools were instant — loop back to get OpenAI's next response
-    // (it may call more tools or give a final answer)
+    // All instant — loop back for next response
   }
 
-  // Safety fallback if we hit max iterations
-  const fallback = 'I gathered all the information. Please ask me to summarize it.';
-  history = [...history, { role: 'assistant', content: fallback }];
-  await saveMessages(conversation.id, history, userMessage, actionsTaken);
-  return {
-    type: 'text',
-    content: fallback,
-    conversationId: conversation.id,
-  };
+  // Max iterations reached
+  const fallback = 'I gathered the information. What would you like me to do with it?';
+  const savedHistory = [...history, { role: 'user', content: userMessage }, { role: 'assistant', content: fallback }];
+  await saveMessages(conversation.id, savedHistory, userMessage, actionsTaken);
+  return { type: 'text', content: fallback, conversationId: conversation.id };
 }
 
-// Execute confirmed actions
+// ─── EXECUTE CONFIRMED ACTIONS ────────────────────────────────────────────────
 async function executeConfirmedActions(userId, conversation, history, actionsTaken, actions) {
+  console.log('executeConfirmedActions called with', actions.length, 'action(s)');
+
   const results = [];
 
   for (const action of actions) {
+    console.log('Executing:', action.tool, JSON.stringify(action.args));
     try {
       const result = await executeConfirmedWriteAction(userId, action.tool, action.args);
-      results.push({ tool: action.tool, success: true, result, tool_call_id: action.tool_call_id });
+      console.log('Success:', action.tool, JSON.stringify(result));
+      results.push({ tool: action.tool, success: true, result });
       actionsTaken.push({
         tool: action.tool,
         args: action.args,
@@ -274,79 +313,123 @@ async function executeConfirmedActions(userId, conversation, history, actionsTak
         status: 'confirmed_executed',
       });
     } catch (err) {
-      results.push({ tool: action.tool, success: false, error: err.message, tool_call_id: action.tool_call_id });
+      console.error('Failed:', action.tool, err.message);
+      results.push({ tool: action.tool, success: false, error: err.message });
     }
   }
 
-  // Build tool result messages to satisfy OpenAI's requirement
-  const toolResultMessages = results.map(r => ({
-    role: 'tool',
-    tool_call_id: r.tool_call_id,
-    content: JSON.stringify(r.success ? r.result : { error: r.error }),
-  }));
+  console.log('Results:', JSON.stringify(results));
 
-  // Get a natural summary from OpenAI using proper history
   const successCount = results.filter(r => r.success).length;
-  const quickSummary = `✅ Done — ${successCount} of ${results.length} action${results.length > 1 ? 's' : ''} completed successfully.`;
+  const totalCount = results.length;
+  
+  let summary;
+  if (successCount === totalCount) {
+    const meetLink = results.find(r => r.result?.meeting?.meet_link)?.result?.meeting?.meet_link;
+    summary = totalCount === 1
+      ? `✅ Done — action completed successfully.${meetLink ? `\n\nMeet link: ${meetLink}` : ''}`
+      : `✅ Done — all ${totalCount} actions completed successfully.`;
+  } else {
+    summary = `✅ Done — ${successCount} of ${totalCount} actions completed successfully.`;
+  }
 
-  // Add tool results + summary to history so future messages have clean context
-  const assistantMessage = { role: 'assistant', content: quickSummary };
-  const finalHistory = [
-    ...history,
-    ...toolResultMessages,
-    assistantMessage,
-  ];
-
-  await saveMessages(conversation.id, finalHistory, quickSummary, actionsTaken);
+  const savedHistory = [...history, { role: 'assistant', content: summary }];
+  await saveMessages(conversation.id, savedHistory, summary, actionsTaken);
 
   return {
     type: 'text',
-    content: quickSummary,
+    content: summary,
     results,
     conversationId: conversation.id,
   };
 }
 
-// Execute write actions that required confirmation
-async function executeConfirmedActions(userId, conversation, history, actionsTaken, actions) {
-  console.log('executeConfirmedActions called with actions:', JSON.stringify(actions)); // ← add here
+// ─── EXECUTE WRITE ACTIONS ────────────────────────────────────────────────────
+async function executeConfirmedWriteAction(userId, toolName, args) {
+  console.log('executeConfirmedWriteAction:', toolName);
   const axios = require('axios');
-  const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
-
-  // Get a system token for internal API calls
   const jwt = require('jsonwebtoken');
+
+  const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
   const token = jwt.sign({ id: userId, role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '5m' });
   const headers = { Authorization: `Bearer ${token}` };
 
   switch (toolName) {
+
     case 'send_email': {
-      console.log('Chappie send_email args:', JSON.stringify(args));
-      await axios.post(`${API_BASE}/emails/send`, {
-        company_id: args.company_id || null,
-        client_id: args.client_id || null,
-        person_id: args.person_id || null,
+      // Auto-lookup client_id from company_id so email appears in client emails tab
+      let clientId = validUUID(args.client_id);
+      if (!clientId && validUUID(args.company_id)) {
+        const { data: clientRecord } = await supabase
+          .from('crm_clients')
+          .select('id')
+          .eq('converted_from', args.company_id)
+          .single();
+        if (clientRecord) clientId = clientRecord.id;
+      }
+    
+      const payload = {
+        company_id: validUUID(args.company_id),
+        client_id: clientId,
+        person_id: validUUID(args.person_id),
         subject: args.subject,
-        body_html: `<p>${args.body.replace(/\n/g, '<br>')}</p>`,
+        body_html: `<p>${(args.body || '').replace(/\n/g, '<br>')}</p>`,
         recipient_email: args.recipient_email,
         recipient_name: args.recipient_name,
         thread_id: args.thread_id || null,
-      }, { headers });
-      return { sent: true, to: args.recipient_email };
+        cc: Array.isArray(args.cc) ? args.cc : [],
+      };
+      console.log('send_email payload:', JSON.stringify(payload));
+      const res = await axios.post(`${API_BASE}/emails/send`, payload, { headers });
+      return { sent: true, to: args.recipient_email, method: res.data?.sendMethod };
+    }
+
+    case 'send_bulk_email': {
+      const recipients = Array.isArray(args.recipients) ? args.recipients : [];
+      const sendResults = [];
+
+      for (const recipient of recipients) {
+        try {
+          const payload = {
+            company_id: validUUID(args.company_id),
+            person_id: validUUID(recipient.person_id),
+            subject: args.subject,
+            body_html: `<p>${(args.body || '').replace(/\n/g, '<br>')}</p>`,
+            recipient_email: recipient.email,
+            recipient_name: recipient.name,
+          };
+          await axios.post(`${API_BASE}/emails/send`, payload, { headers });
+          sendResults.push({ email: recipient.email, sent: true });
+          console.log('Bulk sent to:', recipient.email);
+        } catch (err) {
+          console.error('Bulk send failed for', recipient.email, ':', err.message);
+          sendResults.push({ email: recipient.email, sent: false, error: err.message });
+        }
+      }
+
+      const sentCount = sendResults.filter(r => r.sent).length;
+      return { sent_count: sentCount, total: sendResults.length, results: sendResults };
     }
 
     case 'book_meeting': {
-      const start_time = new Date(`${args.date}T${String(args.start_hour).padStart(2,'0')}:${String(args.start_min || 0).padStart(2,'0')}:00`).toISOString();
-      const end_time = new Date(`${args.date}T${String(args.end_hour).padStart(2,'0')}:${String(args.end_min || 0).padStart(2,'0')}:00`).toISOString();
+      const start_time = new Date(
+        `${args.date}T${String(args.start_hour).padStart(2, '0')}:${String(args.start_min || 0).padStart(2, '0')}:00`
+      ).toISOString();
+      const end_time = new Date(
+        `${args.date}T${String(args.end_hour).padStart(2, '0')}:${String(args.end_min || 0).padStart(2, '0')}:00`
+      ).toISOString();
+
       const res = await axios.post(`${API_BASE}/calendar/meetings`, {
         title: args.title,
         meeting_type: args.meeting_type || 'google_meet',
         start_time,
         end_time,
-        company_id: args.company_id || null,
-        client_id: args.client_id || null,
-        person_id: args.person_id || null,
+        company_id: validUUID(args.company_id),
+        client_id: validUUID(args.client_id),
+        person_id: validUUID(args.person_id),
         attendee_emails: args.attendee_email ? [args.attendee_email] : [],
       }, { headers });
+
       return { booked: true, meeting: res.data };
     }
 
@@ -356,9 +439,19 @@ async function executeConfirmedActions(userId, conversation, history, actionsTak
     }
 
     case 'reschedule_meeting': {
-      const start_time = new Date(`${args.date}T${String(args.start_hour).padStart(2,'0')}:${String(args.start_min || 0).padStart(2,'0')}:00`).toISOString();
-      const end_time = new Date(`${args.date}T${String(args.end_hour).padStart(2,'0')}:${String(args.end_min || 0).padStart(2,'0')}:00`).toISOString();
-      await axios.put(`${API_BASE}/calendar/meetings/${args.meeting_id}/reschedule`, { start_time, end_time }, { headers });
+      const start_time = new Date(
+        `${args.date}T${String(args.start_hour).padStart(2, '0')}:${String(args.start_min || 0).padStart(2, '0')}:00`
+      ).toISOString();
+      const end_time = new Date(
+        `${args.date}T${String(args.end_hour).padStart(2, '0')}:${String(args.end_min || 0).padStart(2, '0')}:00`
+      ).toISOString();
+
+      await axios.put(
+        `${API_BASE}/calendar/meetings/${args.meeting_id}/reschedule`,
+        { start_time, end_time },
+        { headers }
+      );
+
       return { rescheduled: true, meeting_id: args.meeting_id };
     }
 

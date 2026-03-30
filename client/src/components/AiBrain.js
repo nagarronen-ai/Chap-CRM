@@ -8,14 +8,17 @@ const ACTION_LABELS = {
   book_meeting: '📅 Book Meeting',
   cancel_meeting: '❌ Cancel Meeting',
   reschedule_meeting: '📅 Reschedule Meeting',
+  send_bulk_email: '📧 Bulk Email',
 };
 
 function formatActionSummary(action) {
   const { tool, args } = action;
   switch (tool) {
     case 'send_email':
-      return `Send email to ${args.recipient_name} (${args.recipient_email})\nSubject: "${args.subject}"\n\n${args.body}`;
-    case 'book_meeting':
+      return `Send email to ${args.recipient_name} (${args.recipient_email})\nSubject: "${args.subject}"${args.cc && args.cc.length > 0 ? `\nCC: ${args.cc.join(', ')}` : ''}\n\n${args.body}`;
+      case 'send_bulk_email':
+      return `Send email to ${args.recipients?.length || 0} contacts\nSubject: "${args.subject}"\n\n${args.body}`;
+      case 'book_meeting':
       return `Book meeting: "${args.title}"\nDate: ${args.date} at ${args.start_hour}:${String(args.start_min || 0).padStart(2,'0')} — ${args.end_hour}:${String(args.end_min || 0).padStart(2,'0')}\n${args.attendee_email ? `Invite: ${args.attendee_email}` : ''}`;
     case 'cancel_meeting':
       return `Cancel meeting ID: ${args.meeting_id}`;
