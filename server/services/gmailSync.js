@@ -1,6 +1,8 @@
 // server/services/gmailSync.js
 const { google } = require('googleapis');
 const supabase = require('../db');
+const OpenAI = require('openai');
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY_BRAIN });
 
 // ─── HELPER: GET AUTHENTICATED GMAIL CLIENT ──────────────────────────────────
 
@@ -284,10 +286,226 @@ async function processMessage(gmail, googleAccountId, messageId, accountEmail) {
         }
       }
 
+    // ─── PHASE 4: CHECK IF THIS IS A REPLY TO A PENDING PROPOSAL ─────────
+    if (direction === 'inbound' && message.threadId) {
+      await checkProposalReply(message.threadId, bodyHtml, subject, googleAccountId);
+    }
+
     return synced;
   } catch (err) {
     console.error(`  ❌ Error processing message ${messageId}:`, err.message);
     return null;
+  }
+}
+
+// ─── PHASE 4: PROPOSAL REPLY DETECTION ──────────────────────────────────────
+
+async function checkProposalReply(threadId, bodyHtml, subject, googleAccountId) {
+  try {
+    // Check if this thread matches a pending proposal
+    const { data: proposal } = await supabase
+      .from('crm_meeting_proposals')
+      .select('*, crm_people(first_name, last_name, email), crm_companies(company_name)')
+      .eq('gmail_thread_id', threadId)
+      .eq('status', 'pending')
+      .single();
+
+    if (!proposal) return; // No pending proposal for this thread
+
+    console.log(`  🎯 Proposal reply detected for thread ${threadId} — classifying intent...`);
+
+    // Strip HTML for GPT
+    const plainText = (bodyHtml || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 1000);
+
+    // Classify intent with GPT
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 50,
+      messages: [
+        {
+          role: 'system',
+          content: `You classify email replies to meeting proposals. Respond with exactly one word: confirmed, declined, reschedule, or unclear.
+- confirmed: they agree to the meeting (yes, sure, works for me, sounds good, etc.)
+- declined: they cannot make it or reject the meeting (no, can't make it, not available, etc.)
+- reschedule: they want a different time (can we do X instead, how about Y, different time, etc.)
+- unclear: anything else`,
+        },
+        {
+          role: 'user',
+          content: `Subject: ${subject}\n\nEmail: ${plainText}`,
+        },
+      ],
+    });
+
+    const intent = completion.choices[0]?.message?.content?.trim().toLowerCase();
+    console.log(`  🧠 Intent classified: ${intent}`);
+
+    if (intent === 'confirmed') {
+      await handleProposalConfirmed(proposal, googleAccountId);
+    } else if (intent === 'declined') {
+      await handleProposalDeclined(proposal);
+    } else if (intent === 'reschedule') {
+      await handleProposalReschedule(proposal);
+    } else {
+      console.log(`  ⏳ Intent unclear — leaving proposal as pending`);
+    }
+
+  } catch (err) {
+    console.error('  ❌ Proposal reply check failed:', err.message);
+  }
+}
+
+// ─── HANDLE CONFIRMED ────────────────────────────────────────────────────────
+
+async function handleProposalConfirmed(proposal, googleAccountId) {
+  try {
+    console.log(`  ✅ Proposal confirmed — auto-booking meeting...`);
+
+    const contactName = proposal.crm_people
+      ? `${proposal.crm_people.first_name} ${proposal.crm_people.last_name}`
+      : proposal.crm_companies?.company_name || 'Contact';
+
+    const title = `Meeting with ${contactName}`;
+
+    // Get authenticated Google Calendar client
+    const googleRoute = require('../routes/google');
+    const { oauth2Client } = await googleRoute.getAuthenticatedClient(googleAccountId);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    // Build Google Calendar event
+    const eventBody = {
+      summary: title,
+      description: `Auto-booked from meeting proposal — contact confirmed via email.`,
+      start: { dateTime: proposal.proposed_start, timeZone: 'Asia/Jerusalem' },
+      end: { dateTime: proposal.proposed_end, timeZone: 'Asia/Jerusalem' },
+      attendees: proposal.crm_people?.email ? [{ email: proposal.crm_people.email }] : [],
+      conferenceData: {
+        createRequest: {
+          requestId: `crm-proposal-${proposal.id}`,
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      },
+    };
+
+    const { data: googleEvent } = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: eventBody,
+      conferenceDataVersion: 1,
+      sendUpdates: 'all',
+    });
+
+    const meetLink = googleEvent.conferenceData?.entryPoints?.[0]?.uri || '';
+
+    // Get the user who created the proposal
+    const { data: googleAccount } = await supabase
+      .from('crm_google_accounts')
+      .select('user_id')
+      .eq('id', googleAccountId)
+      .single();
+
+    const createdBy = googleAccount?.user_id || proposal.created_by;
+
+    // Insert CRM meeting record
+    const { data: meeting } = await supabase
+      .from('crm_meetings')
+      .insert([{
+        google_event_id: googleEvent.id,
+        google_account_id: googleAccountId,
+        company_id: proposal.company_id,
+        client_id: proposal.client_id,
+        person_id: proposal.person_id,
+        created_by: createdBy,
+        title,
+        description: `Auto-booked — contact confirmed via email reply to proposal.`,
+        meeting_type: 'google_meet',
+        status: 'scheduled',
+        start_time: proposal.proposed_start,
+        end_time: proposal.proposed_end,
+        meet_link: meetLink,
+        attendees: proposal.crm_people?.email ? [{ email: proposal.crm_people.email, name: contactName }] : [],
+        is_internal: false,
+      }])
+      .select()
+      .single();
+
+    // Update proposal status to accepted
+    await supabase
+      .from('crm_meeting_proposals')
+      .update({ status: 'accepted' })
+      .eq('id', proposal.id);
+
+    // Log to activity
+    const logEntry = {
+      user_id: createdBy,
+      action: 'Meeting Auto-Booked',
+      details: `Meeting auto-booked after ${contactName} confirmed proposal via email. Meet: ${meetLink}`,
+    };
+    if (proposal.company_id) logEntry.company_id = proposal.company_id;
+    if (proposal.client_id) logEntry.client_id = proposal.client_id;
+    if (proposal.person_id) logEntry.person_id = proposal.person_id;
+
+    await supabase.from('crm_activity_log').insert([logEntry]);
+
+    console.log(`  🎉 Meeting auto-booked: ${title} | Meet: ${meetLink}`);
+
+  } catch (err) {
+    console.error('  ❌ Auto-book failed:', err.message);
+  }
+}
+
+// ─── HANDLE DECLINED ─────────────────────────────────────────────────────────
+
+async function handleProposalDeclined(proposal) {
+  try {
+    const contactName = proposal.crm_people
+      ? `${proposal.crm_people.first_name} ${proposal.crm_people.last_name}`
+      : proposal.crm_companies?.company_name || 'Contact';
+
+    await supabase
+      .from('crm_meeting_proposals')
+      .update({ status: 'declined' })
+      .eq('id', proposal.id);
+
+    const logEntry = {
+      user_id: proposal.created_by,
+      action: 'Meeting Proposal Declined',
+      details: `${contactName} declined the meeting proposal.`,
+    };
+    if (proposal.company_id) logEntry.company_id = proposal.company_id;
+    if (proposal.client_id) logEntry.client_id = proposal.client_id;
+
+    await supabase.from('crm_activity_log').insert([logEntry]);
+    console.log(`  ❌ Proposal declined by ${contactName}`);
+  } catch (err) {
+    console.error('  ❌ Handle declined failed:', err.message);
+  }
+}
+
+// ─── HANDLE RESCHEDULE REQUEST ───────────────────────────────────────────────
+
+async function handleProposalReschedule(proposal) {
+  try {
+    const contactName = proposal.crm_people
+      ? `${proposal.crm_people.first_name} ${proposal.crm_people.last_name}`
+      : proposal.crm_companies?.company_name || 'Contact';
+
+    await supabase
+      .from('crm_meeting_proposals')
+      .update({ status: 'declined' })
+      .eq('id', proposal.id);
+
+    const logEntry = {
+      user_id: proposal.created_by,
+      action: 'Meeting Reschedule Requested',
+      details: `${contactName} replied to the meeting proposal requesting a different time. Check the email thread and propose a new time.`,
+    };
+    if (proposal.company_id) logEntry.company_id = proposal.company_id;
+    if (proposal.client_id) logEntry.client_id = proposal.client_id;
+
+    await supabase.from('crm_activity_log').insert([logEntry]);
+    console.log(`  🔄 Reschedule requested by ${contactName}`);
+  } catch (err) {
+    console.error('  ❌ Handle reschedule failed:', err.message);
   }
 }
 
