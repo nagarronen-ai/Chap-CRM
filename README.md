@@ -1046,10 +1046,16 @@ npx wrangler pages deploy build --project-name=planfor-crm
 ### In Progress
 **v1.6.1 — Chappie Smart Scheduling + Slack Bot**
 - Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup, unified emails tab
-- Phase 2 — Conflict detection: before proposing a meeting time, check calendar for conflicts
-- Phase 3 — Meeting proposal tracking: store `gmail_thread_id` + proposed time when Chappie sends a meeting request email
+- Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix, enforced before every book/reschedule
+- Phase 3 ✅ — Proposal tracking: `propose_meeting` tool, `crm_meeting_proposals` table, `get_pending_proposals` tool
 - Phase 4 — Reply intent detection + auto-book: Gmail sync detects replies to proposals, GPT classifies intent, auto-books on confirmed "yes"
 - Phase 5 — Slack Bot: Chappie on Slack with Block Kit confirmation buttons
+
+### Planned
+**v1.6.2 — Calendly Webhook Integration**
+- Calendly webhook → backend → auto-create `crm_meetings` row
+- Auto-trigger Recall.ai bot for Calendly-booked meetings
+- Google Calendar sync already handles display — this adds CRM record + recording support
 
 ### Planned
 - **v1.7.0** — Stripe vendor subscription billing
