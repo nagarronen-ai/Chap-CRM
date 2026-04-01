@@ -9,6 +9,7 @@ const ACTION_LABELS = {
   cancel_meeting: '❌ Cancel Meeting',
   reschedule_meeting: '📅 Reschedule Meeting',
   send_bulk_email: '📧 Bulk Email',
+  propose_meeting: '📩 Propose Meeting',
 };
 
 function formatActionSummary(action) {
@@ -18,6 +19,8 @@ function formatActionSummary(action) {
       return `Send email to ${args.recipient_name} (${args.recipient_email})\nSubject: "${args.subject}"${args.cc && args.cc.length > 0 ? `\nCC: ${args.cc.join(', ')}` : ''}\n\n${args.body}`;
       case 'send_bulk_email':
       return `Send email to ${args.recipients?.length || 0} contacts\nSubject: "${args.subject}"\n\n${args.body}`;
+      case 'propose_meeting':
+      return `Send meeting proposal to ${args.recipient_name} (${args.recipient_email})\nSubject: "${args.subject}"\nProposed: ${args.proposed_date} at ${args.proposed_start_hour}:${String(args.proposed_start_min || 0).padStart(2,'0')} — ${args.proposed_end_hour}:${String(args.proposed_end_min || 0).padStart(2,'0')}\n\n${args.body}`;
       case 'book_meeting':
       return `Book meeting: "${args.title}"\nDate: ${args.date} at ${args.start_hour}:${String(args.start_min || 0).padStart(2,'0')} — ${args.end_hour}:${String(args.end_min || 0).padStart(2,'0')}\n${args.attendee_email ? `Invite: ${args.attendee_email}` : ''}`;
     case 'cancel_meeting':

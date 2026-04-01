@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
+import { getTimezone } from '../components/LocationSelector';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
@@ -68,11 +69,23 @@ function formatInTimezone(date, timezone) {
 }
 
 function convertClientTimeToUTC(dateStr, hour, min, clientTimezone) {
-  // Build a local date string as if in client timezone
-  const localStr = `${dateStr}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`;
-  const localDate = new Date(localStr);
-  const offset = getTimezoneOffset(clientTimezone, localDate);
-  return new Date(localDate.getTime() + offset * 60000);
+  const refDate = new Date(`${dateStr}T12:00:00Z`);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: clientTimezone,
+    timeZoneName: 'shortOffset',
+  }).formatToParts(refDate);
+
+  const offsetStr = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT+0';
+  const match = offsetStr.match(/GMT([+-])(\d+)(?::(\d+))?/);
+  let offsetMinutes = 0;
+  if (match) {
+    const sign = match[1] === '+' ? 1 : -1;
+    offsetMinutes = sign * (parseInt(match[2]) * 60 + parseInt(match[3] || 0));
+  }
+
+  const utcDate = new Date(`${dateStr}T00:00:00Z`);
+  utcDate.setUTCMinutes(hour * 60 + min - offsetMinutes);
+  return utcDate;
 }
 
 export default function Calendar() {
@@ -96,6 +109,7 @@ export default function Calendar() {
   const [reschedulingEvent, setReschedulingEvent] = useState(false);
   const [rescheduleForm, setRescheduleForm] = useState({ date: '', start_hour: '10', start_min: '00', end_hour: '11', end_min: '00' });
   const [savingReschedule, setSavingReschedule] = useState(false);
+  const [selectedEventClientTz, setSelectedEventClientTz] = useState(null);
 
   const [form, setForm] = useState({
     title: '', description: '', meeting_type: 'google_meet',
@@ -184,9 +198,12 @@ export default function Calendar() {
   const goToday = () => setCurrentDate(new Date());
 
   const getEventsForDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    // Use local date string (not UTC) to avoid timezone-crossing day shift
+    const pad = n => String(n).padStart(2, '0');
+    const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     return events.filter(e => {
-      const eventDate = new Date(e.start_time).toISOString().split('T')[0];
+      const d = new Date(e.start_time);
+      const eventDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       return eventDate === dateStr;
     });
   };
@@ -268,6 +285,35 @@ export default function Calendar() {
     } catch (err) {
       console.error(err);
       alert('Failed to create meeting: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const fetchClientTimezone = async (event) => {
+    setSelectedEventClientTz(null);
+    if (!event) return;
+
+    try {
+      let country = null;
+      let state = null;
+
+      if (event.company_id) {
+        const res = await axios.get(`${API}/contacts/companies/${event.company_id}`, { headers: getHeaders() });
+        country = res.data?.country || null;
+        state = res.data?.state || null;
+      } else if (event.client_id) {
+        const res = await axios.get(`${API}/clients/${event.client_id}`, { headers: getHeaders() });
+        country = res.data?.country || null;
+        state = res.data?.state || null;
+      }
+
+      if (country || state) {
+        const tz = getTimezone(country, state);
+        if (tz) {
+          setSelectedEventClientTz({ tz, country, state });
+        }
+      }
+    } catch (err) {
+      // silently fail — timezone display is non-critical
     }
   };
 
@@ -396,13 +442,13 @@ export default function Calendar() {
                     const ec = getEventColor(event);
                     return (
                       <div key={ei}
-                        onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); }}
-                        style={{
-                          background: ec.bg, color: ec.color, fontSize: 10, fontWeight: 500,
-                          padding: '2px 6px', borderRadius: 4, marginBottom: 2,
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                          cursor: 'pointer', borderLeft: `3px solid ${ec.color}`,
-                        }}
+                      onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); fetchClientTimezone(event); }}
+                      style={{
+                        background: ec.bg, color: ec.color, fontSize: 10, fontWeight: 500,
+                        padding: '2px 6px', borderRadius: 4, marginBottom: 2,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        cursor: 'pointer', borderLeft: `3px solid ${ec.color}`,
+                      }}
                       >
                         {new Date(event.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {event.title}
                       </div>
@@ -482,7 +528,7 @@ export default function Calendar() {
                       const ec = getEventColor(event);
                       return (
                         <div key={ei}
-                          onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); fetchClientTimezone(event); }}
                           style={{
                             background: ec.bg, color: ec.color, fontSize: 10, fontWeight: 500,
                             padding: '3px 6px', borderRadius: 4, marginBottom: 2, cursor: 'pointer',
@@ -541,10 +587,10 @@ export default function Calendar() {
                     const ec = getEventColor(event);
                     return (
                       <div key={ei}
-                        onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); }}
-                        style={{
-                          background: ec.bg, borderLeft: `4px solid ${ec.color}`, borderRadius: 6,
-                          padding: '8px 12px', marginBottom: 4, cursor: 'pointer',
+                      onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); fetchClientTimezone(event); }}
+                      style={{
+                        background: ec.bg, borderLeft: `4px solid ${ec.color}`, borderRadius: 6,
+                        padding: '8px 12px', marginBottom: 4, cursor: 'pointer',
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -647,21 +693,52 @@ export default function Calendar() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => { setSelectedEvent(null); setCompletingEvent(false); setCompletionNotes(''); setShowZoomInput(false); setZoomLinkInput(''); setReschedulingEvent(false); }} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#717182' }}>✕</button>
+                <button onClick={() => { setSelectedEvent(null); setSelectedEventClientTz(null); setCompletingEvent(false); setCompletionNotes(''); setShowZoomInput(false); setZoomLinkInput(''); setReschedulingEvent(false); }} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#717182' }}>✕</button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 16 }}>🕐</span>
-                  <div>
-                    <p style={{ color: '#3E423D', fontSize: 13, margin: 0 }}>
-                      {new Date(selectedEvent.start_time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                    </p>
-                    <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>
-                      {new Date(selectedEvent.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} — {new Date(selectedEvent.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} ({getMyTimezone().split('/').pop().replace(/_/g, ' ')})
-                    </p>
+              {(() => {
+                const myTz = getMyTimezone();
+                const startDate = new Date(selectedEvent.start_time);
+                const endDate = new Date(selectedEvent.end_time);
+                const myDateStr = startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: myTz });
+                const myStartStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: myTz });
+                const myEndStr = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: myTz });
+
+                // Build client timezone label
+                let clientTzLabel = null;
+                if (selectedEventClientTz) {
+                  const { tz, country, state } = selectedEventClientTz;
+                  // Don't show if same as my timezone
+                  if (tz !== myTz) {
+                    const clientStart = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
+                    const clientEnd = endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
+                    // Label: state name for US/CA/AU, country name otherwise
+                    const locationLabel = state || country || tz;
+                    clientTzLabel = { clientStart, clientEnd, locationLabel, tz };
+                  }
+                }
+
+                return (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                    <span>🕐</span>
+                    <div>
+                      <div style={{ color: '#3E423D', fontSize: 14, fontWeight: 500 }}>{myDateStr}</div>
+                      <div style={{ color: '#717182', fontSize: 13 }}>
+                        {myStartStr} — {myEndStr}
+                        <span style={{ color: '#94B0BC', fontSize: 11, fontWeight: 500, marginLeft: 6 }}>(Jerusalem)</span>
+                      </div>
+                      {clientTzLabel && (
+                        <div style={{ marginTop: 4 }}>
+                          <span style={{ fontSize: 11, color: '#717182', background: '#F5F3EF', borderRadius: 4, padding: '2px 8px' }}>
+                            🌍 {clientTzLabel.locationLabel}: {clientTzLabel.clientStart} — {clientTzLabel.clientEnd}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                );
+              })()}
                 {selectedEvent.meet_link && (
   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
     <span style={{ fontSize: 16 }}>📹</span>
@@ -929,7 +1006,7 @@ export default function Calendar() {
                       Your time: {(() => {
                         try {
                           const converted = convertClientTimeToUTC(form.date, parseInt(form.start_hour), parseInt(form.start_min), form.client_timezone);
-                          return formatInTimezone(converted, getMyTimezone());
+                          return new Date(converted).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: getMyTimezone() });
                         } catch { return '—'; }
                       })()} — {getMyTimezone()}
                     </div>

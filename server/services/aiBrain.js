@@ -57,9 +57,30 @@ OTHER TOOL RULES:
 
 WRITE ACTIONS:
 Instant (no confirmation): add note, update pipeline stage, update next action, update client stage.
-Requires confirmation: send_email, send_bulk_email, book_meeting, cancel_meeting, reschedule_meeting.
-- For book_meeting: always calculate exact dates from today (Monday March 30 2026). "This Thursday" = April 2 2026. "Tomorrow" = March 31 2026. Never guess or use past dates. Always show the exact calculated date in the confirmation card so the user can verify before confirming.
+Requires confirmation: send_email, send_bulk_email, propose_meeting, book_meeting, cancel_meeting, reschedule_meeting.
+- For book_meeting: always calculate exact dates from today (Tuesday March 31 2026). "This Thursday" = April 2 2026. "Tomorrow" = April 1 2026. Never guess or use past dates. Always show the exact calculated date in the confirmation card so the user can verify before confirming.
 - If any detail is ambiguous — show your assumption clearly. Never silently guess.
+
+MEETING PROPOSAL RULES — NON-NEGOTIABLE:
+- CRITICAL: "propose a meeting", "propose meeting", "suggest a meeting" → ALWAYS use propose_meeting. NEVER use book_meeting. This is non-negotiable.
+- book_meeting = only when user says "book", "schedule", "set up a meeting" AND the contact has already confirmed they are available. book_meeting sends a Google Calendar invite immediately.
+- propose_meeting = sends an email suggesting a time to a contact who has NOT yet confirmed. No calendar invite is created. Used for outreach.
+- "Propose a meeting with X for Monday at 2pm" → propose_meeting. The contact has not agreed yet.
+- "Book a meeting with X for Monday at 2pm" → book_meeting. Assumes agreement.
+- When in doubt → propose_meeting. Never assume agreement unless explicitly stated.
+- Always call check_calendar_conflicts before propose_meeting.
+- After propose_meeting confirms, tell the user: "Proposal sent and tracked. I'll detect their reply when they respond."
+- "Any pending proposals?" / "Who hasn't replied?" → call get_pending_proposals.
+
+SCHEDULING RULES — NON-NEGOTIABLE:
+- ALWAYS call check_calendar_conflicts before book_meeting or reschedule_meeting. No exceptions.
+- If check_calendar_conflicts returns conflict: false — proceed to book_meeting immediately.
+- If check_calendar_conflicts returns conflict: true — DO NOT call book_meeting. Instead:
+  1. Tell the user exactly which event conflicts (title, time, and who it is with if available).
+  2. Tell the user the suggested next available slot (use suggested_start_hour, suggested_start_min, suggested_end_hour, suggested_end_min from the result).
+  3. Ask if they want to book the suggested slot or pick a different time.
+  4. Only call book_meeting after the user confirms a specific conflict-free time.
+- When reporting a conflict, format times as human-readable: "You already have X with Y from 2:15 PM to 3:00 PM. Next available slot is 3:00 PM to 3:30 PM — want me to book that instead?"
 
 TONE:
 Speak like a sharp experienced chief of staff. Direct, no pleasantries, lead with facts. Make reasonable assumptions rather than asking for clarification. If you genuinely cannot complete a request, say exactly what is missing in one sentence.
@@ -453,6 +474,59 @@ async function executeConfirmedWriteAction(userId, toolName, args) {
       );
 
       return { rescheduled: true, meeting_id: args.meeting_id };
+    }
+
+    case 'propose_meeting': {
+      // 1. Send the email
+      const emailRes = await axios.post(`${API_BASE}/emails/send`, {
+        recipient_email: args.recipient_email,
+        recipient_name: args.recipient_name,
+        subject: args.subject,
+        body_html: args.body,
+        company_id: args.company_id || null,
+        client_id: args.client_id || null,
+        person_id: args.person_id || null,
+        thread_id: args.thread_id || null,
+        cc: args.cc || [],
+      }, { headers });
+
+      // 2. Build proposed times (args times are in user's timezone — store as-is in ISO)
+      const proposed_start = new Date(
+        `${args.proposed_date}T${String(args.proposed_start_hour).padStart(2, '0')}:${String(args.proposed_start_min || 0).padStart(2, '0')}:00`
+      ).toISOString();
+      const proposed_end = new Date(
+        `${args.proposed_date}T${String(args.proposed_end_hour).padStart(2, '0')}:${String(args.proposed_end_min || 0).padStart(2, '0')}:00`
+      ).toISOString();
+
+      // 3. Get the gmail_thread_id from the sent email response
+      const gmail_thread_id = emailRes.data?.gmail_thread_id || args.thread_id || null;
+
+      // 4. Store the proposal in DB
+      const { data: proposal, error } = await supabase
+        .from('crm_meeting_proposals')
+        .insert([{
+          company_id: args.company_id || null,
+          client_id: args.client_id || null,
+          person_id: args.person_id || null,
+          gmail_thread_id,
+          proposed_start,
+          proposed_end,
+          status: 'pending',
+          email_subject: args.subject,
+          created_by: userId,
+        }])
+        .select()
+        .single();
+
+      if (error) console.error('Failed to store proposal:', error.message);
+
+      return {
+        proposed: true,
+        proposal_id: proposal?.id || null,
+        gmail_thread_id,
+        proposed_start,
+        proposed_end,
+      };
     }
 
     default:

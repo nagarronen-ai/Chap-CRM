@@ -972,6 +972,11 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - **Meet link in chat** — after booking a meeting, Chappie shows the Google Meet link in the chat response
 - **Date calculation** — Chappie shows exact calculated date in confirmation card before booking (e.g. "this Thursday" = April 2 2026)
 - **Role-based CC** — system prompt instructs Chappie to call `get_company_people` before CCing a role (e.g. "CC the CEO")
+- **Phase 2 — Conflict detection** — `check_calendar_conflicts` tool fetches Google Calendar for the proposed day, finds overlapping events, suggests next available slot of same duration. Enforced before every `book_meeting` or `reschedule_meeting`. UTC offset via `Intl.DateTimeFormat shortOffset` — `toLocaleString` round-trip is unreliable in IL browser locale
+- **Phase 3 — Proposal tracking** — `propose_meeting` tool sends proposal email via Gmail API + inserts row in `crm_meeting_proposals` (`gmail_thread_id`, `proposed_start`, `proposed_end`, `status: pending`). `get_pending_proposals` tool queries pending proposals by company. Tool descriptions disambiguate `propose_meeting` vs `book_meeting`
+- **Calendar monthly view fix** — `getEventsForDate` uses local date math instead of `.toISOString()` UTC comparison — fixes day-shift bug for UTC+3
+- **Event popup timezone chip** — fetches linked company/client country+state, resolves via `getTimezone()` from `LocationSelector.js`, shows client local time alongside Jerusalem time
+- **`convertClientTimeToUTC` fix** — rewrote using `Intl.DateTimeFormat shortOffset`. Previous `toLocaleString` round-trip was broken in IL browser locale
 
 ### v1.6.0 — AI Brain (Chappie)
 - Floating chat widget on all authenticated pages (`AiBrain.js`)

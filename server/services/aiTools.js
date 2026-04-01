@@ -273,8 +273,49 @@ const toolDefinitions = [
   {
     type: 'function',
     function: {
+      name: 'get_pending_proposals',
+      description: 'Get pending meeting proposals that have been sent but not yet accepted or declined. Use when user asks about outstanding proposals or who has not replied to a meeting request.',
+      parameters: {
+        type: 'object',
+        properties: {
+          company_id: { type: 'string', description: 'Filter by company UUID (optional)' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'propose_meeting',
+      description: 'Send an email proposing a meeting time AND store the proposal for tracking. Use this when user says "propose a meeting", "propose meeting", "suggest a time", "send a meeting proposal", or any variation of suggesting a meeting to someone who has not yet confirmed. REQUIRES USER CONFIRMATION. This sends an email — it does NOT create a calendar invite.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipient_email: { type: 'string' },
+          recipient_name: { type: 'string' },
+          subject: { type: 'string' },
+          body: { type: 'string', description: 'Email body — must include the proposed date and time clearly' },
+          company_id: { type: 'string', description: 'Company UUID from search_contacts' },
+          client_id: { type: 'string', description: 'Client UUID from search_contacts' },
+          person_id: { type: 'string', description: 'Person UUID from search_contacts' },
+          thread_id: { type: 'string', description: 'Gmail thread ID if replying to existing thread' },
+          cc: { type: 'array', items: { type: 'string' } },
+          proposed_date: { type: 'string', description: 'YYYY-MM-DD of the proposed meeting' },
+          proposed_start_hour: { type: 'number', description: 'Proposed start hour (24h, in YOUR timezone)' },
+          proposed_start_min: { type: 'number', description: 'Proposed start minute' },
+          proposed_end_hour: { type: 'number', description: 'Proposed end hour (24h, in YOUR timezone)' },
+          proposed_end_min: { type: 'number', description: 'Proposed end minute' },
+        },
+        required: ['recipient_email', 'recipient_name', 'subject', 'body', 'proposed_date', 'proposed_start_hour', 'proposed_start_min', 'proposed_end_hour', 'proposed_end_min'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'book_meeting',
-      description: 'Book a meeting and send a Google Calendar invite — REQUIRES USER CONFIRMATION',
+      description: 'Book a meeting and send a Google Calendar invite — REQUIRES USER CONFIRMATION. Use ONLY when the contact has already agreed to meet. Do NOT use when the user says "propose", "suggest a meeting", or "propose a meeting" — use propose_meeting instead.',
       parameters: {
         type: 'object',
         properties: {
@@ -327,9 +368,27 @@ const toolDefinitions = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'check_calendar_conflicts',
+      description: 'Check if there are any calendar conflicts for a proposed meeting time. ALWAYS call this before book_meeting or reschedule_meeting. Returns any overlapping events and suggests the next available slot of the same duration.',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: { type: 'string', description: 'YYYY-MM-DD' },
+          start_hour: { type: 'number', description: 'Proposed start hour (24h)' },
+          start_min: { type: 'number', description: 'Proposed start minute' },
+          end_hour: { type: 'number', description: 'Proposed end hour (24h)' },
+          end_min: { type: 'number', description: 'Proposed end minute' },
+        },
+        required: ['date', 'start_hour', 'start_min', 'end_hour', 'end_min'],
+      },
+    },
+  },
 ];
 
-const CONFIRMATION_REQUIRED = ['send_email', 'send_bulk_email', 'book_meeting', 'cancel_meeting', 'reschedule_meeting'];
+const CONFIRMATION_REQUIRED = ['send_email', 'send_bulk_email', 'propose_meeting', 'book_meeting', 'cancel_meeting', 'reschedule_meeting'];
 
 async function executeTool(toolName, args, userId) {
   switch (toolName) {
@@ -349,6 +408,8 @@ async function executeTool(toolName, args, userId) {
     case 'update_client_stage': return await updateClientStage(userId, args.client_id, args.stage);
     case 'update_next_action': return await updateNextAction(userId, args.company_id, args.next_action);
     case 'get_marketing_history': return await getMarketingHistory(userId, args.company_id);
+    case 'check_calendar_conflicts': return await checkCalendarConflicts(userId, args.date, args.start_hour, args.start_min, args.end_hour, args.end_min);
+    case 'get_pending_proposals': return await getPendingProposals(userId, args.company_id);
     default: return { error: `Unknown tool: ${toolName}` };
   }
 }
@@ -686,6 +747,170 @@ async function updateClientStage(userId, clientId, stage) {
 async function updateNextAction(userId, companyId, nextAction) {
   await supabase.from('crm_companies').update({ next_action: nextAction, updated_at: new Date().toISOString() }).eq('id', companyId);
   return { success: true, message: `Next action set: "${nextAction}"` };
+}
+
+// ─── GET PENDING PROPOSALS ───────────────────────────────────────────────────
+
+async function getPendingProposals(userId, companyId) {
+  let query = supabase
+    .from('crm_meeting_proposals')
+    .select('*, crm_people(first_name, last_name, email), crm_companies(company_name)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (companyId) query = query.eq('company_id', companyId);
+
+  const { data, error } = await query;
+  if (error) return { error: error.message };
+
+  return {
+    proposals: (data || []).map(p => ({
+      id: p.id,
+      company_name: p.crm_companies?.company_name,
+      contact: p.crm_people ? `${p.crm_people.first_name} ${p.crm_people.last_name}` : null,
+      proposed_start: p.proposed_start,
+      proposed_end: p.proposed_end,
+      gmail_thread_id: p.gmail_thread_id,
+      status: p.status,
+      created_at: p.created_at,
+    })),
+    total: data?.length || 0,
+  };
+}
+
+// ─── CHECK CALENDAR CONFLICTS ────────────────────────────────────────────────
+
+async function checkCalendarConflicts(userId, date, startHour, startMin, endHour, endMin) {
+    // uses supabase (already required at top of file) + googleapis
+
+
+  // Build proposed window
+  const proposedStart = new Date(`${date}T${String(startHour).padStart(2,'0')}:${String(startMin || 0).padStart(2,'0')}:00`);
+  const proposedEnd   = new Date(`${date}T${String(endHour).padStart(2,'0')}:${String(endMin || 0).padStart(2,'0')}:00`);
+  const durationMs    = proposedEnd - proposedStart;
+
+  // Fetch window: full day of the proposed date to catch all same-day events
+  const windowStart = new Date(`${date}T00:00:00`).toISOString();
+  const windowEnd   = new Date(`${date}T23:59:59`).toISOString();
+
+  // Get Google account for this user
+  const { data: account } = await supabase
+    .from('crm_google_accounts')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('account_type', 'personal')
+    .eq('is_active', true)
+    .single();
+
+  if (!account) {
+    return { conflict: false, message: 'No Google Calendar connected — cannot check conflicts.' };
+  }
+
+  // Get authenticated calendar client
+  const { google } = require('googleapis');
+  const googleRouteModule = require('../routes/google');
+  const { oauth2Client } = await googleRouteModule.getAuthenticatedClient(account.id);
+  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+  // Fetch events for that day
+  const { data: gcalData } = await calendar.events.list({
+    calendarId: 'primary',
+    timeMin: windowStart,
+    timeMax: windowEnd,
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults: 50,
+  });
+
+  const events = (gcalData.items || []).filter(e => e.status !== 'cancelled');
+
+  // Find overlapping events
+  const conflicts = events.filter(e => {
+    const eStart = new Date(e.start?.dateTime || e.start?.date);
+    const eEnd   = new Date(e.end?.dateTime   || e.end?.date);
+    // Overlap: proposed starts before event ends AND proposed ends after event starts
+    return proposedStart < eEnd && proposedEnd > eStart;
+  });
+
+  if (conflicts.length === 0) {
+    return {
+      conflict: false,
+      proposed_start: proposedStart.toISOString(),
+      proposed_end: proposedEnd.toISOString(),
+      message: 'No conflicts. Time slot is free.',
+    };
+  }
+
+  // Format conflict details
+  const conflictDetails = conflicts.map(e => {
+    const eStart = new Date(e.start?.dateTime || e.start?.date);
+    const eEnd   = new Date(e.end?.dateTime   || e.end?.date);
+    const attendeeNames = (e.attendees || [])
+      .filter(a => !a.self)
+      .map(a => a.displayName || a.email)
+      .join(', ');
+    return {
+      title: e.summary || '(No title)',
+      start: eStart.toISOString(),
+      end: eEnd.toISOString(),
+      with: attendeeNames || null,
+    };
+  });
+
+  // Find next available slot of same duration after all conflicts end
+  const allEventsToday = events.map(e => ({
+    start: new Date(e.start?.dateTime || e.start?.date),
+    end:   new Date(e.end?.dateTime   || e.end?.date),
+  })).sort((a, b) => a.start - b.start);
+
+  // Walk forward from the end of the last conflicting event
+  const lastConflictEnd = conflicts.reduce((latest, e) => {
+    const eEnd = new Date(e.end?.dateTime || e.end?.date);
+    return eEnd > latest ? eEnd : latest;
+  }, proposedEnd);
+
+  // Round up to next 15-min boundary
+  const minutes = lastConflictEnd.getMinutes();
+  const roundedMinutes = Math.ceil(minutes / 15) * 15;
+  const candidateStart = new Date(lastConflictEnd);
+  candidateStart.setMinutes(roundedMinutes, 0, 0);
+  if (roundedMinutes === 60) {
+    candidateStart.setHours(candidateStart.getHours() + 1);
+    candidateStart.setMinutes(0);
+  }
+
+  // Check the candidate slot doesn't itself conflict with other events
+  let nextStart = candidateStart;
+  let attempts = 0;
+  while (attempts < 8) {
+    const nextEnd = new Date(nextStart.getTime() + durationMs);
+    const blocked = allEventsToday.some(e => nextStart < e.end && nextEnd > e.start);
+    if (!blocked) break;
+    // Push past this blocking event
+    const blocker = allEventsToday.find(e => nextStart < e.end && nextEnd > e.start);
+    nextStart = new Date(blocker.end);
+    const m = nextStart.getMinutes();
+    const rm = Math.ceil(m / 15) * 15;
+    nextStart.setMinutes(rm === 60 ? 0 : rm, 0, 0);
+    if (rm === 60) nextStart.setHours(nextStart.getHours() + 1);
+    attempts++;
+  }
+
+  const nextEnd = new Date(nextStart.getTime() + durationMs);
+
+  return {
+    conflict: true,
+    conflicts: conflictDetails,
+    suggested_start: nextStart.toISOString(),
+    suggested_end: nextEnd.toISOString(),
+    suggested_date: date,
+    suggested_start_hour: nextStart.getHours(),
+    suggested_start_min: nextStart.getMinutes(),
+    suggested_end_hour: nextEnd.getHours(),
+    suggested_end_min: nextEnd.getMinutes(),
+    message: `Conflict detected. ${conflictDetails.length} event(s) overlap with the proposed time. Next available slot starts at ${nextStart.getHours()}:${String(nextStart.getMinutes()).padStart(2,'0')}.`,
+  };
 }
 
 module.exports = { toolDefinitions, executeTool, CONFIRMATION_REQUIRED };
