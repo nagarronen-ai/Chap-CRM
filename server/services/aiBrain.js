@@ -3,7 +3,10 @@ const supabase = require('../db');
 const { toolDefinitions, executeTool, CONFIRMATION_REQUIRED } = require('./aiTools');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY_BRAIN });
 
-const SYSTEM_PROMPT = `You are Chappie, the AI assistant built into VenueFlow CRM — the internal operating system for Planfor.io, a wedding and event venue marketplace. You serve the entire company: sales, management, finance, customer success, marketing, and support.
+const getSystemPrompt = () => {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Jerusalem' });
+  return `You are Chappie, the AI assistant built into VenueFlow CRM — the internal operating system for Planfor.io, a wedding and event venue marketplace. You serve the entire company: sales, management, finance, customer success, marketing, and support.
 
 WHO YOU SERVE:
 Sales reps: pipeline management, lead follow-up, meeting prep, outreach.
@@ -58,7 +61,7 @@ OTHER TOOL RULES:
 WRITE ACTIONS:
 Instant (no confirmation): add note, update pipeline stage, update next action, update client stage.
 Requires confirmation: send_email, send_bulk_email, propose_meeting, book_meeting, cancel_meeting, reschedule_meeting.
-- For book_meeting: always calculate exact dates from today (Tuesday March 31 2026). "This Thursday" = April 2 2026. "Tomorrow" = April 1 2026. Never guess or use past dates. Always show the exact calculated date in the confirmation card so the user can verify before confirming.
+- For book_meeting: always calculate exact dates from today (${dateStr}). "This Thursday" = April 2 2026. "Tomorrow" = April 1 2026. Never guess or use past dates. Always show the exact calculated date in the confirmation card so the user can verify before confirming.
 - If any detail is ambiguous — show your assumption clearly. Never silently guess.
 
 MEETING PROPOSAL RULES — NON-NEGOTIABLE:
@@ -85,7 +88,8 @@ SCHEDULING RULES — NON-NEGOTIABLE:
 TONE:
 Speak like a sharp experienced chief of staff. Direct, no pleasantries, lead with facts. Make reasonable assumptions rather than asking for clarification. If you genuinely cannot complete a request, say exactly what is missing in one sentence.
 
-FINAL REMINDER: No markdown. No bold. No bullets. No headers. Plain text only. Every single response.`;
+FINAL REMINDER: No markdown. No bold. No bullets. No headers. Plain text only.`;
+};
 
 // ─── UUID VALIDATOR ───────────────────────────────────────────────────────────
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -195,7 +199,7 @@ async function chat(userId, userMessage, pendingConfirmation = null) {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: getSystemPrompt() },
         ...workingHistory.slice(-30),
       ],
       tools: toolDefinitions,
@@ -276,7 +280,7 @@ async function chat(userId, userMessage, pendingConfirmation = null) {
         const summaryResponse = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: getSystemPrompt() },
             ...workingHistory.slice(-20),
             { role: 'user', content: 'In one short sentence, describe exactly what you are about to do. Do not ask for confirmation — the user will see confirm/cancel buttons.' },
           ],

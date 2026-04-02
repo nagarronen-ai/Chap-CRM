@@ -958,7 +958,15 @@ npx wrangler pages deploy build --project-name=planfor-crm
 
 ## Changelog
 
-### v1.6.1 — Chappie Smart Scheduling (in progress)
+### v1.6.2 — Calendly Integration + Calendar UX
+- **Calendly polling** — syncs every 5 minutes, creates CRM meetings, links Google Calendar event, matches invitee to CRM contacts/clients
+- **Auto-record** — Recall.ai bot sent 2 min before meeting via autoRecordCheck (not immediately on creation)
+- **Calendar color coding** — meetings colored by relationship: Client (teal), Contact (green), Calendly unmatched (orange), Internal (purple), Google only (yellow)
+- **Color legend** — hover widget on calendar showing color guide
+- **Slack self-link** — Settings page lets each user paste their Slack Member ID
+- **Gmail scope** — upgraded to `gmail.modify` (enables mark-as-read)
+
+### v1.6.1 — Chappie Smart Scheduling ✅
 - **Thread replies** — Chappie replies in existing Gmail threads via `get_last_thread` + `thread_id` pass-through to `/api/emails/send`
 - **Email reading** — `get_email_thread` tool reads received + sent messages; uses `body_html` (not `body_text`); falls back to `company_id` search when thread_id yields no results
 - **Reply detection** — Chappie now correctly detects inbound replies by resolving `company_id` from `person_id` before querying `crm_synced_emails`
@@ -970,17 +978,17 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - **`get_company_people`** — tool for team-level email targeting with CC
 - **Unified emails tab** — `ClientProfile.js` emails tab merged into one table (removed Before/After Conversion split)
 - **Meet link in chat** — after booking a meeting, Chappie shows the Google Meet link in the chat response
-- **Date calculation** — Chappie shows exact calculated date in confirmation card before booking (e.g. "this Thursday" = April 2 2026)
-- **Role-based CC** — system prompt instructs Chappie to call `get_company_people` before CCing a role (e.g. "CC the CEO")
-- **Phase 2 — Conflict detection** — `check_calendar_conflicts` tool fetches Google Calendar for the proposed day, finds overlapping events, suggests next available slot of same duration. Enforced before every `book_meeting` or `reschedule_meeting`. UTC offset via `Intl.DateTimeFormat shortOffset` — `toLocaleString` round-trip is unreliable in IL browser locale
-- **Phase 3 — Proposal tracking** — `propose_meeting` tool sends proposal email via Gmail API + inserts row in `crm_meeting_proposals` (`gmail_thread_id`, `proposed_start`, `proposed_end`, `status: pending`). `get_pending_proposals` tool queries pending proposals by company. Tool descriptions disambiguate `propose_meeting` vs `book_meeting`
-- **Phase 4 — Reply intent detection + auto-book** — `gmailSync.js` checks every inbound message against `crm_meeting_proposals` by `gmail_thread_id`. GPT-4o-mini classifies reply intent (confirmed/declined/reschedule/unclear). On confirmed: auto-creates Google Calendar event + `crm_meetings` row + activity log entry. On declined/reschedule: updates proposal status + logs activity
-- **Gmail scope fix** — replaced `gmail.readonly` with `gmail.modify` — enables mark-as-read on synced emails. Requires Gmail re-authorization
+- **Date calculation** — Chappie shows exact calculated date in confirmation card before booking
+- **Role-based CC** — system prompt instructs Chappie to call `get_company_people` before CCing a role
+- **Phase 2 — Conflict detection** — `check_calendar_conflicts` tool fetches Google Calendar for the proposed day, finds overlapping events, suggests next available slot of same duration. Enforced before every `book_meeting` or `reschedule_meeting`. UTC offset via `Intl.DateTimeFormat shortOffset`
+- **Phase 3 — Proposal tracking** — `propose_meeting` tool sends proposal email via Gmail API + inserts row in `crm_meeting_proposals` (`gmail_thread_id`, `proposed_start`, `proposed_end`, `status: pending`). `get_pending_proposals` tool queries pending proposals by company
+- **Phase 4 — Reply intent detection + auto-book** — `gmailSync.js` checks every inbound message against `crm_meeting_proposals` by `gmail_thread_id`. GPT-4o-mini classifies reply intent (confirmed/declined/reschedule/unclear). On confirmed: auto-creates Google Calendar event + `crm_meetings` row + activity log entry
+- **Phase 5 — Slack Bot** — Chappie available via Slack DMs using Socket Mode (`@slack/bolt`). Full tool access same as CRM widget. Block Kit confirmation cards with Confirm/Cancel buttons. Auto-book notifications post to `#all-planfor` channel
+- **Note routing fix** — `add_note` now detects if company is converted to client and logs to both company + client activity timeline
+- **Gmail scope fix** — replaced `gmail.readonly` with `gmail.modify` — enables mark-as-read on synced emails
 - **Calendar monthly view fix** — `getEventsForDate` uses local date math instead of `.toISOString()` UTC comparison — fixes day-shift bug for UTC+3
 - **Event popup timezone chip** — fetches linked company/client country+state, resolves via `getTimezone()` from `LocationSelector.js`, shows client local time alongside Jerusalem time
 - **`convertClientTimeToUTC` fix** — rewrote using `Intl.DateTimeFormat shortOffset`. Previous `toLocaleString` round-trip was broken in IL browser locale
-- **Phase 5 — Slack Bot** — Chappie available via Slack DMs using Socket Mode (`@slack/bolt`). Full tool access same as CRM widget. Block Kit confirmation cards with Confirm/Cancel buttons. Auto-book notifications post to `#all-planfor` channel. `crm_slack_pending` table stores pending confirmations. `slack_user_id` column added to `crm_users` for account linking
-- **Note routing fix** — `add_note` now detects if company is converted to client and logs to both company + client activity timeline
 
 ### v1.6.0 — AI Brain (Chappie)
 - Floating chat widget on all authenticated pages (`AiBrain.js`)
@@ -1048,22 +1056,24 @@ npx wrangler pages deploy build --project-name=planfor-crm
 ## Roadmap
 
 ### Completed
-**v1.6.1 — Chappie Smart Scheduling + Slack Bot**
+**v1.6.1 ✅ — Chappie Smart Scheduling + Slack Bot**
 - Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup, unified emails tab
 - Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix, enforced before every book/reschedule
 - Phase 3 ✅ — Proposal tracking: `propose_meeting` tool, `crm_meeting_proposals` table, `get_pending_proposals` tool
 - Phase 4 ✅ — Reply intent detection + auto-book: Gmail sync detects replies, GPT classifies intent, auto-books on confirmed
 - Phase 5 ✅ — Slack Bot: Chappie on Slack via Socket Mode, Block Kit confirmations, #all-planfor alerts
 
+**v1.6.2 ✅ — Calendly Integration + Calendar UX**
+- Calendly polling every 5 minutes — creates CRM meetings, links Google Calendar event, matches invitee to CRM
+- Auto-record via autoRecordCheck (2 min before meeting start)
+- Calendar color coding by relationship type + hover legend
+- Slack self-link in Settings page
+- Note: will upgrade to webhook when Calendly plan upgraded
 
 ### In Progress
-**v1.6.2 — Calendly Webhook Integration**
-- Calendly webhook → backend → auto-create `crm_meetings` row
-- Auto-trigger Recall.ai bot for Calendly-booked meetings
-- Google Calendar sync already handles display — this adds CRM record + recording support
+- **v1.7.0** — Stripe vendor subscription billing
 
 ### Planned
-- **v1.7.0** — Stripe vendor subscription billing
 - **v1.7.1** — Internal task & to-do system
 - **v1.8.0** — Reporting & analytics dashboard
 - **v1.9.0** — Automation rules (trigger → action)

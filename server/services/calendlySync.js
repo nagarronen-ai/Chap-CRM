@@ -91,11 +91,12 @@ async function processCalendlyEvent(event) {
       person_id = match.person?.id || null;
     }
 
-    // Get the CRM user who owns this Calendly account
+    // Get the CRM admin user to own Calendly-created meetings
+    // TODO: when multiple team members have Calendly, match by account
     const { data: crmUser } = await supabase
       .from('crm_users')
       .select('id')
-      .eq('email', 'dan.s@planfor.io')
+      .eq('role', 'admin')
       .single();
 
     const createdBy = crmUser?.id || null;
