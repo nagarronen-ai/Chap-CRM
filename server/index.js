@@ -25,6 +25,7 @@ app.use('/api/google', require('./routes/google'));
 app.use('/api/sync', require('./routes/sync'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/ai', require('./routes/ai'));
+app.use('/api/waitlist', require('./routes/waitlist'));
 
 const PORT = process.env.PORT || 5000;
 
