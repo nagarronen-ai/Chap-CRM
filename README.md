@@ -974,9 +974,13 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - **Role-based CC** — system prompt instructs Chappie to call `get_company_people` before CCing a role (e.g. "CC the CEO")
 - **Phase 2 — Conflict detection** — `check_calendar_conflicts` tool fetches Google Calendar for the proposed day, finds overlapping events, suggests next available slot of same duration. Enforced before every `book_meeting` or `reschedule_meeting`. UTC offset via `Intl.DateTimeFormat shortOffset` — `toLocaleString` round-trip is unreliable in IL browser locale
 - **Phase 3 — Proposal tracking** — `propose_meeting` tool sends proposal email via Gmail API + inserts row in `crm_meeting_proposals` (`gmail_thread_id`, `proposed_start`, `proposed_end`, `status: pending`). `get_pending_proposals` tool queries pending proposals by company. Tool descriptions disambiguate `propose_meeting` vs `book_meeting`
+- **Phase 4 — Reply intent detection + auto-book** — `gmailSync.js` checks every inbound message against `crm_meeting_proposals` by `gmail_thread_id`. GPT-4o-mini classifies reply intent (confirmed/declined/reschedule/unclear). On confirmed: auto-creates Google Calendar event + `crm_meetings` row + activity log entry. On declined/reschedule: updates proposal status + logs activity
+- **Gmail scope fix** — replaced `gmail.readonly` with `gmail.modify` — enables mark-as-read on synced emails. Requires Gmail re-authorization
 - **Calendar monthly view fix** — `getEventsForDate` uses local date math instead of `.toISOString()` UTC comparison — fixes day-shift bug for UTC+3
 - **Event popup timezone chip** — fetches linked company/client country+state, resolves via `getTimezone()` from `LocationSelector.js`, shows client local time alongside Jerusalem time
 - **`convertClientTimeToUTC` fix** — rewrote using `Intl.DateTimeFormat shortOffset`. Previous `toLocaleString` round-trip was broken in IL browser locale
+- **Phase 5 — Slack Bot** — Chappie available via Slack DMs using Socket Mode (`@slack/bolt`). Full tool access same as CRM widget. Block Kit confirmation cards with Confirm/Cancel buttons. Auto-book notifications post to `#all-planfor` channel. `crm_slack_pending` table stores pending confirmations. `slack_user_id` column added to `crm_users` for account linking
+- **Note routing fix** — `add_note` now detects if company is converted to client and logs to both company + client activity timeline
 
 ### v1.6.0 — AI Brain (Chappie)
 - Floating chat widget on all authenticated pages (`AiBrain.js`)
@@ -1048,8 +1052,9 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup, unified emails tab
 - Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix, enforced before every book/reschedule
 - Phase 3 ✅ — Proposal tracking: `propose_meeting` tool, `crm_meeting_proposals` table, `get_pending_proposals` tool
-- Phase 4 — Reply intent detection + auto-book: Gmail sync detects replies to proposals, GPT classifies intent, auto-books on confirmed "yes"
-- Phase 5 — Slack Bot: Chappie on Slack with Block Kit confirmation buttons
+- Phase 4 ✅ — Reply intent detection + auto-book: Gmail sync detects replies, GPT classifies intent, auto-books on confirmed
+- Phase 5 ✅ — Slack Bot: Chappie on Slack via Socket Mode, Block Kit confirmations, #all-planfor alerts
+
 
 ### Planned
 **v1.6.2 — Calendly Webhook Integration**

@@ -8,7 +8,6 @@ const app = express();
 app.use(cors());
 
 // ─── RAW BODY FOR SENDGRID WEBHOOK ───────────────────────────────────────────
-// Must come BEFORE express.json() — SendGrid signature verification needs raw body
 app.use('/api/marketing/webhook', express.raw({ type: '*/*' }));
 
 // ─── GLOBAL JSON PARSER ───────────────────────────────────────────────────────
@@ -27,10 +26,9 @@ app.use('/api/sync', require('./routes/sync'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/ai', require('./routes/ai'));
 
-
 const PORT = process.env.PORT || 5000;
 
-// Auto-sync Gmail every 3 minutes
+// ─── GMAIL AUTO-SYNC (every 3 minutes) ───────────────────────────────────────
 const { syncAllAccounts } = require('./services/gmailSync');
 let syncRunning = false;
 
@@ -48,14 +46,14 @@ const runSync = async () => {
 setTimeout(runSync, 10 * 1000);
 setInterval(runSync, 3 * 60 * 1000);
 
-// Auto-record: Send bot to meetings with auto_record enabled
+// ─── AUTO-RECORD CHECK (every 60 seconds) ────────────────────────────────────
 const supabase = require('./db');
 
 const autoRecordCheck = async () => {
   try {
     const now = new Date();
     const twoMinLater = new Date(now.getTime() + 2 * 60000);
-    
+
     const { data: meetings } = await supabase
       .from('crm_meetings')
       .select('id, meet_link, title')
@@ -88,4 +86,11 @@ const autoRecordCheck = async () => {
 
 setInterval(autoRecordCheck, 60000);
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// ─── START SERVER ─────────────────────────────────────────────────────────────
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+
+  // Start Slack bot after server is up
+  const { startSlackBot } = require('./services/slackBot');
+  startSlackBot();
+});

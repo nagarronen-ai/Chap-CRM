@@ -164,12 +164,12 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'add_note',
-      description: 'Add a note to a company or client',
+      description: 'Add a note to a company or client. If the entity is a converted client, always pass entity_type: company and the company UUID — the system will automatically log it to the client record too.',
       parameters: {
         type: 'object',
         properties: {
           entity_type: { type: 'string', enum: ['company', 'client'] },
-          entity_id: { type: 'string', description: 'The company or client UUID' },
+          entity_id: { type: 'string', description: 'The company or client UUID — prefer company UUID for converted clients' },
           note: { type: 'string', description: 'The note text' },
         },
         required: ['entity_type', 'entity_id', 'note'],
@@ -727,8 +727,22 @@ async function getEmailThread(userId, threadId, companyId, personId) {
 
 async function addNote(userId, entityType, entityId, note) {
   const insert = { user_id: userId, action: 'Note Added', details: note, created_at: new Date().toISOString() };
-  if (entityType === 'company') insert.company_id = entityId;
+  
+  if (entityType === 'company') {
+    insert.company_id = entityId;
+    // If company has been converted to a client, also log to client
+    const { data: client } = await supabase
+      .from('crm_clients')
+      .select('id')
+      .eq('converted_from', entityId)
+      .single();
+    if (client) {
+      insert.client_id = client.id;
+    }
+  }
+  
   if (entityType === 'client') insert.client_id = entityId;
+  
   await supabase.from('crm_activity_log').insert([insert]);
   return { success: true, message: `Note added to ${entityType}` };
 }
