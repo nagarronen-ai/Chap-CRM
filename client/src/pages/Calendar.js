@@ -9,12 +9,12 @@ import { getTimezone } from '../components/LocationSelector';
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
 const EVENT_COLORS = {
-  google_meet: { bg: '#EBF4FF', color: '#1a6fad', label: '📹 Google Meet' },
-  phone: { bg: '#E8F5E9', color: '#2E7D32', label: '📞 Phone Call' },
+  client:   { bg: '#EBF4FF', color: '#94B0BC', label: '🤝 Client' },
+  contact:  { bg: '#F0F4F0', color: '#8E9B8B', label: '🏢 Contact' },
+  calendly: { bg: '#FFF4E6', color: '#D4A574', label: '📅 Calendly' },
   internal: { bg: '#F3E8FF', color: '#7C3AED', label: '👥 Internal' },
-  google: { bg: '#FFF3CD', color: '#856404', label: '📅 Google Calendar' },
+  google:   { bg: '#FFF3CD', color: '#856404', label: '📅 Google Calendar' },
 };
-
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -110,6 +110,7 @@ export default function Calendar() {
   const [rescheduleForm, setRescheduleForm] = useState({ date: '', start_hour: '10', start_min: '00', end_hour: '11', end_min: '00' });
   const [savingReschedule, setSavingReschedule] = useState(false);
   const [selectedEventClientTz, setSelectedEventClientTz] = useState(null);
+  const [showLegend, setShowLegend] = useState(false);
 
   const [form, setForm] = useState({
     title: '', description: '', meeting_type: 'google_meet',
@@ -210,7 +211,14 @@ export default function Calendar() {
 
   const getEventColor = (event) => {
     if (event.is_internal) return EVENT_COLORS.internal;
-    if (event.source === 'crm') return EVENT_COLORS[event.meeting_type] || EVENT_COLORS.google_meet;
+    if (event.source === 'crm') {
+      if (event.client_id) return EVENT_COLORS.client;
+      if (event.company_id) return EVENT_COLORS.contact;
+      // Calendly booking with no CRM match
+      return EVENT_COLORS.calendly;
+    }
+    // Pure Google Calendar event — check if it matches a Calendly booking
+    // (Calendly events show as Google until linked)
     return EVENT_COLORS.google;
   };
 
@@ -645,6 +653,52 @@ export default function Calendar() {
                 : `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`
               }
             </h2>
+          </div>
+          {/* Color Legend */}
+          <div style={{ position: 'relative', marginRight: 12 }}
+            onMouseEnter={() => setShowLegend(true)}
+            onMouseLeave={() => setShowLegend(false)}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+              background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8,
+              cursor: 'default', fontSize: 12, color: '#717182',
+            }}>
+              {['#94B0BC','#8E9B8B','#D4A574','#7C3AED','#856404'].map(color => (
+                <div key={color} style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
+              ))}
+              <span style={{ fontSize: 11, color: '#717182' }}>Legend</span>
+            </div>
+
+            {showLegend && (
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                background: '#fff', borderRadius: 12, padding: '14px 16px',
+                boxShadow: '0 8px 32px rgba(62,66,61,0.15)',
+                border: '1px solid rgba(62,66,61,0.08)',
+                zIndex: 100, minWidth: 240,
+              }}>
+                <p style={{ color: '#717182', fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', margin: '0 0 10px', fontWeight: 600 }}>Calendar Colors</p>
+                {[
+                  { color: '#94B0BC', bg: '#EBF4FF', label: 'Client', desc: 'Meeting with a converted client' },
+                  { color: '#8E9B8B', bg: '#F0F4F0', label: 'Contact', desc: 'Meeting with a CRM contact' },
+                  { color: '#D4A574', bg: '#FFF4E6', label: 'Calendly', desc: 'Calendly booking — no CRM match' },
+                  { color: '#7C3AED', bg: '#F3E8FF', label: 'Internal', desc: 'Internal team meeting' },
+                  { color: '#856404', bg: '#FFF3CD', label: 'Google Only', desc: 'Google Calendar — not linked to CRM' },
+                ].map(({ color, bg, label, desc }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                    <div style={{
+                      width: 28, height: 20, borderRadius: 4, flexShrink: 0,
+                      background: bg, borderLeft: `3px solid ${color}`, marginTop: 1,
+                    }} />
+                    <div>
+                      <div style={{ color: '#3E423D', fontSize: 12, fontWeight: 600 }}>{label}</div>
+                      <div style={{ color: '#717182', fontSize: 11, lineHeight: 1.4 }}>{desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 0, background: '#fff', borderRadius: 8, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
             {['month', 'week', 'day'].map(v => (

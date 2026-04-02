@@ -46,6 +46,24 @@ const runSync = async () => {
 setTimeout(runSync, 10 * 1000);
 setInterval(runSync, 3 * 60 * 1000);
 
+// ─── CALENDLY POLLING (every 5 minutes) ──────────────────────────────────────
+const { syncCalendly } = require('./services/calendlySync');
+let calendlySyncRunning = false;
+
+const runCalendlySync = async () => {
+  if (calendlySyncRunning) return;
+  calendlySyncRunning = true;
+  try {
+    await syncCalendly();
+  } catch (err) {
+    console.error('Calendly sync error:', err);
+  }
+  calendlySyncRunning = false;
+};
+
+setTimeout(runCalendlySync, 30 * 1000); // first run 30s after startup
+setInterval(runCalendlySync, 5 * 60 * 1000); // then every 5 minutes
+
 // ─── AUTO-RECORD CHECK (every 60 seconds) ────────────────────────────────────
 const supabase = require('./db');
 
