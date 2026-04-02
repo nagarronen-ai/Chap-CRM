@@ -1079,11 +1079,10 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - **v1.9.0** — Automation rules (trigger → action)
 
 ### Parallel Track
-**GTM v1.0 — Waitlist & Pre-Launch Email Capture**
-- Landing page at `comingsoon.planfor.io` (Cloudflare Pages, mobile-first, Instagram bio link)
-- `waitlist_couples` table in Supabase (separate `couples_` prefix data layer)
-- `POST /api/waitlist/subscribe` — double opt-in via SendGrid
-- `GET /api/waitlist/confirm/:token` — email confirmation
-- CRM Waitlist page: subscriber list, stats, export, send campaign
-- SendGrid unsubscribe webhook branch for waitlist emails
-- Foundation for future couples user management (`couples_users`, `couples_events`)
+### GTM v1.0 — Waitlist & Pre-Launch Email Capture
+- **Landing page** — `waitlist/index.html` + logo asset, ready for Cloudflare Pages deployment at `comingsoon.planfor.io`
+- **Backend** — `POST /api/waitlist/subscribe`: saves to `waitlist_couples`, sends SendGrid confirmation email with open/click tracking, auto-creates "Waitlist Couples" SendGrid list
+- **Audit trail** — stores ip_address, user_agent, consent_text, consent_at per subscriber
+- **Unsubscribe** — `GET /api/waitlist/unsubscribe` one-click unsubscribe endpoint
+- **CRM waitlist page** — Marketing → Waitlist Couples tab: stats, subscriber table, search, export CSV, delete
+- **CAN-SPAM compliant** — physical address, unsubscribe link, sender identification
