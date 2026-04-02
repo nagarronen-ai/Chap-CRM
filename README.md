@@ -1047,7 +1047,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 
 ## Roadmap
 
-### In Progress
+### Completed
 **v1.6.1 — Chappie Smart Scheduling + Slack Bot**
 - Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup, unified emails tab
 - Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix, enforced before every book/reschedule
@@ -1056,7 +1056,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - Phase 5 ✅ — Slack Bot: Chappie on Slack via Socket Mode, Block Kit confirmations, #all-planfor alerts
 
 
-### Planned
+### In Progress
 **v1.6.2 — Calendly Webhook Integration**
 - Calendly webhook → backend → auto-create `crm_meetings` row
 - Auto-trigger Recall.ai bot for Calendly-booked meetings
