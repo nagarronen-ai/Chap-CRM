@@ -221,7 +221,9 @@ router.post('/subscribe', async (req, res) => {
         name: name?.trim() || null,
         marketing_consent: true,
         consent_at: new Date().toISOString(),
-        ip_address: req.headers['x-forwarded-for'] || req.socket.remoteAddress || null,
+        ip_address: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || null,
+        user_agent: req.headers['user-agent'] || null,
+        consent_text: 'I agree to receive updates and marketing emails from Planfor. Unsubscribe anytime.',
       }]);
 
     if (insertError) {
