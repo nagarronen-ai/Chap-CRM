@@ -16,7 +16,10 @@ export default function Settings() {
   const isAdmin = role === 'admin';
   const [userTimezone, setUserTimezone] = useState('Asia/Jerusalem');
   const [signature, setSignature] = useState('');
-  const [savingSignature, setSavingSignature] = useState(false);  
+  const [savingSignature, setSavingSignature] = useState(false);
+  const [slackUserId, setSlackUserId] = useState('');
+  const [savingSlack, setSavingSlack] = useState(false);
+  const [slackSaved, setSlackSaved] = useState(false);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -43,6 +46,7 @@ export default function Settings() {
         const res = await axios.get(`${API}/users/me`, { headers: getHeaders() });
         setSignature(res.data.email_signature || '');
         setUserTimezone(res.data.timezone || 'Asia/Jerusalem');
+        setSlackUserId(res.data.slack_user_id || '');
       } catch (err) {
         console.error(err);
       }
@@ -391,9 +395,73 @@ export default function Settings() {
               </div>
             ))}
           </div>
-        </div>
+          </div>
 
-      </div>
-    </div>
-  );
+{/* Slack Integration */}
+<div style={{
+  background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)',
+  padding: '24px 28px', marginBottom: 20
+}}>
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+    <span style={{ fontSize: 20 }}>💬</span>
+    <h2 style={{ color: '#3E423D', fontSize: 17, fontWeight: 600, margin: 0 }}>Slack Integration</h2>
+  </div>
+  <p style={{ color: '#717182', fontSize: 13, margin: '0 0 16px' }}>
+    Link your Slack account to chat with Chappie directly in Slack DMs.
+    To find your Slack Member ID: click your profile picture in Slack → View Profile → ··· → Copy Member ID
+  </p>
+  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+    <input
+      value={slackUserId}
+      onChange={e => setSlackUserId(e.target.value)}
+      placeholder="e.g. U0APH8MEDC2"
+      style={{
+        width: 280, background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)',
+        borderRadius: 8, padding: '10px 12px', color: '#3E423D', fontSize: 13,
+        outline: 'none', fontFamily: 'Inter, sans-serif'
+      }}
+    />
+    <button
+      onClick={async () => {
+        setSavingSlack(true);
+        try {
+          await axios.put(`${API}/users/me/slack`, { slack_user_id: slackUserId }, { headers: getHeaders() });
+          setSlackSaved(true);
+          setTimeout(() => setSlackSaved(false), 3000);
+        } catch (err) { console.error(err); }
+        setSavingSlack(false);
+      }}
+      style={{
+        background: savingSlack ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none',
+        borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer',
+        fontFamily: 'Inter, sans-serif'
+      }}
+    >
+      {savingSlack ? '⏳ Saving...' : slackSaved ? '✅ Saved' : '💾 Save'}
+    </button>
+    {slackUserId && (
+      <button
+        onClick={async () => {
+          setSlackUserId('');
+          await axios.put(`${API}/users/me/slack`, { slack_user_id: '' }, { headers: getHeaders() });
+        }}
+        style={{
+          background: 'none', color: '#D4183D', border: '1px solid #D4183D',
+          borderRadius: 8, padding: '10px 14px', fontSize: 13, cursor: 'pointer'
+        }}
+      >
+        Disconnect
+      </button>
+    )}
+  </div>
+  {slackUserId && (
+    <p style={{ color: '#8E9B8B', fontSize: 12, marginTop: 8 }}>
+      ✅ Slack connected — you can now DM Chappie in your Slack workspace
+    </p>
+  )}
+</div>
+
+</div>
+</div>
+);
 }

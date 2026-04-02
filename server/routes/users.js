@@ -12,7 +12,7 @@ const { checkPermission } = require('../middleware/rbac');
 router.get('/me', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_users')
-    .select('id, email, name, role, timezone, email_signature')
+    .select('id, email, name, role, timezone, email_signature, slack_user_id')
     .eq('id', req.user.id)
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -28,6 +28,19 @@ router.put('/me/timezone', auth, async (req, res) => {
     .update({ timezone })
     .eq('id', req.user.id)
     .select('id, email, name, role, timezone')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// PUT /api/users/me/slack — update own Slack user ID
+router.put('/me/slack', auth, async (req, res) => {
+  const { slack_user_id } = req.body;
+  const { data, error } = await supabase
+    .from('crm_users')
+    .update({ slack_user_id: slack_user_id || null })
+    .eq('id', req.user.id)
+    .select('id, slack_user_id')
     .single();
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
