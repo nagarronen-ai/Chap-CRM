@@ -511,4 +511,26 @@ router.post('/resubscribe-bulk', auth, async (req, res) => {
   res.json({ resubscribed: data.length });
 });
 
+// ─── WAITLIST ─────────────────────────────────────────────────────────────────
+
+// GET /api/marketing/waitlist — list all waitlist subscribers
+router.get('/waitlist', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('waitlist_couples')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// DELETE /api/marketing/waitlist/:id — delete a subscriber
+router.delete('/waitlist/:id', auth, async (req, res) => {
+  const { error } = await supabase
+    .from('waitlist_couples')
+    .delete()
+    .eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 module.exports = router;

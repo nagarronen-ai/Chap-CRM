@@ -67,6 +67,9 @@ export default function Marketing() {
 
   // Sub navigation
   const [subView, setSubView] = useState('campaigns');
+  const [waitlist, setWaitlist] = useState([]);
+  const [loadingWaitlist, setLoadingWaitlist] = useState(false);
+  const [waitlistSearch, setWaitlistSearch] = useState('');
   const [unsubscribed, setUnsubscribed] = useState([]);
   const [selectedUnsubs, setSelectedUnsubs] = useState({});
   const [loadingUnsubs, setLoadingUnsubs] = useState(false);
@@ -96,6 +99,47 @@ export default function Marketing() {
       const res = await axios.get(`${API}/emails/templates`, { headers: getHeaders() });
       setTemplates(res.data.filter(t => t.visibility === 'team'));
     } catch (err) { console.error(err); }
+  };
+
+  const fetchWaitlist = async () => {
+    setLoadingWaitlist(true);
+    try {
+      const res = await axios.get(`${API}/marketing/waitlist`, { headers: getHeaders() });
+      setWaitlist(res.data);
+    } catch (err) { console.error(err); }
+    setLoadingWaitlist(false);
+  };
+
+  const deleteWaitlistEntry = async (id) => {
+    if (!window.confirm('Remove this subscriber? This cannot be undone.')) return;
+    try {
+      await axios.delete(`${API}/marketing/waitlist/${id}`, { headers: getHeaders() });
+      setWaitlist(prev => prev.filter(w => w.id !== id));
+    } catch (err) { console.error(err); alert('Failed to delete'); }
+  };
+
+  const exportWaitlistCSV = () => {
+    const rows = [
+      ['Name', 'Email', 'Consent', 'Consent Date', 'IP Address', 'User Agent', 'Consent Text', 'Joined'],
+      ...waitlist.map(w => [
+        w.name || '',
+        w.email,
+        w.marketing_consent ? 'Yes' : 'No',
+        w.consent_at ? new Date(w.consent_at).toISOString() : '',
+        w.ip_address || '',
+        w.user_agent || '',
+        w.consent_text || '',
+        w.created_at ? new Date(w.created_at).toISOString() : '',
+      ]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `waitlist_couples_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const fetchUnsubscribed = async () => {
@@ -550,10 +594,14 @@ export default function Marketing() {
           <button onClick={() => setSubView('campaigns')}
             style={{ background: 'none', border: 'none', borderBottom: subView === 'campaigns' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'campaigns' ? '#1a1d1a' : '#717182', fontWeight: subView === 'campaigns' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
             Campaigns
-          </button>
-          <button onClick={() => { setSubView('unsubscribed'); fetchUnsubscribed(); }}
+            </button>
+            <button onClick={() => { setSubView('unsubscribed'); fetchUnsubscribed(); }}
             style={{ background: 'none', border: 'none', borderBottom: subView === 'unsubscribed' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'unsubscribed' ? '#1a1d1a' : '#717182', fontWeight: subView === 'unsubscribed' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
             Unsubscribed {unsubscribed.length > 0 && <span style={{ background: '#D4183D', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, marginLeft: 4 }}>{unsubscribed.length}</span>}
+          </button>
+          <button onClick={() => { setSubView('waitlist'); fetchWaitlist(); }}
+            style={{ background: 'none', border: 'none', borderBottom: subView === 'waitlist' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'waitlist' ? '#1a1d1a' : '#717182', fontWeight: subView === 'waitlist' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+            Waitlist Couples
           </button>
         </div>
 
@@ -630,6 +678,95 @@ export default function Marketing() {
           )}
         </>)}
 
+{/* Waitlist View */}
+{subView === 'waitlist' && (
+          <div>
+            {/* Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+              {[
+                { label: 'Total Subscribers', value: waitlist.length, icon: '💌' },
+                { label: 'Consented', value: waitlist.filter(w => w.marketing_consent).length, icon: '✅' },
+                { label: 'This Week', value: waitlist.filter(w => new Date(w.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length, icon: '📅' },
+                { label: 'Today', value: waitlist.filter(w => new Date(w.created_at).toDateString() === new Date().toDateString()).length, icon: '🌱' },
+              ].map(({ label, value, icon }) => (
+                <div key={label} style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
+                  <p style={{ color: '#3E423D', fontSize: 24, fontWeight: 700, margin: '0 0 4px' }}>{value}</p>
+                  <p style={{ color: '#717182', fontSize: 11, margin: 0, textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Table */}
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden' }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: 0 }}>
+                  Waitlist Couples ({waitlist.length})
+                </h3>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <input
+                    value={waitlistSearch}
+                    onChange={e => setWaitlistSearch(e.target.value)}
+                    placeholder="Search name or email..."
+                    style={{ background: '#F5F3EF', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '7px 12px', fontSize: 12, outline: 'none', fontFamily: 'Inter, sans-serif', width: 200 }}
+                  />
+                  <button onClick={exportWaitlistCSV}
+                    style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                    ⬇ Export CSV
+                  </button>
+                </div>
+              </div>
+
+              {loadingWaitlist ? (
+                <div style={{ padding: 40, textAlign: 'center', color: '#717182' }}>Loading...</div>
+              ) : waitlist.length === 0 ? (
+                <div style={{ padding: 60, textAlign: 'center', color: '#717182' }}>
+                  <p style={{ fontSize: 32, marginBottom: 12 }}>💌</p>
+                  <p style={{ fontSize: 14 }}>No subscribers yet. Share your waitlist link to get started.</p>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#F9F9F7' }}>
+                        {['Name', 'Email', 'Consent', 'Joined', 'IP Address', 'Actions'].map(h => (
+                          <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(62,66,61,0.08)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {waitlist
+                        .filter(w => !waitlistSearch || w.email.toLowerCase().includes(waitlistSearch.toLowerCase()) || (w.name || '').toLowerCase().includes(waitlistSearch.toLowerCase()))
+                        .map((w, i) => (
+                        <tr key={w.id} style={{ borderBottom: '1px solid rgba(62,66,61,0.05)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{w.name || <span style={{ color: '#AAAABC' }}>—</span>}</td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{w.email}</td>
+                          <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                            <span style={{ background: w.marketing_consent ? '#E8F5E9' : '#FFEBEE', color: w.marketing_consent ? '#2E7D32' : '#D4183D', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>
+                              {w.marketing_consent ? '✓ Consented' : '✗ No consent'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>
+                            {new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', fontFamily: 'monospace' }}>
+                            {w.ip_address || '—'}
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <button onClick={() => deleteWaitlistEntry(w.id)}
+                              style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* Unsubscribed View */}
         {subView === 'unsubscribed' && (
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden' }}>
