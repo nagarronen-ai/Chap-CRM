@@ -54,6 +54,28 @@ const toolDefinitions = [
   {
     type: 'function',
     function: {
+      name: 'get_waitlist_stats',
+      description: 'Get Planfor couples waitlist stats — total subscribers, consented, joined this week, joined today',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_waitlist_list',
+      description: 'Get the list of couples on the Planfor waitlist — name, email, consent status, date joined',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: 'Max number of subscribers to return. Default 20.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_campaign_stats',
       description: 'Get full stats for a marketing campaign by name — opens, clicks, bounces, unsubscribes, and recipient list',
       parameters: {
@@ -402,6 +424,8 @@ async function executeTool(toolName, args, userId) {
     case 'get_finance_summary': return await getFinanceSummary(userId);
     case 'get_last_thread': return await getLastThread(userId, args.person_id, args.company_id);
     case 'get_email_thread': return await getEmailThread(userId, args.thread_id, args.company_id, args.person_id);
+    case 'get_waitlist_stats': return await getWaitlistStats();
+    case 'get_waitlist_list': return await getWaitlistList(args.limit || 20);
     case 'get_campaign_stats': return await getCampaignStats(userId, args.campaign_name);
     case 'add_note': return await addNote(userId, args.entity_type, args.entity_id, args.note);
     case 'update_pipeline_stage': return await updatePipelineStage(userId, args.company_id, args.stage);
@@ -441,6 +465,37 @@ async function getMarketingHistory(userId, companyId) {
     .order('created_at', { ascending: false })
     .limit(20);
   return { campaigns: data || [], total: data?.length || 0 };
+}
+
+async function getWaitlistStats() {
+  const { data } = await supabase
+    .from('waitlist_couples')
+    .select('id, marketing_consent, created_at');
+
+  const total = data?.length || 0;
+  const consented = data?.filter(w => w.marketing_consent).length || 0;
+  const thisWeek = data?.filter(w => new Date(w.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length || 0;
+  const today = data?.filter(w => new Date(w.created_at).toDateString() === new Date().toDateString()).length || 0;
+
+  return { total, consented, this_week: thisWeek, today };
+}
+
+async function getWaitlistList(limit = 20) {
+  const { data } = await supabase
+    .from('waitlist_couples')
+    .select('name, email, marketing_consent, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  return {
+    count: data?.length || 0,
+    subscribers: (data || []).map(w => ({
+      name: w.name || 'No name',
+      email: w.email,
+      consented: w.marketing_consent,
+      joined: new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    })),
+  };
 }
 
 async function getCampaignStats(userId, campaignName) {

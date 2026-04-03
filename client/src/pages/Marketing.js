@@ -65,6 +65,11 @@ export default function Marketing() {
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [templates, setTemplates] = useState([]);
 
+  // Campaign detail — hot leads
+  const [recipientFilter, setRecipientFilter] = useState('all');
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [selectedLeads, setSelectedLeads] = useState({});
+
   // Sub navigation
   const [subView, setSubView] = useState('campaigns');
   const [waitlist, setWaitlist] = useState([]);
@@ -277,51 +282,173 @@ export default function Marketing() {
 
           {/* Email Preview */}
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden', marginBottom: 24 }}>
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div onClick={() => setShowEmailPreview(prev => !prev)}
+              style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderBottom: showEmailPreview ? '1px solid rgba(62,66,61,0.08)' : 'none' }}>
               <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>Email Content</h3>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#717182' }}>Subject:</span>
-                <span style={{ fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{selectedCampaign.subject}</span>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: '#717182' }}>Subject: <strong style={{ color: '#3E423D' }}>{selectedCampaign.subject}</strong></span>
+                <span style={{ fontSize: 12, color: '#8E9B8B' }}>{showEmailPreview ? '▲ Hide' : '▼ Show'}</span>
               </div>
             </div>
-            <div style={{ padding: 24, maxHeight: 400, overflowY: 'auto' }}>
-              <div dangerouslySetInnerHTML={{ __html: selectedCampaign.body_html }} style={{ fontSize: 14, lineHeight: 1.7, color: '#3E423D' }} />
-            </div>
+            {showEmailPreview && (
+              <div style={{ padding: 24, maxHeight: 400, overflowY: 'auto' }}>
+                <div dangerouslySetInnerHTML={{ __html: selectedCampaign.body_html }} style={{ fontSize: 14, lineHeight: 1.7, color: '#3E423D' }} />
+              </div>
+            )}
           </div>
 
           {/* Recipients Table */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)' }}>
-              <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>Recipients ({selectedCampaign.recipients?.length || 0})</h3>
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#F5F3EF' }}>
-                  {['Company', 'Contact', 'Email', 'Status', 'Opened', 'Clicked'].map(h => (
-                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {selectedCampaign.recipients?.map((r, i) => (
-                  <tr key={r.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{r.crm_companies?.company_name}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#5A6059' }}>{r.crm_people ? `${r.crm_people.first_name} ${r.crm_people.last_name}` : '—'}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#717182' }}>{r.email}</td>
-                    <td style={{ padding: '12px 16px' }}>
+          {(() => {
+            const filteredRecipients = (selectedCampaign.recipients || []).filter(r => {
+              if (recipientFilter === 'all') return true;
+              if (recipientFilter === 'opened') return r.opened_at || r.status === 'opened' || r.status === 'clicked';
+              if (recipientFilter === 'clicked') return r.clicked_at || r.status === 'clicked';
+              if (recipientFilter === 'delivered') return ['delivered', 'opened', 'clicked'].includes(r.status);
+              if (recipientFilter === 'bounced') return r.status === 'bounced';
+              if (recipientFilter === 'unsubscribed') return r.status === 'unsubscribed';
+              return true;
+            });
+
+            const selectedCount = Object.values(selectedLeads).filter(Boolean).length;
+
+            const launchCampaignFromLeads = () => {
+              const leads = filteredRecipients.filter((_, i) => selectedLeads[i]);
+              const prefilledRecipients = leads.map(r => ({
+                email: r.email,
+                first_name: r.crm_people?.first_name || '',
+                last_name: r.crm_people?.last_name || '',
+                company_name: r.crm_companies?.company_name || '',
+                company_id: r.company_id || null,
+                person_id: r.person_id || null,
+                source: 'Contact',
+              }));
+              setStep(1);
+              setForm({ name: `Follow-up — ${selectedCampaign.name}`, subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null });
+              setRecipients(prefilledRecipients);
+              const sel = {};
+              prefilledRecipients.forEach((_, i) => { sel[i] = true; });
+              setSelectedRecipients(sel);
+              setRecipientFilter('all');
+              setSelectedLeads({});
+              setView('create');
+              setStep(2);
+            };
+
+            const FILTER_TABS = [
+              { key: 'all', label: 'All', count: selectedCampaign.recipients?.length || 0 },
+              { key: 'opened', label: '👁 Opened', count: s.opened || 0, hot: true },
+              { key: 'clicked', label: '🖱 Clicked', count: s.clicked || 0, hot: true },
+              { key: 'delivered', label: '✅ Delivered', count: s.delivered || 0 },
+              { key: 'bounced', label: '↩️ Bounced', count: s.bounced || 0 },
+              { key: 'unsubscribed', label: '🚫 Unsubscribed', count: s.unsubscribed || 0 },
+            ];
+
+            return (
+              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
+                {/* Header */}
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>
+                    Recipients ({selectedCampaign.recipients?.length || 0})
+                  </h3>
+                  {selectedCount > 0 && (
+                    <button onClick={launchCampaignFromLeads}
+                      style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                      🚀 New Campaign from {selectedCount} Selected
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Tabs */}
+                <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid rgba(62,66,61,0.08)', padding: '0 8px' }}>
+                  {FILTER_TABS.map(({ key, label, count, hot }) => (
+                    <button key={key} onClick={() => { setRecipientFilter(key); setSelectedLeads({}); }}
+                      style={{
+                        background: 'none', border: 'none',
+                        borderBottom: recipientFilter === key ? '2px solid #8E9B8B' : '2px solid transparent',
+                        padding: '10px 14px', fontSize: 12,
+                        color: recipientFilter === key ? '#3E423D' : '#717182',
+                        fontWeight: recipientFilter === key ? 600 : 400,
+                        cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                        display: 'flex', alignItems: 'center', gap: 5,
+                      }}>
+                      {label}
                       <span style={{
-                        background: r.status === 'opened' || r.status === 'clicked' ? '#D4EDDA' : r.status === 'bounced' ? '#F8D7DA' : r.status === 'unsubscribed' ? '#FFE5D0' : '#F5F3EF',
-                        color: r.status === 'opened' || r.status === 'clicked' ? '#155724' : r.status === 'bounced' ? '#721C24' : r.status === 'unsubscribed' ? '#856404' : '#717182',
-                        borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize'
-                      }}>{r.status}</span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.opened_at ? new Date(r.opened_at).toLocaleDateString() : '—'}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{r.clicked_at ? new Date(r.clicked_at).toLocaleDateString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        background: hot && count > 0 ? '#D4EDDA' : '#F5F3EF',
+                        color: hot && count > 0 ? '#155724' : '#717182',
+                        borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 600,
+                      }}>{count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Hot leads hint */}
+                {(recipientFilter === 'opened' || recipientFilter === 'clicked') && filteredRecipients.length > 0 && (
+                  <div style={{ background: '#F0F7F0', borderBottom: '1px solid rgba(142,155,139,0.2)', padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>🔥</span>
+                    <span style={{ fontSize: 12, color: '#3E6B3E' }}>
+                      These are your warm leads — select them and launch a follow-up campaign directly.
+                    </span>
+                  </div>
+                )}
+
+                {/* Table */}
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#F5F3EF' }}>
+                      <th style={{ padding: '10px 16px', width: 40 }}>
+                        <input type="checkbox"
+                          checked={filteredRecipients.length > 0 && filteredRecipients.every((_, i) => selectedLeads[i])}
+                          onChange={e => {
+                            const all = {};
+                            filteredRecipients.forEach((_, i) => { all[i] = e.target.checked; });
+                            setSelectedLeads(all);
+                          }}
+                          style={{ accentColor: '#8E9B8B' }} />
+                      </th>
+                      {['Company', 'Contact', 'Email', 'Status', 'Delivered', 'Opened', 'Clicked', 'Bounced'].map(h => (
+                        <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRecipients.length === 0 ? (
+                      <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: '#717182', fontSize: 13 }}>No recipients in this category</td></tr>
+                    ) : filteredRecipients.map((r, i) => (
+                      <tr key={r.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: selectedLeads[i] ? '#F0F7F0' : i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <input type="checkbox" checked={!!selectedLeads[i]}
+                            onChange={e => setSelectedLeads(prev => ({ ...prev, [i]: e.target.checked }))}
+                            style={{ accentColor: '#8E9B8B' }} />
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{r.crm_companies?.company_name || '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#5A6059' }}>{r.crm_people ? `${r.crm_people.first_name} ${r.crm_people.last_name}` : '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#717182' }}>{r.email}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            background: r.status === 'clicked' ? '#D4EDDA' : r.status === 'opened' ? '#E8F5E9' : r.status === 'bounced' ? '#F8D7DA' : r.status === 'unsubscribed' ? '#FFE5D0' : '#F5F3EF',
+                            color: r.status === 'clicked' ? '#155724' : r.status === 'opened' ? '#2E7D32' : r.status === 'bounced' ? '#721C24' : r.status === 'unsubscribed' ? '#856404' : '#717182',
+                            borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
+                          }}>{r.status}</span>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: ['delivered','opened','clicked'].includes(r.status) ? '#2E7D32' : '#AAAABC' }}>
+                          {['delivered','opened','clicked'].includes(r.status) ? '✓' : '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.opened_at ? '#2E7D32' : '#AAAABC' }}>
+                          {r.opened_at ? new Date(r.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.clicked_at ? '#E65100' : '#AAAABC' }}>
+                          {r.clicked_at ? new Date(r.clicked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.status === 'bounced' ? '#D4183D' : '#AAAABC' }}>
+                          {r.status === 'bounced' ? '✗' : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );

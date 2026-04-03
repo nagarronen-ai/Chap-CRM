@@ -54,6 +54,7 @@ OTHER TOOL RULES:
 - User asks about pipeline/leads/stages → get_pipeline_summary.
 - User asks about stale leads → get_stale_leads.
 - User asks about revenue/payments → get_finance_summary.
+- User asks about waitlist, couples list, how many signed up → get_waitlist_stats or get_waitlist_list.
 - Prep for a meeting → search_contacts + get_company_brief or get_client_status + get_my_meetings all at once.
 - Multi-topic question → call every relevant tool before responding.
 - After search_contacts: check companies, clients, AND people arrays. If person found, use their company. Never say not found without checking all three.
