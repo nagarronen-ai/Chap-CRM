@@ -60,6 +60,22 @@ const toolDefinitions = [
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
+
+  {
+    type: 'function',
+    function: {
+      name: 'search_conversation_history',
+      description: 'Search past Chappie conversations by date or topic keyword. Use when user references a past conversation — e.g. "last Thursday we spoke about X", "what did we discuss about QualifAI last week", "find our conversation about the Houston campaign".',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Topic or keyword to search for in past conversations' },
+          date_hint: { type: 'string', description: 'Date reference like "last Thursday", "last week", "April 1", "yesterday". Optional.' },
+        },
+        required: ['query'],
+      },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -436,6 +452,7 @@ async function executeTool(toolName, args, userId) {
     case 'get_all_campaigns': return await getAllCampaigns();
     case 'get_waitlist_stats': return await getWaitlistStats();
     case 'get_waitlist_list': return await getWaitlistList(args.limit || 20);
+    case 'search_conversation_history': return await searchConversationHistory(userId, args.query, args.date_hint);
     case 'get_campaign_stats': return await getCampaignStats(userId, args.campaign_name);
     case 'add_note': return await addNote(userId, args.entity_type, args.entity_id, args.note);
     case 'update_pipeline_stage': return await updatePipelineStage(userId, args.company_id, args.stage);
@@ -511,6 +528,99 @@ async function getAllCampaigns() {
   }));
 
   return { total: campaigns.length, campaigns: withStats };
+}
+
+async function searchConversationHistory(userId, query, dateHint) {
+  // Resolve date hint to a date range
+  let dateFrom = null;
+  if (dateHint) {
+    const now = new Date();
+    const hint = dateHint.toLowerCase();
+
+    if (hint.includes('yesterday')) {
+      dateFrom = new Date(now);
+      dateFrom.setDate(now.getDate() - 1);
+      dateFrom.setHours(0, 0, 0, 0);
+    } else if (hint.includes('last week')) {
+      dateFrom = new Date(now);
+      dateFrom.setDate(now.getDate() - 7);
+    } else if (hint.includes('last thursday') || hint.includes('thursday')) {
+      dateFrom = new Date(now);
+      const day = now.getDay();
+      const diff = (day >= 4) ? (day - 4) : (day + 3);
+      dateFrom.setDate(now.getDate() - diff - (day >= 4 ? 0 : 7));
+      dateFrom.setHours(0, 0, 0, 0);
+    } else if (hint.includes('last monday') || hint.includes('monday')) {
+      dateFrom = new Date(now);
+      const day = now.getDay();
+      const diff = (day >= 1) ? (day - 1) : 6;
+      dateFrom.setDate(now.getDate() - diff - (day >= 1 ? 0 : 7));
+      dateFrom.setHours(0, 0, 0, 0);
+    } else if (hint.includes('last month')) {
+      dateFrom = new Date(now);
+      dateFrom.setMonth(now.getMonth() - 1);
+    } else {
+      // Try to parse as a date
+      const parsed = new Date(dateHint);
+      if (!isNaN(parsed)) dateFrom = parsed;
+    }
+  }
+
+  // Fetch conversations
+  let queryBuilder = supabase
+    .from('crm_ai_conversations')
+    .select('id, messages, last_message, actions_taken, updated_at, created_at')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+    .limit(50);
+
+  if (dateFrom) {
+    queryBuilder = queryBuilder.gte('updated_at', dateFrom.toISOString());
+  }
+
+  const { data: conversations } = await queryBuilder;
+
+  if (!conversations || conversations.length === 0) {
+    return { found: false, message: 'No past conversations found for that time period.' };
+  }
+
+  // Search messages for the query keyword
+  const queryLower = query.toLowerCase();
+  const matches = [];
+
+  for (const conv of conversations) {
+    const messages = conv.messages || [];
+    const matchingMessages = messages.filter(m =>
+      typeof m.content === 'string' &&
+      m.content.toLowerCase().includes(queryLower)
+    );
+
+    if (matchingMessages.length > 0 || (conv.last_message || '').toLowerCase().includes(queryLower)) {
+      // Get a relevant excerpt
+      const relevantMsg = matchingMessages[0] || messages[messages.length - 1];
+      matches.push({
+        date: new Date(conv.updated_at).toLocaleDateString('en-US', {
+          weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+        }),
+        excerpt: relevantMsg?.content?.substring(0, 200) || conv.last_message || '',
+        actions: (conv.actions_taken || []).map(a => a.tool).filter(Boolean),
+        message_count: messages.length,
+      });
+    }
+  }
+
+  if (matches.length === 0) {
+    return {
+      found: false,
+      message: `No conversations found mentioning "${query}"${dateHint ? ` around ${dateHint}` : ''}.`,
+    };
+  }
+
+  return {
+    found: true,
+    count: matches.length,
+    conversations: matches.slice(0, 5), // Return top 5 matches
+  };
 }
 
 async function getWaitlistStats() {

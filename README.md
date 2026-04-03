@@ -1077,6 +1077,8 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - **v1.7.1** — Internal task & to-do system
 - **v1.8.0** — Reporting & analytics dashboard
 - **v1.9.0** — Automation rules (trigger → action)
+- **v2.0** — RAG (Retrieval Augmented Generation) — vector knowledge base for Chappie, proactive insights, multi-user context awareness. Planned before open source release.
+- **Open Source Release** — clean up, documentation, LinkedIn post
 
 ### Parallel Track
 ### GTM v1.0 — Waitlist & Pre-Launch Email Capture

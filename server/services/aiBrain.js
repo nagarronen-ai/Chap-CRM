@@ -55,6 +55,7 @@ OTHER TOOL RULES:
 - User asks about stale leads → get_stale_leads.
 - User asks about revenue/payments → get_finance_summary.
 - User asks for campaign overview or all campaigns → get_all_campaigns.
+- User references a past conversation ("last Thursday", "we spoke about X", "what did we discuss") → search_conversation_history with the topic and date hint.
 - User asks about waitlist, couples list, how many signed up → get_waitlist_stats or get_waitlist_list.
 - Prep for a meeting → search_contacts + get_company_brief or get_client_status + get_my_meetings all at once.
 - Multi-topic question → call every relevant tool before responding.
