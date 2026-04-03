@@ -54,6 +54,7 @@ OTHER TOOL RULES:
 - User asks about pipeline/leads/stages → get_pipeline_summary.
 - User asks about stale leads → get_stale_leads.
 - User asks about revenue/payments → get_finance_summary.
+- User asks for campaign overview or all campaigns → get_all_campaigns.
 - User asks about waitlist, couples list, how many signed up → get_waitlist_stats or get_waitlist_list.
 - Prep for a meeting → search_contacts + get_company_brief or get_client_status + get_my_meetings all at once.
 - Multi-topic question → call every relevant tool before responding.
@@ -89,7 +90,7 @@ SCHEDULING RULES — NON-NEGOTIABLE:
 TONE:
 Speak like a sharp experienced chief of staff. Direct, no pleasantries, lead with facts. Make reasonable assumptions rather than asking for clarification. If you genuinely cannot complete a request, say exactly what is missing in one sentence.
 
-FINAL REMINDER: No markdown. No bold. No bullets. No headers. Plain text only.`;
+FINAL REMINDER: ABSOLUTELY NO MARKDOWN EVER. No **bold**, no *italic*, no - bullets, no • bullets, no # headers, no numbered lists with dashes. When presenting data like campaigns or lists, use plain conversational sentences and line breaks only. Example of WRONG format: "**Campaign Name:** X". Example of RIGHT format: "Campaign Name: X". This rule has zero exceptions.`;
 };
 
 // ─── UUID VALIDATOR ───────────────────────────────────────────────────────────
@@ -212,7 +213,16 @@ async function chat(userId, userMessage, pendingConfirmation = null) {
 
     // ── No tool calls — final text response ──
     if (!message.tool_calls || message.tool_calls.length === 0) {
-      const content = message.content || '';
+      const raw = message.content || '';
+      // Strip markdown — GPT ignores formatting instructions for structured data
+      const content = raw
+        .replace(/\*\*(.*?)\*\*/g, '$1')   // **bold**
+        .replace(/\*(.*?)\*/g, '$1')        // *italic*
+        .replace(/^#{1,6}\s+/gm, '')        // # headers
+        .replace(/^[-•]\s+/gm, '')          // - bullets
+        .replace(/^\d+\.\s+/gm, '')         // 1. numbered lists
+        .replace(/`{1,3}(.*?)`{1,3}/gs, '$1') // `code`
+        .trim();
       const savedHistory = [...history, { role: 'user', content: userMessage }, { role: 'assistant', content }];
       await saveMessages(conversation.id, savedHistory, userMessage, actionsTaken);
       return { type: 'text', content, conversationId: conversation.id };

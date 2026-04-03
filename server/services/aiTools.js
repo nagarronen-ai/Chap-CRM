@@ -51,6 +51,15 @@ const toolDefinitions = [
       },
     },
   },
+
+  {
+    type: 'function',
+    function: {
+      name: 'get_all_campaigns',
+      description: 'Get a list of all marketing campaigns with their stats — sent count, open rate, click rate, status. Use when user asks for a campaign overview or review of all campaigns.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -424,6 +433,7 @@ async function executeTool(toolName, args, userId) {
     case 'get_finance_summary': return await getFinanceSummary(userId);
     case 'get_last_thread': return await getLastThread(userId, args.person_id, args.company_id);
     case 'get_email_thread': return await getEmailThread(userId, args.thread_id, args.company_id, args.person_id);
+    case 'get_all_campaigns': return await getAllCampaigns();
     case 'get_waitlist_stats': return await getWaitlistStats();
     case 'get_waitlist_list': return await getWaitlistList(args.limit || 20);
     case 'get_campaign_stats': return await getCampaignStats(userId, args.campaign_name);
@@ -465,6 +475,42 @@ async function getMarketingHistory(userId, companyId) {
     .order('created_at', { ascending: false })
     .limit(20);
   return { campaigns: data || [], total: data?.length || 0 };
+}
+
+async function getAllCampaigns() {
+  const { data: campaigns } = await supabase
+    .from('crm_campaigns')
+    .select('id, name, subject, status, sent_at, from_email')
+    .order('created_at', { ascending: false });
+
+  if (!campaigns || campaigns.length === 0) return { total: 0, campaigns: [] };
+
+  const withStats = await Promise.all(campaigns.map(async (c) => {
+    const { data: recipients } = await supabase
+      .from('crm_campaign_recipients')
+      .select('status, opened_at, clicked_at')
+      .eq('campaign_id', c.id);
+
+    const sent = recipients?.length || 0;
+    const opened = recipients?.filter(r => r.opened_at || ['opened','clicked'].includes(r.status)).length || 0;
+    const clicked = recipients?.filter(r => r.clicked_at || r.status === 'clicked').length || 0;
+    const bounced = recipients?.filter(r => r.status === 'bounced').length || 0;
+
+    return {
+      name: c.name,
+      subject: c.subject,
+      status: c.status,
+      sent_at: c.sent_at ? new Date(c.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not sent',
+      sent,
+      opened,
+      clicked,
+      bounced,
+      open_rate: sent > 0 ? `${Math.round((opened / sent) * 100)}%` : '0%',
+      click_rate: sent > 0 ? `${Math.round((clicked / sent) * 100)}%` : '0%',
+    };
+  }));
+
+  return { total: campaigns.length, campaigns: withStats };
 }
 
 async function getWaitlistStats() {
