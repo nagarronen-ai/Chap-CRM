@@ -958,50 +958,60 @@ npx wrangler pages deploy build --project-name=planfor-crm
 
 ## Changelog
 
+### v1.6.3 — Campaign Analytics + AI Log + GTM v1.0 Complete
+- **Campaign hot leads** — recipients table in campaign detail now has filter tabs (All / Opened / Clicked / Delivered / Bounced / Unsubscribed), checkboxes per row, and "New Campaign from Selected" button to launch follow-up campaign directly from warm leads
+- **Email preview collapse** — email content section in campaign detail is collapsed by default, click to expand
+- **get_all_campaigns tool** — Chappie can give a full overview of all campaigns with stats
+- **get_waitlist_stats tool** — Chappie can answer "how many couples are on the waitlist"
+- **get_waitlist_list tool** — Chappie can list waitlist subscribers by name/email/date
+- **search_conversation_history tool** — Chappie can search past conversations by topic and date hint (e.g. "last Thursday we spoke about X")
+- **Markdown strip** — all Chappie responses stripped of markdown server-side before reaching frontend
+- **AI Log redesign** — fixed height split panel layout, conversations grouped by Today/Yesterday/date with sticky day headers, independent scrolling on both panels
+- **Waitlist landing page** — `planfor-waitlist` repo pushed, ready for Cloudflare Pages at `comingsoon.planfor.io`
+- **Waitlist backend** — `POST /api/waitlist/subscribe`, `GET /api/waitlist/unsubscribe`, audit trail (ip_address, user_agent, consent_text), SendGrid confirmation email with open/click tracking
+- **Waitlist CRM page** — Marketing → Waitlist Couples tab: stats, subscriber table, search, export CSV, delete
+- **Calendar color coding** — Client (teal), Contact (green), Calendly unmatched (orange), Internal (purple), Google only (yellow)
+- **Calendar legend** — hover widget showing color guide
+- **Slack self-link in Settings** — each user pastes their Slack Member ID to connect
+
 ### v1.6.2 — Calendly Integration + Calendar UX
 - **Calendly polling** — syncs every 5 minutes, creates CRM meetings, links Google Calendar event, matches invitee to CRM contacts/clients
 - **Auto-record** — Recall.ai bot sent 2 min before meeting via autoRecordCheck (not immediately on creation)
-- **Calendar color coding** — meetings colored by relationship: Client (teal), Contact (green), Calendly unmatched (orange), Internal (purple), Google only (yellow)
-- **Color legend** — hover widget on calendar showing color guide
+- **Calendar color coding** — meetings colored by relationship type
+- **Color legend** — hover widget on calendar
 - **Slack self-link** — Settings page lets each user paste their Slack Member ID
 - **Gmail scope** — upgraded to `gmail.modify` (enables mark-as-read)
 
-### v1.6.1 — Chappie Smart Scheduling ✅
+### v1.6.1 — Chappie Smart Scheduling
 - **Thread replies** — Chappie replies in existing Gmail threads via `get_last_thread` + `thread_id` pass-through to `/api/emails/send`
 - **Email reading** — `get_email_thread` tool reads received + sent messages; uses `body_html` (not `body_text`); falls back to `company_id` search when thread_id yields no results
-- **Reply detection** — Chappie now correctly detects inbound replies by resolving `company_id` from `person_id` before querying `crm_synced_emails`
+- **Reply detection** — Chappie correctly detects inbound replies by resolving `company_id` from `person_id` before querying `crm_synced_emails`
 - **CC support** — `send_email` passes CC array through Gmail API RFC 2822 headers; CC shown in confirmation card
 - **Bulk email** — `send_bulk_email` tool sends to all contacts at a company
 - **`client_id` auto-lookup** — email executor looks up `client_id` from `company_id` via `converted_from` so emails appear in client profile
-- **`client_id` column** — added to `crm_emails_sent` via `ALTER TABLE`
 - **Campaign analytics** — `get_campaign_stats` tool with opens/clicks/bounces/unsubscribes
 - **`get_company_people`** — tool for team-level email targeting with CC
-- **Unified emails tab** — `ClientProfile.js` emails tab merged into one table (removed Before/After Conversion split)
-- **Meet link in chat** — after booking a meeting, Chappie shows the Google Meet link in the chat response
-- **Date calculation** — Chappie shows exact calculated date in confirmation card before booking
-- **Role-based CC** — system prompt instructs Chappie to call `get_company_people` before CCing a role
-- **Phase 2 — Conflict detection** — `check_calendar_conflicts` tool fetches Google Calendar for the proposed day, finds overlapping events, suggests next available slot of same duration. Enforced before every `book_meeting` or `reschedule_meeting`. UTC offset via `Intl.DateTimeFormat shortOffset`
-- **Phase 3 — Proposal tracking** — `propose_meeting` tool sends proposal email via Gmail API + inserts row in `crm_meeting_proposals` (`gmail_thread_id`, `proposed_start`, `proposed_end`, `status: pending`). `get_pending_proposals` tool queries pending proposals by company
-- **Phase 4 — Reply intent detection + auto-book** — `gmailSync.js` checks every inbound message against `crm_meeting_proposals` by `gmail_thread_id`. GPT-4o-mini classifies reply intent (confirmed/declined/reschedule/unclear). On confirmed: auto-creates Google Calendar event + `crm_meetings` row + activity log entry
-- **Phase 5 — Slack Bot** — Chappie available via Slack DMs using Socket Mode (`@slack/bolt`). Full tool access same as CRM widget. Block Kit confirmation cards with Confirm/Cancel buttons. Auto-book notifications post to `#all-planfor` channel
-- **Note routing fix** — `add_note` now detects if company is converted to client and logs to both company + client activity timeline
-- **Gmail scope fix** — replaced `gmail.readonly` with `gmail.modify` — enables mark-as-read on synced emails
-- **Calendar monthly view fix** — `getEventsForDate` uses local date math instead of `.toISOString()` UTC comparison — fixes day-shift bug for UTC+3
-- **Event popup timezone chip** — fetches linked company/client country+state, resolves via `getTimezone()` from `LocationSelector.js`, shows client local time alongside Jerusalem time
-- **`convertClientTimeToUTC` fix** — rewrote using `Intl.DateTimeFormat shortOffset`. Previous `toLocaleString` round-trip was broken in IL browser locale
+- **Unified emails tab** — `ClientProfile.js` emails tab merged into one table
+- **Meet link in chat** — after booking a meeting, Chappie shows the Google Meet link
+- **Phase 2 — Conflict detection** — `check_calendar_conflicts` tool, UTC offset via `Intl.DateTimeFormat shortOffset`, enforced before every book/reschedule
+- **Phase 3 — Proposal tracking** — `propose_meeting` tool, `crm_meeting_proposals` table, `get_pending_proposals` tool
+- **Phase 4 — Reply intent detection + auto-book** — Gmail sync detects replies, GPT-4o-mini classifies intent, auto-books on confirmed
+- **Phase 5 — Slack Bot** — Chappie on Slack via Socket Mode, Block Kit confirmations, `#all-planfor` alerts
+- **Note routing fix** — `add_note` detects if company is converted to client and logs to both timelines
+- **Gmail scope fix** — replaced `gmail.readonly` with `gmail.modify`
+- **Calendar monthly view fix** — local date math fixes day-shift bug for UTC+3
+- **Event popup timezone chip** — shows client local time alongside Jerusalem time
+- **`convertClientTimeToUTC` fix** — rewrote using `Intl.DateTimeFormat shortOffset`
 
 ### v1.6.0 — AI Brain (Chappie)
 - Floating chat widget on all authenticated pages (`AiBrain.js`)
 - Function-calling agentic loop with MAX_ITERATIONS=6 per request
-- 17 initial tools: read, write-instant, write-with-confirmation
+- 20+ tools: read, write-instant, write-with-confirmation
 - Confirmation card UI — yellow card with Confirm/Cancel buttons
 - Persistent conversation history in `crm_ai_conversations` (last 50 messages)
-- **Critical:** working history (with tool messages) kept separate from saved history (clean text only) — prevents orphaned `tool_calls` DB corruption
 - UUID validation — rejects fabricated IDs from GPT before DB insert
 - Conversation log page at `/ai/log` — admin sees all, users see own
 - `AuthenticatedApp` wrapper in `App.js` to mount `AiBrain` once across all routes
-- Chappie routes email via `/api/emails/send` (Gmail API), not SendGrid directly
-- `person.company_id` from `crm_people` used for email FK (not companies array)
 
 ### v1.5.3 — Production Stability & Polish
 - Custom domain `crm-api.planfor.io` (Render custom domain + Cloudflare CNAME)
@@ -1010,7 +1020,6 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - Activity filter buttons (All / Meetings / Emails / Notes) in client profile
 - Inline edit meeting notes with Markdown rendering (react-markdown + remark-gfm)
 - Google Meet + Zoom bot selector on meeting cards
-- Calendar create form: person selector loads contacts from linked company
 
 ### v1.5.2 — Email Inbox
 - Email Inbox page with Gmail sync, thread grouping, and unread count badge
@@ -1057,34 +1066,38 @@ npx wrangler pages deploy build --project-name=planfor-crm
 
 ### Completed
 **v1.6.1 ✅ — Chappie Smart Scheduling + Slack Bot**
-- Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup, unified emails tab
-- Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix, enforced before every book/reschedule
-- Phase 3 ✅ — Proposal tracking: `propose_meeting` tool, `crm_meeting_proposals` table, `get_pending_proposals` tool
-- Phase 4 ✅ — Reply intent detection + auto-book: Gmail sync detects replies, GPT classifies intent, auto-books on confirmed
-- Phase 5 ✅ — Slack Bot: Chappie on Slack via Socket Mode, Block Kit confirmations, #all-planfor alerts
+- Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup
+- Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix
+- Phase 3 ✅ — Proposal tracking: `propose_meeting` tool, `crm_meeting_proposals` table
+- Phase 4 ✅ — Reply intent detection + auto-book
+- Phase 5 ✅ — Slack Bot: Socket Mode, Block Kit confirmations, `#all-planfor` alerts
 
 **v1.6.2 ✅ — Calendly Integration + Calendar UX**
-- Calendly polling every 5 minutes — creates CRM meetings, links Google Calendar event, matches invitee to CRM
+- Calendly polling every 5 minutes, Google Calendar event linking, CRM record creation
 - Auto-record via autoRecordCheck (2 min before meeting start)
 - Calendar color coding by relationship type + hover legend
-- Slack self-link in Settings page
-- Note: will upgrade to webhook when Calendly plan upgraded
+
+**v1.6.3 ✅ — Campaign Analytics + AI Log + GTM v1.0**
+- Campaign hot leads, filter tabs, follow-up campaign launcher
+- AI Log redesign: split panel, daily grouping, independent scroll
+- Chappie tools: get_all_campaigns, get_waitlist_stats, get_waitlist_list, search_conversation_history
+- Markdown strip on all Chappie responses
+- Waitlist full stack: landing page + backend + CRM management page
+
+**GTM v1.0 ✅ — Waitlist & Pre-Launch Email Capture**
+- Landing page at `comingsoon.planfor.io` (separate `planfor-waitlist` repo, Cloudflare Pages)
+- `waitlist_couples` Supabase table with full audit trail (ip_address, user_agent, consent_text)
+- SendGrid confirmation email with open/click tracking
+- CRM Waitlist page: stats, table, search, export CSV
+- CAN-SPAM compliant
 
 ### In Progress
-- **v1.7.0** — Stripe vendor subscription billing
+- **v1.7.1** — Internal task & to-do system
 
 ### Planned
+- **v1.7.0** — Stripe vendor subscription billing (blocked: no Stripe account yet)
 - **v1.7.1** — Internal task & to-do system
 - **v1.8.0** — Reporting & analytics dashboard
 - **v1.9.0** — Automation rules (trigger → action)
-- **v2.0** — RAG (Retrieval Augmented Generation) — vector knowledge base for Chappie, proactive insights, multi-user context awareness. Planned before open source release.
-- **Open Source Release** — clean up, documentation, LinkedIn post
-
-### Parallel Track
-### GTM v1.0 — Waitlist & Pre-Launch Email Capture
-- **Landing page** — `waitlist/index.html` + logo asset, ready for Cloudflare Pages deployment at `comingsoon.planfor.io`
-- **Backend** — `POST /api/waitlist/subscribe`: saves to `waitlist_couples`, sends SendGrid confirmation email with open/click tracking, auto-creates "Waitlist Couples" SendGrid list
-- **Audit trail** — stores ip_address, user_agent, consent_text, consent_at per subscriber
-- **Unsubscribe** — `GET /api/waitlist/unsubscribe` one-click unsubscribe endpoint
-- **CRM waitlist page** — Marketing → Waitlist Couples tab: stats, subscriber table, search, export CSV, delete
-- **CAN-SPAM compliant** — physical address, unsubscribe link, sender identification
+- **v2.0** — RAG + Chappie knowledge base, proactive insights, multi-user context. Planned before open source release.
+- **Open Source Release** — codebase cleanup, full documentation, LinkedIn post
