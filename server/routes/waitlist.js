@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
 
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const SENDGRID_API_KEY = process.env.SENDGRID_MARKETING_KEY || process.env.SENDGRID_API_KEY;
 const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 const WAITLIST_LIST_NAME = 'Waitlist Couples';
 
