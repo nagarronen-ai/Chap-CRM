@@ -62,124 +62,64 @@ async function addToSendGrid(email, first_name, last_name, listId) {
 // ─── HELPER: SEND CONFIRMATION EMAIL ─────────────────────────────────────────
 
 async function sendConfirmationEmail(email, first_name) {
-  const greeting = first_name ? `Hi ${first_name},` : 'Hi there,';
+  try {
+    // Fetch the Waitlist Confirmation template from CRM
+    const { data: template } = await supabase
+      .from('crm_email_templates')
+      .select('subject, body_html')
+      .eq('name', 'Waitlist Confirmation')
+      .single();
 
-  const logoUrl = 'https://comingsoon.planfor.io/planfor_logo_without_slogan_colored_background.png';
-  const igUrl = 'https://instagram.com/planfor.wedding';
-  const unsubscribeUrl = `https://crm-api.planfor.io/api/waitlist/unsubscribe?email=${encodeURIComponent(email)}`;
+    const unsubscribeUrl = `https://crm-api.planfor.io/api/waitlist/unsubscribe?email=${encodeURIComponent(email)}`;
 
-  const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>You're on the list — Planfor</title>
-</head>
-<body style="margin:0;padding:0;background:#F0EDE8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F0EDE8;padding:40px 16px;">
-    <tr>
-      <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+    let subject = "You're on the list ✨";
+    let html = '';
 
-          <!-- Logo -->
-          <tr>
-            <td align="center" style="padding-bottom:32px;">
-              <img src="${logoUrl}" alt="Planfor" width="160" style="display:block;border:0;" />
-            </td>
-          </tr>
+    if (template) {
+      // Use CRM template — replace merge tags
+      subject = template.subject || subject;
+      html = (template.body_html || '')
+        .replace(/{{first_name}}/g, first_name || 'there')
+        .replace(/{{name}}/g, first_name || 'there')
+        .replace(/{{email}}/g, email);
 
-          <!-- Card -->
-          <tr>
-            <td style="background:#FAFAF8;border:1px solid rgba(142,155,139,0.25);border-radius:2px;padding:40px 40px 36px;">
+      // Append unsubscribe footer if not already present
+      if (!html.includes('unsubscribe')) {
+        html += `<p style="font-size:11px;color:#AAAABC;text-align:center;margin-top:32px;">
+          <a href="${unsubscribeUrl}" style="color:#AAAABC;">Unsubscribe</a>
+        </p>`;
+      }
+    } else {
+      // Fallback if template not found
+      console.warn('Waitlist Confirmation template not found — using fallback');
+      html = `<p>Hi ${first_name || 'there'},</p><p>You're on the Planfor waitlist. We'll be in touch soon.</p>`;
+    }
 
-              <!-- Ornament -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
-                <tr>
-                  <td style="border-bottom:1px solid rgba(142,155,139,0.2);font-size:1px;">&nbsp;</td>
-                  <td align="center" style="padding:0 14px;white-space:nowrap;font-family:Georgia,serif;font-size:14px;color:#8E9B8B;letter-spacing:0.2em;">✦</td>
-                  <td style="border-bottom:1px solid rgba(142,155,139,0.2);font-size:1px;">&nbsp;</td>
-                </tr>
-              </table>
-
-              <!-- Headline -->
-              <p style="font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:300;font-style:italic;color:#3E423D;text-align:center;margin:0 0 20px;line-height:1.3;">
-                You're on the list.
-              </p>
-
-              <!-- Body -->
-              <p style="font-size:14px;color:#717182;line-height:1.8;margin:0 0 16px;">
-                ${greeting}
-              </p>
-              <p style="font-size:14px;color:#717182;line-height:1.8;margin:0 0 16px;">
-                Thank you for joining the Planfor waitlist. We're building something beautiful for couples who want to plan their wedding, their way.
-              </p>
-              <p style="font-size:14px;color:#717182;line-height:1.8;margin:0 0 28px;">
-                We'll be in touch as soon as we launch.
-              </p>
-
-              <!-- Instagram CTA -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:8px;">
-                <tr>
-                  <td align="center">
-                    <a href="${igUrl}" target="_blank"
-                       style="display:inline-block;background:transparent;border:1px solid #8E9B8B;color:#6B7A68;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:11px;font-weight:400;letter-spacing:0.18em;text-transform:uppercase;text-decoration:none;padding:13px 28px;border-radius:1px;">
-                      Follow us on Instagram
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              <p style="font-size:12px;color:#AAAABC;text-align:center;margin:10px 0 0;letter-spacing:0.05em;">
-                Don't miss our updates, behind the scenes and launch news.
-              </p>
-
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding:28px 0 0;text-align:center;">
-              <p style="font-size:11px;color:#AAAABC;line-height:1.9;margin:0;letter-spacing:0.05em;">
-                Planfor Ltd. &nbsp;·&nbsp; 31 Street Gordon, Tel Aviv, Israel<br />
-                <a href="mailto:hello@planfor.io" style="color:#AAAABC;text-decoration:none;">hello@planfor.io</a>
-                &nbsp;·&nbsp;
-                <a href="${unsubscribeUrl}" style="color:#AAAABC;text-decoration:none;">Unsubscribe</a>
-              </p>
-              <p style="font-size:10px;color:#AAAABC;margin:10px 0 0;opacity:0.7;">
-                © 2026 Planfor. All rights reserved.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-
-  const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${SENDGRID_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email, name: name || '' }] }],
-      from: { email: 'noreply@planfor.io', name: 'Planfor' },
-      reply_to: { email: 'hello@planfor.io', name: 'Planfor' },
-      subject: "You're on the list ✨",
-      content: [{ type: 'text/html', value: html }],
-      tracking_settings: {
-        click_tracking: { enable: true },
-        open_tracking: { enable: true },
+    const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        'Content-Type': 'application/json',
       },
-    }),
-  });
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email, name: first_name || '' }] }],
+        from: { email: 'noreply@planfor.io', name: 'Planfor' },
+        reply_to: { email: 'hello@planfor.io', name: 'Planfor' },
+        subject,
+        content: [{ type: 'text/html', value: html }],
+        tracking_settings: {
+          click_tracking: { enable: true },
+          open_tracking: { enable: true },
+        },
+      }),
+    });
 
-  if (!res.ok) {
-    const err = await res.text();
-    console.error('SendGrid confirmation email error:', err);
+    if (!res.ok) {
+      const err = await res.text();
+      console.error('SendGrid confirmation email error:', err);
+    }
+  } catch (err) {
+    console.error('sendConfirmationEmail error:', err.message);
   }
 }
 
