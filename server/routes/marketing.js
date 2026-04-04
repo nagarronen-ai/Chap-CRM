@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../db');
 const auth = require('../middleware/auth');
+const crypto = require('crypto');
 const { EventWebhook, EventWebhookHeader } = require('@sendgrid/eventwebhook');
 
 // ─── RECIPIENT BUILDER ────────────────────────────────────────────────────────
@@ -12,7 +13,6 @@ router.get('/recipients', auth, async (req, res) => {
 
   const recipients = [];
 
-  // Fetch from contacts (default or when source=contacts or source=all)
   if (!source || source === 'contacts' || source === 'all') {
     let query = supabase
       .from('crm_companies')
@@ -44,7 +44,6 @@ router.get('/recipients', auth, async (req, res) => {
     }
   }
 
-  // Fetch from clients (when source=clients or source=all)
   if (source === 'clients' || source === 'all') {
     let query = supabase
       .from('crm_clients')
@@ -56,7 +55,6 @@ router.get('/recipients', auth, async (req, res) => {
 
     const { data } = await query;
     for (const client of (data || [])) {
-      // Get all people from the original company
       if (client.converted_from) {
         const { data: companyData } = await supabase
           .from('crm_companies')
@@ -81,7 +79,6 @@ router.get('/recipients', auth, async (req, res) => {
           });
         }
       } else if (client.contact_email) {
-        // Fallback: client without converted_from, use primary contact
         recipients.push({
           company_id: null,
           client_id: client.id,
@@ -104,9 +101,9 @@ router.get('/recipients', auth, async (req, res) => {
 
 router.get('/recipients/excluded', auth, async (req, res) => {
   const { data, error } = await supabase
-  .from('crm_people')
-  .select('id', { count: 'exact' })
-  .eq('marketing_unsubscribed', true);
+    .from('crm_people')
+    .select('id', { count: 'exact' })
+    .eq('marketing_unsubscribed', true);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ excluded_count: data?.length || 0 });
 });
@@ -236,17 +233,7 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
 
   await supabase.from('crm_campaigns').update({ status: 'sending', recipients_count: recipients.length }).eq('id', campaign.id);
 
-  const recipientRows = recipients.map(r => ({
-    campaign_id: campaign.id,
-    company_id: r.company_id,
-    person_id: r.person_id || null,
-    email: r.email,
-    status: 'pending',
-  }));
-  await supabase.from('crm_campaign_recipients').insert(recipientRows);
-
-  const sgMail = require('@sendgrid/mail');
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 
   const resolveBody = (html, recipient) => {
     return html
@@ -256,22 +243,34 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
       .replace(/{{city}}/g, recipient.city || '');
   };
 
+  // Generate tokens and insert in one step
+  const recipientTokens = {};
+  const recipientRows = recipients.map(r => {
+    const token = crypto.randomBytes(16).toString('hex');
+    recipientTokens[r.email] = token;
+    return {
+      campaign_id: campaign.id,
+      company_id: r.company_id,
+      person_id: r.person_id || null,
+      email: r.email,
+      status: 'pending',
+      unsubscribe_token: token,
+    };
+  });
+  await supabase.from('crm_campaign_recipients').insert(recipientRows);
+
   const messages = recipients.map(r => {
-    const unsubscribeUrl = `https://crm-api.planfor.io/api/marketing/unsubscribe?email=${encodeURIComponent(r.email)}`;
+    const unsubscribeUrl = 'https://crm-api.planfor.io/api/marketing/unsubscribe/' + recipientTokens[r.email];
     return {
       to: r.email,
       from: { name: campaign.from_name, email: campaign.from_email },
       subject: campaign.subject
         .replace(/{{first_name}}/g, r.first_name || '')
         .replace(/{{company_name}}/g, r.company_name || ''),
-      html: resolveBody(campaign.body_html, r) + `<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999;">You received this email because you are in our vendor network.<br><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a></div>`,
+        html: resolveBody(campaign.body_html, r).replace(/\{\{\{unsubscribe\}\}\}/g, unsubscribeUrl) + '<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999;">You received this email because you are in our vendor network.<br><a href="' + unsubscribeUrl + '" style="color:#999;text-decoration:underline;" target="_blank" rel="noopener">Unsubscribe</a></div>',
       headers: {
-        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe': '<' + unsubscribeUrl + '>',
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-      },
-      trackingSettings: {
-        clickTracking: { enable: true },
-        openTracking: { enable: true },
       },
       customArgs: {
         campaign_id: campaign.id,
@@ -280,15 +279,37 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
       },
     };
   });
-
+  console.log('UNSUBSCRIBE URL:', messages[0] ? messages[0].html.slice(-200) : 'no messages');
   try {
-    await sgMail.send(messages);
+    for (const m of messages) {
+      await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + SENDGRID_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          personalizations: [{
+            to: [{ email: m.to }],
+            custom_args: m.customArgs,
+          }],
+          from: { email: m.from.email, name: m.from.name },
+          subject: m.subject,
+          content: [{ type: 'text/html', value: m.html }],
+          headers: m.headers,
+          tracking_settings: {
+            click_tracking: { enable: false },
+            open_tracking: { enable: true },
+          },
+        }),
+      });
+    }
     await supabase.from('crm_campaigns').update({ status: 'sent', sent_at: new Date() }).eq('id', campaign.id);
     res.json({ success: true, sent: recipients.length });
   } catch (err) {
     await supabase.from('crm_campaigns').update({ status: 'draft' }).eq('id', campaign.id);
-    console.error('SendGrid error:', err.response?.body || err.message);
-    res.status(500).json({ error: 'SendGrid send failed', details: err.response?.body });
+    console.error('SendGrid error:', err.message);
+    res.status(500).json({ error: 'SendGrid send failed' });
   }
 });
 
@@ -328,7 +349,6 @@ router.post('/webhook', async (req, res) => {
   for (const event of events) {
     const { campaign_id, company_id, email, email_type, user_id, event: eventType, timestamp, sg_message_id } = event;
 
-    // Handle direct email events (no campaign_id)
     if (!campaign_id && email_type === 'direct') {
       const eventTime = new Date(timestamp * 1000).toISOString();
       const updateData = {};
@@ -342,7 +362,7 @@ router.post('/webhook', async (req, res) => {
         if (sg_message_id) updateData.sendgrid_message_id = sg_message_id.split('.')[0];
 
         let emailRecord = null;
-        
+
         if (sg_message_id) {
           const { data } = await supabase
             .from('crm_emails_sent')
@@ -351,7 +371,7 @@ router.post('/webhook', async (req, res) => {
             .single();
           emailRecord = data;
         }
-        
+
         if (!emailRecord) {
           const { data } = await supabase
             .from('crm_emails_sent')
@@ -388,7 +408,7 @@ router.post('/webhook', async (req, res) => {
                 company_id,
                 user_id,
                 action: `Email ${eventType === 'open' ? 'Opened' : eventType === 'click' ? 'Clicked' : 'Bounced'}`,
-                details: `Recipient ${eventType === 'bounce' ? 'bounced' : eventType + 'ed'} the email`
+                details: `Recipient ${eventType === 'bounce' ? 'bounced' : eventType + 'ed'} the email`,
               }]);
             }
           }
@@ -482,7 +502,6 @@ router.get('/company/:companyId', auth, async (req, res) => {
   res.json(data);
 });
 
-// POST /api/marketing/resubscribe/:personId — resubscribe a person
 router.post('/resubscribe/:personId', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_people')
@@ -494,7 +513,6 @@ router.post('/resubscribe/:personId', auth, async (req, res) => {
   res.json(data);
 });
 
-// GET /api/marketing/unsubscribed — list all unsubscribed people
 router.get('/unsubscribed', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_people')
@@ -505,7 +523,6 @@ router.get('/unsubscribed', auth, async (req, res) => {
   res.json(data);
 });
 
-// POST /api/marketing/resubscribe-bulk — resubscribe multiple people
 router.post('/resubscribe-bulk', auth, async (req, res) => {
   const { person_ids } = req.body;
   if (!person_ids?.length) return res.status(400).json({ error: 'No person IDs provided' });
@@ -518,18 +535,24 @@ router.post('/resubscribe-bulk', auth, async (req, res) => {
   res.json({ resubscribed: data.length });
 });
 
-// GET /api/marketing/unsubscribe — one-click unsubscribe from campaigns
-router.get('/unsubscribe', async (req, res) => {
+// GET /api/marketing/unsubscribe/:token — one-click unsubscribe from campaigns
+router.get('/unsubscribe/:token', async (req, res) => {
   try {
-    const { email } = req.query;
-    if (!email) return res.status(400).send('Invalid unsubscribe link.');
+    const { token } = req.params;
+    if (!token) return res.status(400).send('Invalid unsubscribe link.');
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const { data: recipient } = await supabase
+      .from('crm_campaign_recipients')
+      .select('email')
+      .eq('unsubscribe_token', token)
+      .single();
+
+    if (!recipient) return res.status(400).send('Invalid or expired unsubscribe link.');
 
     await supabase
       .from('crm_people')
       .update({ marketing_unsubscribed: true, marketing_unsubscribed_at: new Date().toISOString() })
-      .eq('email', normalizedEmail);
+      .eq('email', recipient.email);
 
     res.send(`
       <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#F5F3EF;">
@@ -544,7 +567,6 @@ router.get('/unsubscribe', async (req, res) => {
 
 // ─── WAITLIST ─────────────────────────────────────────────────────────────────
 
-// GET /api/marketing/waitlist — list all waitlist subscribers
 router.get('/waitlist', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('waitlist_couples')
@@ -554,7 +576,6 @@ router.get('/waitlist', auth, async (req, res) => {
   res.json(data);
 });
 
-// DELETE /api/marketing/waitlist/:id — delete a subscriber
 router.delete('/waitlist/:id', auth, async (req, res) => {
   const { error } = await supabase
     .from('waitlist_couples')

@@ -2,13 +2,14 @@
 import CodeMirror from '@uiw/react-codemirror';
 import { html } from '@codemirror/lang-html';
 import { oneDark } from '@codemirror/theme-one-dark';
+import { EditorView } from '@codemirror/view';
 
 export default function HtmlEditor({ value, onChange, minHeight = '300px' }) {
   return (
     <CodeMirror
       value={value || ''}
       height={minHeight}
-      extensions={[html()]}
+      extensions={[html(), EditorView.lineWrapping]}
       theme={oneDark}
       onChange={(val) => onChange && onChange(val)}
       style={{
@@ -25,6 +26,7 @@ export default function HtmlEditor({ value, onChange, minHeight = '300px' }) {
         indentOnInput: true,
         bracketMatching: true,
         closeBrackets: true,
+        lineWrapping: true,
       }}
     />
   );

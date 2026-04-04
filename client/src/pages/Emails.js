@@ -362,11 +362,13 @@ export default function Emails() {
                         </div>
                       </div>
                     ) : activeTab === 'html' ? (
-                      <HtmlEditor
-  value={form.body_html}
-  onChange={val => { setForm(prev => ({ ...prev, body_html: val })); setFormErrors(prev => prev.filter(f => f !== 'body_html')); }}
-  minHeight="340px"
-/>
+                      <div style={{ overflow: 'hidden', width: '100%' }}>
+                        <HtmlEditor
+                          value={form.body_html}
+                          onChange={val => { setForm(prev => ({ ...prev, body_html: val })); setFormErrors(prev => prev.filter(f => f !== 'body_html')); }}
+                          minHeight="340px"
+                        />
+                      </div>
                     ) : (
                       <TiptapEditor
                         content={form.body_html}

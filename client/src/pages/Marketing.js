@@ -523,11 +523,13 @@ export default function Marketing() {
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
                       <span style={{ fontSize: 11, color: '#717182', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>HTML Code</span>
                     </div>
-                    <HtmlEditor
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <HtmlEditor
   value={prettifyHTML(form.body_html)}
   onChange={val => setForm({ ...form, body_html: val })}
-  minHeight="392px"
+  minHeight="100%"
 />
+                    </div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12, padding: '12px 16px', background: '#F5F3EF', borderRadius: 8, border: '1px solid rgba(62,66,61,0.08)' }}>
