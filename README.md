@@ -957,6 +957,17 @@ npx wrangler pages deploy build --project-name=planfor-crm
 ---
 
 ## Changelog
+### v1.6.4 — Email Deliverability + Unsubscribe System
+- **Token-based unsubscribe** — each campaign recipient gets a unique unsubscribe token stored in `crm_campaign_recipients.unsubscribe_token`. Unsubscribe URL is clean with no query params (`/api/marketing/unsubscribe/:token`) — prevents SendGrid click tracking from stripping the href
+- **List-Unsubscribe header** — all campaign emails include `List-Unsubscribe` and `List-Unsubscribe-Post` headers so Gmail/Outlook show a one-click unsubscribe button next to the sender name
+- **clicktrack=off on unsubscribe link** — body links still tracked for analytics, unsubscribe footer link exempt from click tracking
+- **Campaign send switched from sgMail to fetch** — prevents SendGrid library from stripping href attributes
+- **Waitlist confirmation now uses CRM template** — "Waitlist Confirmation" template fetched dynamically from `crm_email_templates`. Update email copy in CRM without code deploy
+- **Waitlist first_name + last_name** — split name field on landing page and in DB (`waitlist_couples.first_name`, `waitlist_couples.last_name`)
+- **Email template improvements** — Waitlist category added, signature toggle added to template editor, HTML editor line wrapping fixed, HtmlEditor overflow fixed
+- **Unsubscribe managed in-house** — no SendGrid list management. All suppression controlled via `crm_people.marketing_unsubscribed` and `waitlist_couples.marketing_consent`
+- **`/api/marketing/unsubscribe` route** — GET with token param, updates `crm_people.marketing_unsubscribed`
+- **Waitlist landing page** — deployed to Vercel, auto-deploys on git push. First name + last name fields. Feature pills layout, no-scroll design
 
 ### v1.6.3 — Campaign Analytics + AI Log + GTM v1.0 Complete
 - **Campaign hot leads** — recipients table in campaign detail now has filter tabs (All / Opened / Clicked / Delivered / Bounced / Unsubscribed), checkboxes per row, and "New Campaign from Selected" button to launch follow-up campaign directly from warm leads
@@ -1065,6 +1076,13 @@ npx wrangler pages deploy build --project-name=planfor-crm
 ## Roadmap
 
 ### Completed
+**v1.6.4 ✅ — Email Deliverability + Unsubscribe System**
+- Token-based unsubscribe for campaigns
+- List-Unsubscribe headers on all marketing emails
+- Waitlist confirmation wired to CRM template
+- Waitlist first_name + last_name
+- Email template editor improvements
+
 **v1.6.1 ✅ — Chappie Smart Scheduling + Slack Bot**
 - Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup
 - Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix
