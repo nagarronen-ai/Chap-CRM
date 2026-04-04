@@ -6,7 +6,7 @@ import TiptapEditor from '../components/TiptapEditor';
 import HtmlEditor from '../components/HtmlEditor';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
-const CATEGORIES = ['Outreach', 'Follow-up', 'Proposal', 'Meeting Confirmation', 'General'];
+const CATEGORIES = ['Outreach', 'Follow-up', 'Proposal', 'Meeting Confirmation', 'General', 'Waitlist'];
 const MERGE_TAGS = [
   { tag: '{{first_name}}', label: 'First Name' },
   { tag: '{{last_name}}', label: 'Last Name' },
@@ -33,7 +33,7 @@ export default function Emails() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [activeTab, setActiveTab] = useState('html');
   const [activeField, setActiveField] = useState('body');
-  const [form, setForm] = useState({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: '', visibility: 'team' });
+  const [form, setForm] = useState({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: '', visibility: 'team', include_signature: false });
   const [formErrors, setFormErrors] = useState([]);
   const [saving, setSaving] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
@@ -75,7 +75,7 @@ export default function Emails() {
 
   const openNew = () => {
     setEditingTemplate(null);
-    setForm({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: '', visibility: canSetTeamVisibility ? 'team' : 'private' });
+    setForm({ name: '', category: 'Outreach', subject: '', body_html: DEFAULT_TEMPLATE, signature_html: '', visibility: canSetTeamVisibility ? 'team' : 'private', include_signature: false });
     setFormErrors([]);
     setShowEditor(true);
     setPreviewMode(false);
@@ -84,7 +84,7 @@ export default function Emails() {
 
   const openEdit = (template) => {
     setEditingTemplate(template);
-    setForm({ name: template.name, category: template.category, subject: template.subject, body_html: template.body_html, signature_html: template.signature_html || '', visibility: template.visibility || 'private' });
+    setForm({ name: template.name, category: template.category, subject: template.subject, body_html: template.body_html, signature_html: template.signature_html || '', visibility: template.visibility || 'private', include_signature: template.include_signature || false });
     setFormErrors([]);
     setShowEditor(true);
     setPreviewMode(false);
@@ -327,6 +327,18 @@ export default function Emails() {
                     </div>
                   </div>
 
+                  {/* Signature Toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F5F3EF', borderRadius: 8, padding: '12px 16px', border: '1px solid rgba(62,66,61,0.08)' }}>
+                    <div>
+                      <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 500, margin: '0 0 2px' }}>Include Signature</p>
+                      <p style={{ color: '#717182', fontSize: 11, margin: 0 }}>Append your email signature when sending this template</p>
+                    </div>
+                    <div onClick={() => setForm(prev => ({ ...prev, include_signature: !prev.include_signature }))}
+                      style={{ width: 40, height: 22, borderRadius: 11, background: form.include_signature ? '#8E9B8B' : '#D5CEC0', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+                      <div style={{ position: 'absolute', top: 3, left: form.include_signature ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                    </div>
+                  </div>
+
                   {/* Body */}
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', gap: 4, marginBottom: 12, alignItems: 'center' }}>
@@ -346,7 +358,7 @@ export default function Emails() {
                         <div style={{ background: '#fff', borderRadius: 8, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
                           <p style={{ color: '#717182', fontSize: 12, margin: '0 0 4px' }}>Subject: <strong style={{ color: '#3E423D' }}>{resolvePreview(form.subject)}</strong></p>
                           <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '12px 0' }} />
-                          <div dangerouslySetInnerHTML={{ __html: resolvePreview(form.body_html + (signature ? '<br><br><div style="margin-top:16px;padding-top:12px;border-top:1px solid #e0e0e0;">' + signature + '</div>' : '')) }} />
+                          <div dangerouslySetInnerHTML={{ __html: resolvePreview(form.body_html + (form.include_signature && signature ? '<br><br><div style="margin-top:16px;padding-top:12px;border-top:1px solid #e0e0e0;">' + signature + '</div>' : '')) }} />
                         </div>
                       </div>
                     ) : activeTab === 'html' ? (
@@ -366,7 +378,7 @@ export default function Emails() {
                     )}
                   </div>
 
-                  {!previewMode && signature && (
+                  {!previewMode && signature && form.include_signature && (
                     <div style={{ background: '#F5F3EF', borderRadius: 8, padding: 16, border: '1px solid rgba(62,66,61,0.1)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: 0 }}>Your Signature</p>

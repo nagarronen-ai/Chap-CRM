@@ -39,13 +39,10 @@ async function getOrCreateSendGridList() {
 
 // ─── HELPER: ADD CONTACT TO SENDGRID ─────────────────────────────────────────
 
-async function addToSendGrid(email, name, listId) {
+async function addToSendGrid(email, first_name, last_name, listId) {
   const contact = { email };
-  if (name) {
-    const parts = name.trim().split(' ');
-    contact.first_name = parts[0] || '';
-    contact.last_name = parts.slice(1).join(' ') || '';
-  }
+  if (first_name) contact.first_name = first_name;
+  if (last_name) contact.last_name = last_name;
 
   const res = await fetch('https://api.sendgrid.com/v3/marketing/contacts', {
     method: 'PUT',
@@ -64,9 +61,8 @@ async function addToSendGrid(email, name, listId) {
 
 // ─── HELPER: SEND CONFIRMATION EMAIL ─────────────────────────────────────────
 
-async function sendConfirmationEmail(email, name) {
-  const firstName = name ? name.trim().split(' ')[0] : null;
-  const greeting = firstName ? `Hi ${firstName},` : 'Hi there,';
+async function sendConfirmationEmail(email, first_name) {
+  const greeting = first_name ? `Hi ${first_name},` : 'Hi there,';
 
   const logoUrl = 'https://comingsoon.planfor.io/planfor_logo_without_slogan_colored_background.png';
   const igUrl = 'https://instagram.com/planfor.wedding';
@@ -191,7 +187,7 @@ async function sendConfirmationEmail(email, name) {
 
 router.post('/subscribe', async (req, res) => {
   try {
-    const { email, name, marketing_consent } = req.body;
+    const { email, name, first_name, last_name, marketing_consent } = req.body;
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: 'Valid email address required.' });
@@ -218,7 +214,9 @@ router.post('/subscribe', async (req, res) => {
       .from('waitlist_couples')
       .insert([{
         email: normalizedEmail,
-        name: name?.trim() || null,
+        name: first_name && last_name ? `${first_name} ${last_name}` : (name?.trim() || null),
+        first_name: first_name?.trim() || null,
+        last_name: last_name?.trim() || null,
         marketing_consent: true,
         consent_at: new Date().toISOString(),
         ip_address: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || null,
@@ -233,11 +231,11 @@ router.post('/subscribe', async (req, res) => {
 
     // Add to SendGrid (async — don't block response)
     getOrCreateSendGridList()
-      .then(listId => addToSendGrid(normalizedEmail, name, listId))
+      .then(listId => addToSendGrid(normalizedEmail, first_name, last_name, listId))
       .catch(err => console.error('SendGrid add contact error:', err.message));
 
     // Send confirmation email (async — don't block response)
-    sendConfirmationEmail(normalizedEmail, name)
+    sendConfirmationEmail(normalizedEmail, first_name)
       .catch(err => console.error('Confirmation email error:', err.message));
 
     res.json({ success: true, message: "You're on the list!" });

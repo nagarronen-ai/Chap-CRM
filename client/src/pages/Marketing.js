@@ -856,7 +856,7 @@ export default function Marketing() {
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: '#F9F9F7' }}>
-                        {['Name', 'Email', 'Consent', 'Joined', 'IP Address', 'Actions'].map(h => (
+                      {['First Name', 'Last Name', 'Email', 'Consent', 'Joined', 'IP Address', 'Actions'].map(h => (
                           <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(62,66,61,0.08)' }}>{h}</th>
                         ))}
                       </tr>
@@ -866,7 +866,8 @@ export default function Marketing() {
                         .filter(w => !waitlistSearch || w.email.toLowerCase().includes(waitlistSearch.toLowerCase()) || (w.name || '').toLowerCase().includes(waitlistSearch.toLowerCase()))
                         .map((w, i) => (
                         <tr key={w.id} style={{ borderBottom: '1px solid rgba(62,66,61,0.05)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
-                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{w.name || <span style={{ color: '#AAAABC' }}>—</span>}</td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{w.first_name || <span style={{ color: '#AAAABC' }}>—</span>}</td>
+                          <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{w.last_name || <span style={{ color: '#AAAABC' }}>—</span>}</td>
                           <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{w.email}</td>
                           <td style={{ padding: '12px 16px', fontSize: 12 }}>
                             <span style={{ background: w.marketing_consent ? '#E8F5E9' : '#FFEBEE', color: w.marketing_consent ? '#2E7D32' : '#D4183D', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>
