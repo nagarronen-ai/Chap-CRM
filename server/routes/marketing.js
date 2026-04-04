@@ -256,23 +256,30 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
       .replace(/{{city}}/g, recipient.city || '');
   };
 
-  const messages = recipients.map(r => ({
-    to: r.email,
-    from: { name: campaign.from_name, email: campaign.from_email },
-    subject: campaign.subject
-      .replace(/{{first_name}}/g, r.first_name || '')
-      .replace(/{{company_name}}/g, r.company_name || ''),
-      html: resolveBody(campaign.body_html, r) + '<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999;">You received this email because you are in our vendor network.<br><a href="{{{unsubscribe}}}" style="color:#999;text-decoration:underline;">Unsubscribe</a></div>',
-    trackingSettings: {
-      clickTracking: { enable: true },
-      openTracking: { enable: true },
-    },
-    customArgs: {
-      campaign_id: campaign.id,
-      company_id: r.company_id,
-      person_id: r.person_id || '',
-    },
-  }));
+  const messages = recipients.map(r => {
+    const unsubscribeUrl = `https://crm-api.planfor.io/api/marketing/unsubscribe?email=${encodeURIComponent(r.email)}`;
+    return {
+      to: r.email,
+      from: { name: campaign.from_name, email: campaign.from_email },
+      subject: campaign.subject
+        .replace(/{{first_name}}/g, r.first_name || '')
+        .replace(/{{company_name}}/g, r.company_name || ''),
+      html: resolveBody(campaign.body_html, r) + `<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999;">You received this email because you are in our vendor network.<br><a href="${unsubscribeUrl}" style="color:#999;text-decoration:underline;">Unsubscribe</a></div>`,
+      headers: {
+        'List-Unsubscribe': `<${unsubscribeUrl}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
+      trackingSettings: {
+        clickTracking: { enable: true },
+        openTracking: { enable: true },
+      },
+      customArgs: {
+        campaign_id: campaign.id,
+        company_id: r.company_id,
+        person_id: r.person_id || '',
+      },
+    };
+  });
 
   try {
     await sgMail.send(messages);
@@ -509,6 +516,30 @@ router.post('/resubscribe-bulk', auth, async (req, res) => {
     .select();
   if (error) return res.status(500).json({ error: error.message });
   res.json({ resubscribed: data.length });
+});
+
+// GET /api/marketing/unsubscribe — one-click unsubscribe from campaigns
+router.get('/unsubscribe', async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).send('Invalid unsubscribe link.');
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    await supabase
+      .from('crm_people')
+      .update({ marketing_unsubscribed: true, marketing_unsubscribed_at: new Date().toISOString() })
+      .eq('email', normalizedEmail);
+
+    res.send(`
+      <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#F5F3EF;">
+        <h2 style="color:#3E423D;">You've been unsubscribed.</h2>
+        <p style="color:#717182;">You won't receive any more marketing emails from Planfor.</p>
+      </body></html>
+    `);
+  } catch (err) {
+    res.status(500).send('Something went wrong.');
+  }
 });
 
 // ─── WAITLIST ─────────────────────────────────────────────────────────────────
