@@ -5,59 +5,6 @@ const supabase = require('../db');
 
 const SENDGRID_API_KEY = process.env.SENDGRID_MARKETING_KEY || process.env.SENDGRID_API_KEY;
 const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
-const WAITLIST_LIST_NAME = 'Waitlist Couples';
-
-// ─── HELPER: GET OR CREATE SENDGRID LIST ─────────────────────────────────────
-
-async function getOrCreateSendGridList() {
-  // Fetch all lists
-  const res = await fetch('https://api.sendgrid.com/v3/marketing/lists?page_size=100', {
-    headers: {
-      Authorization: `Bearer ${SENDGRID_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  const data = await res.json();
-  const lists = data.result || [];
-
-  // Check if list already exists
-  const existing = lists.find(l => l.name === WAITLIST_LIST_NAME);
-  if (existing) return existing.id;
-
-  // Create new list
-  const createRes = await fetch('https://api.sendgrid.com/v3/marketing/lists', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${SENDGRID_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ name: WAITLIST_LIST_NAME }),
-  });
-  const created = await createRes.json();
-  return created.id;
-}
-
-// ─── HELPER: ADD CONTACT TO SENDGRID ─────────────────────────────────────────
-
-async function addToSendGrid(email, first_name, last_name, listId) {
-  const contact = { email };
-  if (first_name) contact.first_name = first_name;
-  if (last_name) contact.last_name = last_name;
-
-  const res = await fetch('https://api.sendgrid.com/v3/marketing/contacts', {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${SENDGRID_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      list_ids: [listId],
-      contacts: [contact],
-    }),
-  });
-  const data = await res.json();
-  return data.job_id || null;
-}
 
 // ─── HELPER: SEND CONFIRMATION EMAIL ─────────────────────────────────────────
 
@@ -107,6 +54,10 @@ async function sendConfirmationEmail(email, first_name) {
         reply_to: { email: 'hello@planfor.io', name: 'Planfor' },
         subject,
         content: [{ type: 'text/html', value: html }],
+        headers: {
+          'List-Unsubscribe': `<https://crm-api.planfor.io/api/waitlist/unsubscribe?email=${encodeURIComponent(email)}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
         tracking_settings: {
           click_tracking: { enable: true },
           open_tracking: { enable: true },
@@ -168,11 +119,6 @@ router.post('/subscribe', async (req, res) => {
       console.error('Waitlist insert error:', insertError.message);
       return res.status(500).json({ error: 'Something went wrong. Please try again.' });
     }
-
-    // Add to SendGrid (async — don't block response)
-    getOrCreateSendGridList()
-      .then(listId => addToSendGrid(normalizedEmail, first_name, last_name, listId))
-      .catch(err => console.error('SendGrid add contact error:', err.message));
 
     // Send confirmation email (async — don't block response)
     sendConfirmationEmail(normalizedEmail, first_name)
