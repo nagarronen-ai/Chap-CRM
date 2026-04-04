@@ -298,7 +298,7 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
           content: [{ type: 'text/html', value: m.html }],
           headers: m.headers,
           tracking_settings: {
-            click_tracking: { enable: false },
+            click_tracking: { enable: true },
             open_tracking: { enable: true },
           },
         }),
