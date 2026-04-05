@@ -968,6 +968,10 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - **Unsubscribe managed in-house** — no SendGrid list management. All suppression controlled via `crm_people.marketing_unsubscribed` and `waitlist_couples.marketing_consent`
 - **`/api/marketing/unsubscribe` route** — GET with token param, updates `crm_people.marketing_unsubscribed`
 - **Waitlist landing page** — deployed to Vercel, auto-deploys on git push. First name + last name fields. Feature pills layout, no-scroll design
+- **Unsubscribe audit log** — IP address, user agent, timestamp and campaign ID logged on every unsubscribe for both campaigns and waitlist
+- **Export CSV — Unsubscribed** — full audit export from Marketing → Unsubscribed tab including IP, user agent, campaign ID
+- **Export CSV — Waitlist** — updated to include unsubscribe audit columns (unsubscribed_at, unsubscribe_ip, unsubscribe_user_agent)
+- **New Supabase columns** — `crm_people`: unsubscribe_ip, unsubscribe_user_agent, unsubscribe_campaign_id. `waitlist_couples`: unsubscribe_ip, unsubscribe_user_agent, unsubscribed_at
 
 ### v1.6.3 — Campaign Analytics + AI Log + GTM v1.0 Complete
 - **Campaign hot leads** — recipients table in campaign detail now has filter tabs (All / Opened / Clicked / Delivered / Bounced / Unsubscribed), checkboxes per row, and "New Campaign from Selected" button to launch follow-up campaign directly from warm leads
@@ -1082,6 +1086,8 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - Waitlist confirmation wired to CRM template
 - Waitlist first_name + last_name
 - Email template editor improvements
+- Unsubscribe audit log with IP, user agent, campaign ID
+- CSV export for unsubscribed contacts and waitlist
 
 **v1.6.1 ✅ — Chappie Smart Scheduling + Slack Bot**
 - Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup
