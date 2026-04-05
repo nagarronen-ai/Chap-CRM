@@ -516,7 +516,7 @@ router.post('/resubscribe/:personId', auth, async (req, res) => {
 router.get('/unsubscribed', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_people')
-    .select('id, first_name, last_name, email, marketing_unsubscribed_at, company_id, crm_companies(id, company_name, stage)')
+    .select('id, first_name, last_name, email, marketing_unsubscribed_at, unsubscribe_ip, unsubscribe_user_agent, unsubscribe_campaign_id, company_id, crm_companies(id, company_name, stage)')
     .eq('marketing_unsubscribed', true)
     .order('marketing_unsubscribed_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
@@ -543,15 +543,24 @@ router.get('/unsubscribe/:token', async (req, res) => {
 
     const { data: recipient } = await supabase
       .from('crm_campaign_recipients')
-      .select('email')
+      .select('email, campaign_id')
       .eq('unsubscribe_token', token)
       .single();
 
     if (!recipient) return res.status(400).send('Invalid or expired unsubscribe link.');
 
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+
     await supabase
       .from('crm_people')
-      .update({ marketing_unsubscribed: true, marketing_unsubscribed_at: new Date().toISOString() })
+      .update({
+        marketing_unsubscribed: true,
+        marketing_unsubscribed_at: new Date().toISOString(),
+        unsubscribe_ip: ip,
+        unsubscribe_user_agent: userAgent,
+        unsubscribe_campaign_id: recipient.campaign_id || null,
+      })
       .eq('email', recipient.email);
 
     res.send(`

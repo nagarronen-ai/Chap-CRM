@@ -139,10 +139,19 @@ router.get('/unsubscribe', async (req, res) => {
     const { email } = req.query;
     if (!email) return res.status(400).send('Invalid unsubscribe link.');
 
+    const normalizedEmail = email.toLowerCase().trim();
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+
     await supabase
       .from('waitlist_couples')
-      .update({ marketing_consent: false })
-      .eq('email', email.toLowerCase().trim());
+      .update({
+        marketing_consent: false,
+        unsubscribe_ip: ip,
+        unsubscribe_user_agent: userAgent,
+        unsubscribed_at: new Date().toISOString(),
+      })
+      .eq('email', normalizedEmail);
 
     res.send(`
       <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#F0EDE8;">

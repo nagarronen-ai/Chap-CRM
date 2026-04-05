@@ -123,11 +123,36 @@ export default function Marketing() {
     } catch (err) { console.error(err); alert('Failed to delete'); }
   };
 
+  const exportUnsubscribedCSV = () => {
+    const rows = [
+      ['First Name', 'Last Name', 'Email', 'Company', 'Unsubscribed At', 'IP Address', 'User Agent', 'Campaign ID'],
+      ...unsubscribed.map(p => [
+        p.first_name || '',
+        p.last_name || '',
+        p.email,
+        p.crm_companies?.company_name || '',
+        p.marketing_unsubscribed_at ? new Date(p.marketing_unsubscribed_at).toISOString() : '',
+        p.unsubscribe_ip || '',
+        p.unsubscribe_user_agent || '',
+        p.unsubscribe_campaign_id || '',
+      ]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `unsubscribed_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const exportWaitlistCSV = () => {
     const rows = [
-      ['Name', 'Email', 'Consent', 'Consent Date', 'IP Address', 'User Agent', 'Consent Text', 'Joined'],
+      ['First Name', 'Last Name', 'Email', 'Consent', 'Consent Date', 'IP Address', 'User Agent', 'Consent Text', 'Joined', 'Unsubscribed At', 'Unsubscribe IP', 'Unsubscribe User Agent'],
       ...waitlist.map(w => [
-        w.name || '',
+        w.first_name || '',
+        w.last_name || '',
         w.email,
         w.marketing_consent ? 'Yes' : 'No',
         w.consent_at ? new Date(w.consent_at).toISOString() : '',
@@ -135,6 +160,9 @@ export default function Marketing() {
         w.user_agent || '',
         w.consent_text || '',
         w.created_at ? new Date(w.created_at).toISOString() : '',
+        w.unsubscribed_at ? new Date(w.unsubscribed_at).toISOString() : '',
+        w.unsubscribe_ip || '',
+        w.unsubscribe_user_agent || '',
       ]),
     ];
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -901,7 +929,13 @@ export default function Marketing() {
         {subView === 'unsubscribed' && (
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: 0 }}>Unsubscribed Contacts ({unsubscribed.length})</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: 0 }}>Unsubscribed Contacts ({unsubscribed.length})</h3>
+                <button onClick={exportUnsubscribedCSV}
+                  style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                  ⬇ Export CSV
+                </button>
+              </div>
               {Object.values(selectedUnsubs).some(Boolean) && (
                 <button onClick={resubscribeBulk}
                   style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
@@ -926,7 +960,7 @@ export default function Marketing() {
                         onChange={e => { const all = {}; unsubscribed.forEach(p => { all[p.id] = e.target.checked; }); setSelectedUnsubs(all); }}
                         style={{ accentColor: '#8E9B8B' }} />
                     </th>
-                    {['Name', 'Email', 'Company', 'Status', 'Unsubscribed', ''].map(h => (
+                    {['Name', 'Email', 'Company', 'Status', 'Unsubscribed', 'IP Address', 'User Agent', ''].map(h => (
                       <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
                     ))}
                   </tr>
@@ -950,6 +984,12 @@ export default function Marketing() {
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>
                         {p.marketing_unsubscribed_at ? new Date(p.marketing_unsubscribed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', fontFamily: 'monospace' }}>
+                        {p.unsubscribe_ip || '—'}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.unsubscribe_user_agent || '—'}
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <button onClick={async () => {
