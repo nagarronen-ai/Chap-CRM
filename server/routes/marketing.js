@@ -4,7 +4,7 @@ const router = express.Router();
 const supabase = require('../db');
 const auth = require('../middleware/auth');
 const crypto = require('crypto');
-const { EventWebhook, EventWebhookHeader } = require('@sendgrid/eventwebhook');
+const { EventWebhook } = require('@sendgrid/eventwebhook');
 
 // ─── RECIPIENT BUILDER ────────────────────────────────────────────────────────
 
@@ -174,11 +174,12 @@ router.post('/campaigns', auth, async (req, res) => {
   const { role } = req.user;
   if (!['admin', 'marketing'].includes(role)) return res.status(403).json({ error: 'Forbidden' });
 
-  const { name, subject, body_html, template_id, from_name, from_email } = req.body;
+  const { name, subject, body_html, template_id, from_name, from_email, design_template_id } = req.body;
   const { data, error } = await supabase
     .from('crm_campaigns')
     .insert([{
       name, subject, body_html, template_id: template_id || null,
+      design_template_id: design_template_id || null,
       from_name: from_name || 'Planfor',
       from_email: from_email || 'marketing@planfor.io',
       status: 'draft',
@@ -259,15 +260,23 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
   });
   await supabase.from('crm_campaign_recipients').insert(recipientRows);
 
-  const messages = recipients.map(r => {
+  const { wrapWithDesignTemplate, wrapWithDesignTemplateById } = require('../services/emailWrapper');
+
+  const messages = [];
+  for (const r of recipients) {
     const unsubscribeUrl = 'https://crm-api.planfor.io/api/marketing/unsubscribe/' + recipientTokens[r.email];
-    return {
+    const body = resolveBody(campaign.body_html, r).replace(/\{\{\{unsubscribe\}\}\}/g, unsubscribeUrl);
+    const wrapped = campaign.design_template_id
+      ? await wrapWithDesignTemplateById(body, campaign.design_template_id)
+      : await wrapWithDesignTemplate(body, 'campaign');
+    const html = wrapped + '<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999;">You received this email because you are in our vendor network.<br><a href="' + unsubscribeUrl + '" style="color:#999;text-decoration:underline;" target="_blank" rel="noopener" clicktrack="off">Unsubscribe</a></div>';
+    messages.push({
       to: r.email,
       from: { name: campaign.from_name, email: campaign.from_email },
       subject: campaign.subject
         .replace(/{{first_name}}/g, r.first_name || '')
         .replace(/{{company_name}}/g, r.company_name || ''),
-        html: resolveBody(campaign.body_html, r).replace(/\{\{\{unsubscribe\}\}\}/g, unsubscribeUrl) + '<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999;">You received this email because you are in our vendor network.<br><a href="' + unsubscribeUrl + '" style="color:#999;text-decoration:underline;" target="_blank" rel="noopener">Unsubscribe</a></div>',
+      html,
       headers: {
         'List-Unsubscribe': '<' + unsubscribeUrl + '>',
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -277,9 +286,9 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
         company_id: r.company_id,
         person_id: r.person_id || '',
       },
-    };
-  });
-  console.log('UNSUBSCRIBE URL:', messages[0] ? messages[0].html.slice(-200) : 'no messages');
+    });
+  }
+
   try {
     for (const m of messages) {
       await fetch('https://api.sendgrid.com/v3/mail/send', {

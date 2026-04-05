@@ -30,6 +30,10 @@ async function sendConfirmationEmail(email, first_name) {
         .replace(/{{name}}/g, first_name || 'there')
         .replace(/{{email}}/g, email);
 
+        // Wrap with design template
+      const { wrapWithDesignTemplate } = require('../services/emailWrapper');
+      html = await wrapWithDesignTemplate(html, 'transactional');
+      
       // Append unsubscribe footer if not already present
       if (!html.includes('unsubscribe')) {
         html += `<p style="font-size:11px;color:#AAAABC;text-align:center;margin-top:32px;">

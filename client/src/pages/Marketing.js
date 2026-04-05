@@ -64,6 +64,7 @@ export default function Marketing() {
   const [excludedCount, setExcludedCount] = useState(0);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [templates, setTemplates] = useState([]);
+  const [designTemplates, setDesignTemplates] = useState([]);
 
   // Campaign detail — hot leads
   const [recipientFilter, setRecipientFilter] = useState('all');
@@ -82,7 +83,7 @@ export default function Marketing() {
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchCampaigns(); fetchGlobalStats(); fetchTemplates(); }, []);
+  useEffect(() => { fetchCampaigns(); fetchGlobalStats(); fetchTemplates(); fetchDesignTemplates(); }, []);
 
   const fetchCampaigns = async () => {
     try {
@@ -103,6 +104,13 @@ export default function Marketing() {
     try {
       const res = await axios.get(`${API}/emails/templates`, { headers: getHeaders() });
       setTemplates(res.data.filter(t => t.visibility === 'team'));
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchDesignTemplates = async () => {
+    try {
+      const res = await axios.get(`${API}/design-templates`, { headers: getHeaders() });
+      setDesignTemplates(res.data);
     } catch (err) { console.error(err); }
   };
 
@@ -531,6 +539,13 @@ export default function Marketing() {
                   <select value={form.template_id || ''} onChange={e => loadTemplate(e.target.value)} style={inputStyle}>
                     <option value="">— Select a template —</option>
                     {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Design Template</label>
+                  <select value={form.design_template_id || ''} onChange={e => setForm(prev => ({ ...prev, design_template_id: e.target.value }))} style={inputStyle}>
+                    <option value="">— No design wrapper —</option>
+                    {designTemplates.filter(d => d.active).map(d => <option key={d.id} value={d.id}>{d.name} ({d.type})</option>)}
                   </select>
                 </div>
               </div>

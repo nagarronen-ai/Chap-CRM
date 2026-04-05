@@ -5,7 +5,11 @@ require('dotenv').config();
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // ─── RAW BODY FOR SENDGRID WEBHOOK ───────────────────────────────────────────
 app.use('/api/marketing/webhook', express.raw({ type: '*/*' }));
@@ -27,6 +31,7 @@ app.use('/api/sync', require('./routes/sync'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/waitlist', require('./routes/waitlist'));
+app.use('/api/design-templates', require('./routes/designTemplates'));
 
 
 
