@@ -1137,8 +1137,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - CAN-SPAM compliant
 
 ### Planned
-- **v1.7.1** — Internal task & to-do system
-- **v1.8.0** — Reporting & analytics dashboard
+- **v1.8.0** — Dashboard enhancement — pipeline velocity, revenue trends, campaign ROI, waitlist growth, team activity all in one morning briefing view
 - **v1.9.0** — Automation rules (trigger → action)
 - **v2.0** — RAG + Chappie knowledge base, proactive insights, multi-user context. Planned before open source release.
 - **Open Source Release** — codebase cleanup, full documentation, LinkedIn post

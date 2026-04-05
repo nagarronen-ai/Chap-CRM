@@ -28,6 +28,10 @@ export default function Dashboard() {
   const [needsCompletion, setNeedsCompletion] = useState([]);
   const [completingMeeting, setCompletingMeeting] = useState(null);
   const [completionNotes, setCompletionNotes] = useState('');
+  const [waitlistStats, setWaitlistStats] = useState(null);
+  const [waitlistGrowth, setWaitlistGrowth] = useState([]);
+  const [thoughtsCount, setThoughtsCount] = useState(0);
+  const [campaignStats, setCampaignStats] = useState([]);
   const [savingCompletion, setSavingCompletion] = useState(false);
   const navigate = useNavigate();
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -61,6 +65,37 @@ export default function Dashboard() {
     try { const res = await axios.get(`${API}/finance/expenses/summary`, { headers: getHeaders() }); setFinanceStats(res.data); } catch (err) {}
     try { const res = await axios.get(`${API}/users`, { headers: getHeaders() }); setTeamUsers(res.data); } catch (err) {}
     try { const res = await axios.get(`${API}/calendar/upcoming`, { headers: getHeaders() }); setUpcomingMeetings(res.data); } catch (err) {}
+    try {
+      const res = await axios.get(`${API}/marketing/waitlist`, { headers: getHeaders() });
+      const waitlist = res.data;
+      const total = waitlist.length;
+      const consented = waitlist.filter(w => w.marketing_consent).length;
+      const thisWeek = waitlist.filter(w => new Date(w.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length;
+      const today = waitlist.filter(w => new Date(w.created_at).toDateString() === new Date().toDateString()).length;
+      setWaitlistStats({ total, consented, thisWeek, today });
+
+      // Build last 14 days growth
+      const days = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const count = waitlist.filter(w => new Date(w.created_at).toDateString() === d.toDateString()).length;
+        days.push({ label, count });
+      }
+      setWaitlistGrowth(days);
+    } catch (err) {}
+
+    try {
+      const res = await axios.get(`${API}/thoughts`, { headers: getHeaders() });
+      const thisWeekThoughts = res.data.filter(t => new Date(t.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length;
+      setThoughtsCount(thisWeekThoughts);
+    } catch (err) {}
+
+    try {
+      const res = await axios.get(`${API}/marketing/campaigns`, { headers: getHeaders() });
+      setCampaignStats(res.data.filter(c => c.status === 'sent').slice(0, 5));
+    } catch (err) {}
     try { const res = await axios.get(`${API}/calendar/needs-completion`, { headers: getHeaders() }); setNeedsCompletion(res.data); } catch (err) {}
     setLoading(false);
   };
@@ -100,6 +135,16 @@ export default function Dashboard() {
 
   const byStage = STAGES.map(stage => ({ stage, count: companies.filter(c => c.stage === stage).length })).filter(s => s.count > 0);
   const maxStageCount = Math.max(...byStage.map(s => s.count), 1);
+
+  // Pipeline velocity — avg days per stage
+  const stageVelocity = STAGES.slice(0, 7).map(stage => {
+    const stageCompanies = companies.filter(c => c.stage === stage);
+    if (stageCompanies.length === 0) return { stage, count: 0, avgDays: 0 };
+    const avgDays = Math.round(stageCompanies.reduce((acc, c) => {
+      return acc + Math.floor((new Date() - new Date(c.updated_at || c.created_at)) / 86400000);
+    }, 0) / stageCompanies.length);
+    return { stage, count: stageCompanies.length, avgDays };
+  }).filter(s => s.count > 0);
 
   const openRate = emailStats.total > 0 ? Math.round((emailStats.opened / emailStats.total) * 100) : 0;
   const clickRate = emailStats.total > 0 ? Math.round((emailStats.clicked / emailStats.total) * 100) : 0;
@@ -311,6 +356,92 @@ export default function Dashboard() {
             })}
           </div>
         )}
+
+        {/* New Analytics Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 20, marginBottom: 20 }}>
+
+          {/* Waitlist Growth */}
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)', gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ color: '#1a1d1a', fontSize: 14, fontWeight: 600, margin: 0 }}>Waitlist Growth</h3>
+              <button onClick={() => navigate('/marketing')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 12, cursor: 'pointer', padding: 0 }}>View waitlist →</button>
+            </div>
+            {waitlistStats && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+                {[
+                  { label: 'Total', value: waitlistStats.total },
+                  { label: 'Consented', value: waitlistStats.consented },
+                  { label: 'This Week', value: waitlistStats.thisWeek },
+                  { label: 'Today', value: waitlistStats.today },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ textAlign: 'center' }}>
+                    <p style={{ color: '#1a1d1a', fontSize: 20, fontWeight: 700, margin: '0 0 2px' }}>{value}</p>
+                    <p style={{ color: '#717182', fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Sparkline */}
+            {waitlistGrowth.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 48 }}>
+                {waitlistGrowth.map((d, i) => {
+                  const max = Math.max(...waitlistGrowth.map(x => x.count), 1);
+                  const height = Math.max((d.count / max) * 48, d.count > 0 ? 4 : 2);
+                  return (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <div style={{ width: '100%', height: height, background: d.count > 0 ? '#8E9B8B' : '#E5E1D8', borderRadius: 2, transition: 'height 0.3s' }} title={`${d.label}: ${d.count}`} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <p style={{ color: '#CBCED4', fontSize: 10, margin: '6px 0 0', textAlign: 'center' }}>Last 14 days</p>
+          </div>
+
+          {/* Pipeline Velocity */}
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)' }}>
+            <h3 style={{ color: '#1a1d1a', fontSize: 14, fontWeight: 600, margin: '0 0 16px' }}>Pipeline Velocity</h3>
+            {stageVelocity.length === 0 ? (
+              <p style={{ color: '#CBCED4', fontSize: 12, textAlign: 'center', padding: 16 }}>No data yet</p>
+            ) : stageVelocity.slice(0, 5).map(s => (
+              <div key={s.stage} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(62,66,61,0.04)' }}>
+                <div>
+                  <p style={{ color: '#1a1d1a', fontSize: 12, fontWeight: 500, margin: 0 }}>{s.stage}</p>
+                  <p style={{ color: '#717182', fontSize: 10, margin: 0 }}>{s.count} leads</p>
+                </div>
+                <span style={{ color: s.avgDays > 14 ? '#D4183D' : s.avgDays > 7 ? '#D4A574' : '#8E9B8B', fontSize: 12, fontWeight: 600 }}>
+                  {s.avgDays}d avg
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* My Thoughts + Campaign Performance */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Thoughts this week */}
+            <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.08)', flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h3 style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 600, margin: 0 }}>My Thoughts</h3>
+                <button onClick={() => navigate('/thoughts')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 11, cursor: 'pointer', padding: 0 }}>Open →</button>
+              </div>
+              <p style={{ color: '#1a1d1a', fontSize: 28, fontWeight: 700, margin: '0 0 2px', fontFamily: "'Playfair Display', Georgia, serif" }}>{thoughtsCount}</p>
+              <p style={{ color: '#717182', fontSize: 11, margin: 0 }}>thoughts this week</p>
+            </div>
+
+            {/* Campaign avg open rate */}
+            <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.08)', flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h3 style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 600, margin: 0 }}>Campaigns</h3>
+                <button onClick={() => navigate('/marketing')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 11, cursor: 'pointer', padding: 0 }}>View →</button>
+              </div>
+              <p style={{ color: '#1a1d1a', fontSize: 28, fontWeight: 700, margin: '0 0 2px', fontFamily: "'Playfair Display', Georgia, serif" }}>
+                {marketingStats?.avg_open_rate || 0}%
+              </p>
+              <p style={{ color: '#717182', fontSize: 11, margin: 0 }}>avg open rate · {marketingStats?.total_campaigns || 0} sent</p>
+            </div>
+          </div>
+
+        </div>
 
         {/* Bottom Grid — 3 columns */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
