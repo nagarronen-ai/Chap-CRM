@@ -99,6 +99,14 @@ const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 const validUUID = (val) => val && uuidRegex.test(val) ? val : null;
 
 // ─── GET OR CREATE CONVERSATION ───────────────────────────────────────────────
+async function getConversationById(conversationId) {
+  const { data } = await supabase
+    .from('crm_ai_conversations')
+    .select('*')
+    .eq('id', conversationId)
+    .single();
+  return data;
+}
 async function getOrCreateConversation(userId) {
   try {
     const { data } = await supabase
@@ -165,8 +173,10 @@ async function saveMessages(conversationId, messages, lastMessage, actionsTaken)
 }
 
 // ─── MAIN CHAT FUNCTION ───────────────────────────────────────────────────────
-async function chat(userId, userMessage, pendingConfirmation = null) {
-  const conversation = await getOrCreateConversation(userId);
+async function chat(userId, userMessage, pendingConfirmation = null, conversationId = null) {
+  const conversation = conversationId
+    ? await getConversationById(conversationId)
+    : await getOrCreateConversation(userId);
   const actionsTaken = conversation.actions_taken || [];
 
   // Load history — only clean text messages for OpenAI
@@ -224,7 +234,8 @@ async function chat(userId, userMessage, pendingConfirmation = null) {
         .replace(/^\d+\.\s+/gm, '')         // 1. numbered lists
         .replace(/`{1,3}(.*?)`{1,3}/gs, '$1') // `code`
         .trim();
-      const savedHistory = [...history, { role: 'user', content: userMessage }, { role: 'assistant', content }];
+        const now = new Date().toISOString();
+        const savedHistory = [...history, { role: 'user', content: userMessage, timestamp: now }, { role: 'assistant', content, timestamp: now }];
       await saveMessages(conversation.id, savedHistory, userMessage, actionsTaken);
       return { type: 'text', content, conversationId: conversation.id };
     }

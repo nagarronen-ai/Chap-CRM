@@ -15,6 +15,7 @@ import EmailInbox from './pages/EmailInbox';
 import CalendarPage from './pages/Calendar';
 import AiBrain from './components/AiBrain';
 import AiLog from './pages/AiLog';
+import Thoughts from './pages/Thoughts';
 
 const PrivateRoute = ({ children }) => {
   return localStorage.getItem('token') ? children : <Navigate to="/login" />;
@@ -38,6 +39,7 @@ function AuthenticatedApp() {
         <Route path="/inbox" element={<EmailInbox />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/ai/log" element={<AiLog />} />
+        <Route path="/thoughts" element={<Thoughts />} />
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
       <AiBrain />

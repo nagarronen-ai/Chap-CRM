@@ -247,7 +247,12 @@ export default function AiLog() {
                           borderBottomLeftRadius: msg.role === 'assistant' ? 4 : 12,
                           whiteSpace: 'pre-wrap',
                         }}>
-                          {msg.content}
+                          <span>{msg.content}</span>
+                        {msg.timestamp && (
+                          <div style={{ fontSize: 10, color: msg.role === 'user' ? 'rgba(255,255,255,0.6)' : '#AAAABC', marginTop: 4, textAlign: 'right' }}>
+                            {new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          </div>
+                        )}
                         </div>
                       </div>
                     ))}

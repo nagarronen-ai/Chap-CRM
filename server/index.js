@@ -18,6 +18,7 @@ app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/emails', require('./routes/emails'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/marketing', require('./routes/marketing'));
+app.use('/api/thoughts', require('./routes/thoughts'));
 app.use('/api/finance', require('./routes/finance'));
 app.use('/api/clients', require('./routes/clients'));
 app.use('/api/uploads', require('./routes/uploads'));
@@ -26,6 +27,8 @@ app.use('/api/sync', require('./routes/sync'));
 app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/waitlist', require('./routes/waitlist'));
+
+
 
 const PORT = process.env.PORT || 5000;
 

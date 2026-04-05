@@ -957,6 +957,20 @@ npx wrangler pages deploy build --project-name=planfor-crm
 ---
 
 ## Changelog
+
+### v1.7.0 — My Thoughts + Chappie Conversations
+- **My Thoughts page** — personal whiteboard at `/thoughts`. Capture ideas on the go, each thought becomes a card with a dedicated Claude brainstorm chat
+- **Claude brainstorm chat** — each thought has its own conversation with Claude. Model selector: Haiku (cheap), Sonnet 4 (balanced), Opus 4 (deep thinking)
+- **Markdown strip in Thoughts** — Claude responses stripped of markdown server-side
+- **Slack thought logging** — send `thought: your idea` or `idea: your idea` to Chappie on Slack, it logs to My Thoughts automatically
+- **New Conversation button** — Chappie widget now has "+ New Chat" button to start a fresh conversation with no memory of previous sessions
+- **Message timestamps** — each Chappie message now shows time sent
+- **`POST /api/ai/new-conversation`** — creates a fresh conversation record
+- **`conversationId` threading** — Chappie widget passes conversation ID so messages stay in the correct thread
+- **`crm_thoughts` table** — id, user_id, content, created_at, updated_at
+- **`crm_thought_conversations` table** — id, thought_id, messages (jsonb), created_at, updated_at
+- **`ANTHROPIC_API_KEY`** — added to env for direct Claude API calls from Thoughts chat
+
 ### v1.6.4 — Email Deliverability + Unsubscribe System
 - **Token-based unsubscribe** — each campaign recipient gets a unique unsubscribe token stored in `crm_campaign_recipients.unsubscribe_token`. Unsubscribe URL is clean with no query params (`/api/marketing/unsubscribe/:token`) — prevents SendGrid click tracking from stripping the href
 - **List-Unsubscribe header** — all campaign emails include `List-Unsubscribe` and `List-Unsubscribe-Post` headers so Gmail/Outlook show a one-click unsubscribe button next to the sender name
@@ -966,7 +980,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - **Waitlist first_name + last_name** — split name field on landing page and in DB (`waitlist_couples.first_name`, `waitlist_couples.last_name`)
 - **Email template improvements** — Waitlist category added, signature toggle added to template editor, HTML editor line wrapping fixed, HtmlEditor overflow fixed
 - **Unsubscribe managed in-house** — no SendGrid list management. All suppression controlled via `crm_people.marketing_unsubscribed` and `waitlist_couples.marketing_consent`
-- **`/api/marketing/unsubscribe` route** — GET with token param, updates `crm_people.marketing_unsubscribed`
+- **`/api/marketing/unsubscribe/:token` route** — GET with token param, updates `crm_people.marketing_unsubscribed`
 - **Waitlist landing page** — deployed to Vercel, auto-deploys on git push. First name + last name fields. Feature pills layout, no-scroll design
 - **Unsubscribe audit log** — IP address, user agent, timestamp and campaign ID logged on every unsubscribe for both campaigns and waitlist
 - **Export CSV — Unsubscribed** — full audit export from Marketing → Unsubscribed tab including IP, user agent, campaign ID
@@ -979,11 +993,11 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - **get_all_campaigns tool** — Chappie can give a full overview of all campaigns with stats
 - **get_waitlist_stats tool** — Chappie can answer "how many couples are on the waitlist"
 - **get_waitlist_list tool** — Chappie can list waitlist subscribers by name/email/date
-- **search_conversation_history tool** — Chappie can search past conversations by topic and date hint (e.g. "last Thursday we spoke about X")
+- **search_conversation_history tool** — Chappie can search past conversations by topic and date hint
 - **Markdown strip** — all Chappie responses stripped of markdown server-side before reaching frontend
 - **AI Log redesign** — fixed height split panel layout, conversations grouped by Today/Yesterday/date with sticky day headers, independent scrolling on both panels
-- **Waitlist landing page** — `planfor-waitlist` repo pushed, ready for Cloudflare Pages at `comingsoon.planfor.io`
-- **Waitlist backend** — `POST /api/waitlist/subscribe`, `GET /api/waitlist/unsubscribe`, audit trail (ip_address, user_agent, consent_text), SendGrid confirmation email with open/click tracking
+- **Waitlist landing page** — `planfor-waitlist` repo pushed, deployed to Vercel at `comingsoon.planfor.io`
+- **Waitlist backend** — `POST /api/waitlist/subscribe`, `GET /api/waitlist/unsubscribe`, audit trail, SendGrid confirmation email
 - **Waitlist CRM page** — Marketing → Waitlist Couples tab: stats, subscriber table, search, export CSV, delete
 - **Calendar color coding** — Client (teal), Contact (green), Calendly unmatched (orange), Internal (purple), Google only (yellow)
 - **Calendar legend** — hover widget showing color guide
@@ -1080,6 +1094,13 @@ npx wrangler pages deploy build --project-name=planfor-crm
 ## Roadmap
 
 ### Completed
+**v1.7.0 ✅ — My Thoughts + Chappie Conversations**
+- My Thoughts personal whiteboard with Claude brainstorm chat
+- Model selector: Haiku, Sonnet 4, Opus 4
+- Slack thought logging via thought:/idea: prefix
+- New Conversation button in Chappie widget
+- Message timestamps in Chappie
+
 **v1.6.4 ✅ — Email Deliverability + Unsubscribe System**
 - Token-based unsubscribe for campaigns
 - List-Unsubscribe headers on all marketing emails
@@ -1089,18 +1110,6 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - Unsubscribe audit log with IP, user agent, campaign ID
 - CSV export for unsubscribed contacts and waitlist
 
-**v1.6.1 ✅ — Chappie Smart Scheduling + Slack Bot**
-- Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup
-- Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix
-- Phase 3 ✅ — Proposal tracking: `propose_meeting` tool, `crm_meeting_proposals` table
-- Phase 4 ✅ — Reply intent detection + auto-book
-- Phase 5 ✅ — Slack Bot: Socket Mode, Block Kit confirmations, `#all-planfor` alerts
-
-**v1.6.2 ✅ — Calendly Integration + Calendar UX**
-- Calendly polling every 5 minutes, Google Calendar event linking, CRM record creation
-- Auto-record via autoRecordCheck (2 min before meeting start)
-- Calendar color coding by relationship type + hover legend
-
 **v1.6.3 ✅ — Campaign Analytics + AI Log + GTM v1.0**
 - Campaign hot leads, filter tabs, follow-up campaign launcher
 - AI Log redesign: split panel, daily grouping, independent scroll
@@ -1108,18 +1117,26 @@ npx wrangler pages deploy build --project-name=planfor-crm
 - Markdown strip on all Chappie responses
 - Waitlist full stack: landing page + backend + CRM management page
 
+**v1.6.2 ✅ — Calendly Integration + Calendar UX**
+- Calendly polling every 5 minutes, Google Calendar event linking, CRM record creation
+- Auto-record via autoRecordCheck (2 min before meeting start)
+- Calendar color coding by relationship type + hover legend
+
+**v1.6.1 ✅ — Chappie Smart Scheduling + Slack Bot**
+- Phase 1 ✅ — Thread replies, email reading, reply detection, CC support, bulk email, client_id auto-lookup
+- Phase 2 ✅ — Conflict detection: `check_calendar_conflicts` tool, Intl shortOffset UTC fix
+- Phase 3 ✅ — Proposal tracking: `propose_meeting` tool, `crm_meeting_proposals` table
+- Phase 4 ✅ — Reply intent detection + auto-book
+- Phase 5 ✅ — Slack Bot: Socket Mode, Block Kit confirmations, `#all-planfor` alerts
+
 **GTM v1.0 ✅ — Waitlist & Pre-Launch Email Capture**
-- Landing page at `comingsoon.planfor.io` (separate `planfor-waitlist` repo, Cloudflare Pages)
-- `waitlist_couples` Supabase table with full audit trail (ip_address, user_agent, consent_text)
+- Landing page at `comingsoon.planfor.io` (separate `planfor-waitlist` repo, Vercel)
+- `waitlist_couples` Supabase table with full audit trail
 - SendGrid confirmation email with open/click tracking
 - CRM Waitlist page: stats, table, search, export CSV
 - CAN-SPAM compliant
 
-### In Progress
-- **v1.7.1** — Internal task & to-do system
-
 ### Planned
-- **v1.7.0** — Stripe vendor subscription billing (blocked: no Stripe account yet)
 - **v1.7.1** — Internal task & to-do system
 - **v1.8.0** — Reporting & analytics dashboard
 - **v1.9.0** — Automation rules (trigger → action)

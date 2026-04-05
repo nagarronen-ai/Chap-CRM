@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 
 export default function Sidebar() {
-  const APP_VERSION = 'v1.6.4';
+  const APP_VERSION = 'v1.7.0';
   const navigate = useNavigate();
   const location = useLocation();
   const { can, role } = useRole();
@@ -40,6 +40,7 @@ export default function Sidebar() {
     { path: '/dashboard', label: 'Dashboard', icon: '📊', show: true },
     { path: '/contacts', label: 'Contacts', icon: '🏢', show: true },
     { path: '/clients', label: 'Clients', icon: '🤝', show: true },
+    { path: '/thoughts', label: 'My Thoughts', icon: '💭', show: true },
     { path: '/calendar', label: 'Calendar', icon: '📅', show: true },
     { path: '/emails', label: 'Email Templates', icon: '✉️', show: can('email:templates') },
     { path: '/inbox', label: 'Email Inbox', icon: '📬', show: true, badge: unreadCount },

@@ -107,6 +107,17 @@ app.message(async ({ message, say }) => {
     return;
   }
 
+  // Log thought if message starts with "thought:" or "idea:"
+  const lowerMsg = userMessage.toLowerCase();
+  if (lowerMsg.startsWith('thought:') || lowerMsg.startsWith('idea:')) {
+    const content = userMessage.replace(/^(thought:|idea:)/i, '').trim();
+    if (content) {
+      await supabase.from('crm_thoughts').insert([{ user_id: crmUser.id, content }]);
+      await say('💭 Got it — logged to My Thoughts ✓');
+      return;
+    }
+  }
+
   // Show typing indicator
   await say({ text: '🧠 Thinking...' });
 

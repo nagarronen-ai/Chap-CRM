@@ -41,6 +41,7 @@ export default function AiBrain() {
   const [pendingActions, setPendingActions] = useState(null);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const messagesEndRef = useRef(null);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -73,7 +74,8 @@ export default function AiBrain() {
     setPendingActions(null);
 
     try {
-      const res = await axios.post(`${API}/ai/chat`, { message: userMessage }, { headers: getHeaders() });
+      const res = await axios.post(`${API}/ai/chat`, { message: userMessage, conversationId: currentConversationId }, { headers: getHeaders() });
+      if (res.data.conversationId) setCurrentConversationId(res.data.conversationId);
       handleResponse(res.data);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: '❌ Something went wrong. Please try again.' }]);
@@ -119,6 +121,15 @@ export default function AiBrain() {
     setPendingActions(null);
   };
 
+  const startNewConversation = async () => {
+    try {
+      const res = await axios.post(`${API}/ai/new-conversation`, {}, { headers: getHeaders() });
+      setCurrentConversationId(res.data.id);
+      setMessages([]);
+      setPendingActions(null);
+    } catch (err) { console.error(err); }
+  };
+
   return (
     <>
       {/* Floating button */}
@@ -157,10 +168,16 @@ export default function AiBrain() {
                 <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: 0 }}>🧠 AI Assistant</p>
                 <p style={{ color: '#717182', fontSize: 11, margin: 0 }}>Planfor CRM Brain</p>
               </div>
-              <button onClick={clearChat}
-                style={{ background: 'none', border: 'none', color: '#CBCED4', fontSize: 11, cursor: 'pointer', padding: 0 }}>
-                Clear
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={startNewConversation}
+                  style={{ background: '#F5F3EF', border: 'none', borderRadius: 6, color: '#5A6059', fontSize: 11, cursor: 'pointer', padding: '4px 10px' }}>
+                  + New Chat
+                </button>
+                <button onClick={clearChat}
+                  style={{ background: 'none', border: 'none', color: '#CBCED4', fontSize: 11, cursor: 'pointer', padding: 0 }}>
+                  Clear
+                </button>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 0, background: '#F5F3EF', borderRadius: 8, overflow: 'hidden' }}>
               {['chat', 'history'].map(tab => (
@@ -214,7 +231,12 @@ export default function AiBrain() {
                       borderBottomLeftRadius: msg.role === 'assistant' ? 4 : 12,
                       whiteSpace: 'pre-wrap',
                     }}>
-                      {msg.content}
+                      <span>{msg.content}</span>
+                      {msg.timestamp && (
+                        <div style={{ fontSize: 10, color: msg.role === 'user' ? 'rgba(255,255,255,0.6)' : '#AAAABC', marginTop: 4, textAlign: 'right' }}>
+                          {new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

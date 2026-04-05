@@ -12,7 +12,7 @@ router.post('/chat', auth, async (req, res) => {
       return res.status(400).json({ error: 'message or pendingConfirmation required' });
     }
 
-    const result = await chat(req.user.id, message, pendingConfirmation);
+    const result = await chat(req.user.id, message, pendingConfirmation, req.body.conversationId || null);
     res.json(result);
   } catch (err) {
     console.error('AI chat error:', err.message);
@@ -114,6 +114,21 @@ router.delete('/history/:id', auth, async (req, res) => {
       .eq('id', req.params.id);
 
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ai/new-conversation — start a fresh conversation
+router.post('/new-conversation', auth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('crm_ai_conversations')
+      .insert([{ user_id: req.user.id, messages: [], actions_taken: [] }])
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
