@@ -267,9 +267,9 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
     const unsubscribeUrl = 'https://crm-api.planfor.io/api/marketing/unsubscribe/' + recipientTokens[r.email];
     const body = resolveBody(campaign.body_html, r).replace(/\{\{\{unsubscribe\}\}\}/g, unsubscribeUrl);
     const wrapped = campaign.design_template_id
-      ? await wrapWithDesignTemplateById(body, campaign.design_template_id)
-      : await wrapWithDesignTemplate(body, 'campaign');
-    const html = wrapped + '<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999;">You received this email because you are in our vendor network.<br><a href="' + unsubscribeUrl + '" style="color:#999;text-decoration:underline;" target="_blank" rel="noopener" clicktrack="off">Unsubscribe</a></div>';
+    ? await wrapWithDesignTemplateById(body, campaign.design_template_id)
+    : await wrapWithDesignTemplate(body, 'campaign');
+  const html = wrapped.replace('{{unsubscribe_url}}', unsubscribeUrl);
     messages.push({
       to: r.email,
       from: { name: campaign.from_name, email: campaign.from_email },
