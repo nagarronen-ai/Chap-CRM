@@ -75,6 +75,16 @@ export default function Marketing() {
   const [subView, setSubView] = useState('campaigns');
   const [waitlist, setWaitlist] = useState([]);
   const [loadingWaitlist, setLoadingWaitlist] = useState(false);
+  const [dripSequences, setDripSequences] = useState([]);
+  const [selectedSequence, setSelectedSequence] = useState(null);
+  const [dripSteps, setDripSteps] = useState([]);
+  const [loadingDrip, setLoadingDrip] = useState(false);
+  const [showDripEditor, setShowDripEditor] = useState(false);
+  const [editingStep, setEditingStep] = useState(null);
+  const [stepForm, setStepForm] = useState({ delay_days: 3, subject: '', body_html: '', design_template_id: '', active: true });
+  const [showNewSequence, setShowNewSequence] = useState(false);
+  const [newSequenceName, setNewSequenceName] = useState('');
+  const [savingStep, setSavingStep] = useState(false);
   const [waitlistSearch, setWaitlistSearch] = useState('');
   const [unsubscribed, setUnsubscribed] = useState([]);
   const [selectedUnsubs, setSelectedUnsubs] = useState({});
@@ -191,6 +201,83 @@ export default function Marketing() {
       setSelectedUnsubs({});
     } catch (err) { console.error(err); }
     setLoadingUnsubs(false);
+  };
+
+  const fetchDripSequences = async () => {
+    setLoadingDrip(true);
+    try {
+      const res = await axios.get(`${API}/drip/sequences`, { headers: getHeaders() });
+      setDripSequences(res.data);
+    } catch (err) { console.error(err); }
+    setLoadingDrip(false);
+  };
+
+  const fetchDripSteps = async (sequenceId) => {
+    try {
+      const res = await axios.get(`${API}/drip/sequences/${sequenceId}/steps`, { headers: getHeaders() });
+      setDripSteps(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const createSequence = async () => {
+    if (!newSequenceName.trim()) return;
+    try {
+      const res = await axios.post(`${API}/drip/sequences`, { name: newSequenceName, audience: 'waitlist' }, { headers: getHeaders() });
+      setDripSequences(prev => [res.data, ...prev]);
+      setSelectedSequence(res.data);
+      setDripSteps([]);
+      setNewSequenceName('');
+      setShowNewSequence(false);
+    } catch (err) { console.error(err); }
+  };
+
+  const toggleSequenceActive = async (seq) => {
+    try {
+      const res = await axios.put(`${API}/drip/sequences/${seq.id}`, { active: !seq.active }, { headers: getHeaders() });
+      setDripSequences(prev => prev.map(s => s.id === seq.id ? res.data : s));
+      if (selectedSequence?.id === seq.id) setSelectedSequence(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const deleteSequence = async (id) => {
+    if (!window.confirm('Delete this sequence? All enrollments will be lost.')) return;
+    try {
+      await axios.delete(`${API}/drip/sequences/${id}`, { headers: getHeaders() });
+      setDripSequences(prev => prev.filter(s => s.id !== id));
+      if (selectedSequence?.id === id) { setSelectedSequence(null); setDripSteps([]); }
+    } catch (err) { console.error(err); }
+  };
+
+  const saveStep = async () => {
+    setSavingStep(true);
+    try {
+      if (editingStep) {
+        const res = await axios.put(`${API}/drip/steps/${editingStep.id}`, stepForm, { headers: getHeaders() });
+        setDripSteps(prev => prev.map(s => s.id === editingStep.id ? res.data : s));
+      } else {
+        const nextStepNumber = dripSteps.length + 1;
+        const res = await axios.post(`${API}/drip/sequences/${selectedSequence.id}/steps`, { ...stepForm, step_number: nextStepNumber }, { headers: getHeaders() });
+        setDripSteps(prev => [...prev, res.data]);
+      }
+      setShowDripEditor(false);
+      setEditingStep(null);
+    } catch (err) { console.error(err); }
+    setSavingStep(false);
+  };
+
+  const toggleStepActive = async (step) => {
+    try {
+      const res = await axios.put(`${API}/drip/steps/${step.id}`, { active: !step.active }, { headers: getHeaders() });
+      setDripSteps(prev => prev.map(s => s.id === step.id ? res.data : s));
+    } catch (err) { console.error(err); }
+  };
+
+  const deleteStep = async (id) => {
+    if (!window.confirm('Delete this step?')) return;
+    try {
+      await axios.delete(`${API}/drip/steps/${id}`, { headers: getHeaders() });
+      setDripSteps(prev => prev.filter(s => s.id !== id));
+    } catch (err) { console.error(err); }
   };
 
   const resubscribeBulk = async () => {
@@ -776,6 +863,10 @@ export default function Marketing() {
             style={{ background: 'none', border: 'none', borderBottom: subView === 'unsubscribed' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'unsubscribed' ? '#1a1d1a' : '#717182', fontWeight: subView === 'unsubscribed' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
             Unsubscribed {unsubscribed.length > 0 && <span style={{ background: '#D4183D', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, marginLeft: 4 }}>{unsubscribed.length}</span>}
           </button>
+          <button onClick={() => { setSubView('drip'); fetchDripSequences(); }}
+            style={{ background: 'none', border: 'none', borderBottom: subView === 'drip' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'drip' ? '#1a1d1a' : '#717182', fontWeight: subView === 'drip' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+            Drip Sequences
+          </button>
           <button onClick={() => { setSubView('waitlist'); fetchWaitlist(); }}
             style={{ background: 'none', border: 'none', borderBottom: subView === 'waitlist' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'waitlist' ? '#1a1d1a' : '#717182', fontWeight: subView === 'waitlist' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
             Waitlist Couples
@@ -855,6 +946,202 @@ export default function Marketing() {
           )}
         </>)}
 
+{/* Drip Sequences View */}
+{subView === 'drip' && (
+          <div style={{ display: 'flex', gap: 20, height: 'calc(100vh - 220px)' }}>
+
+            {/* Left — sequence list */}
+            <div style={{ width: 280, flexShrink: 0, background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ color: '#1a1d1a', fontSize: 14, fontWeight: 600, margin: 0 }}>Sequences</h3>
+                <button onClick={() => setShowNewSequence(true)}
+                  style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>+ New</button>
+              </div>
+
+              {showNewSequence && (
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(62,66,61,0.08)', background: '#F5F3EF' }}>
+                  <input value={newSequenceName} onChange={e => setNewSequenceName(e.target.value)}
+                    placeholder="Sequence name..."
+                    style={{ width: '100%', background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '7px 10px', fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' }}
+                    onKeyDown={e => { if (e.key === 'Enter') createSequence(); if (e.key === 'Escape') setShowNewSequence(false); }}
+                    autoFocus />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <button onClick={createSequence} style={{ flex: 1, background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '6px', fontSize: 11, cursor: 'pointer' }}>Create</button>
+                    <button onClick={() => setShowNewSequence(false)} style={{ flex: 1, background: '#F5F3EF', color: '#717182', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '6px', fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {loadingDrip ? (
+                  <p style={{ color: '#717182', fontSize: 12, padding: 20, textAlign: 'center' }}>Loading...</p>
+                ) : dripSequences.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center' }}>
+                    <p style={{ fontSize: 24, margin: '0 0 8px' }}>💧</p>
+                    <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>No sequences yet</p>
+                  </div>
+                ) : dripSequences.map(seq => (
+                  <div key={seq.id}
+                    onClick={() => { setSelectedSequence(seq); fetchDripSteps(seq.id); }}
+                    style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid rgba(62,66,61,0.05)', background: selectedSequence?.id === seq.id ? '#F0F4F0' : 'transparent', borderLeft: selectedSequence?.id === seq.id ? '3px solid #8E9B8B' : '3px solid transparent' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 500, margin: '0 0 4px' }}>{seq.name}</p>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <span style={{ fontSize: 10, color: '#717182' }}>{seq.step_count} steps</span>
+                          <span style={{ fontSize: 10, color: '#717182' }}>{seq.enrollment_count} active</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div onClick={e => { e.stopPropagation(); toggleSequenceActive(seq); }}
+                          style={{ width: 28, height: 16, borderRadius: 8, background: seq.active ? '#8E9B8B' : '#D5CEC0', cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
+                          <div style={{ position: 'absolute', top: 2, left: seq.active ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Right — steps */}
+            <div style={{ flex: 1, background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {!selectedSequence ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
+                  <p style={{ fontSize: 32 }}>💧</p>
+                  <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 500, margin: 0 }}>Select a sequence</p>
+                  <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>Or create a new one</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                    <div>
+                      <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: '0 0 2px' }}>{selectedSequence.name}</h3>
+                      <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>
+                        Audience: Waitlist Couples · {dripSteps.length} steps · {selectedSequence.enrollment_count} enrolled
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => { setEditingStep(null); setStepForm({ delay_days: 3, subject: '', body_html: '', design_template_id: '', active: true }); setShowDripEditor(true); }}
+                        style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer' }}>
+                        + Add Step
+                      </button>
+                      <button onClick={() => deleteSequence(selectedSequence.id)}
+                        style={{ background: '#fdf0f0', color: '#D4183D', border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+                    {dripSteps.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: 40 }}>
+                        <p style={{ fontSize: 32, marginBottom: 8 }}>📧</p>
+                        <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 500, margin: '0 0 4px' }}>No steps yet</p>
+                        <p style={{ color: '#717182', fontSize: 12, margin: '0 0 16px' }}>Add your first email step</p>
+                        <button onClick={() => { setEditingStep(null); setStepForm({ delay_days: 3, subject: '', body_html: '', design_template_id: '', active: true }); setShowDripEditor(true); }}
+                          style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>
+                          + Add First Step
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {dripSteps.map((step, i) => (
+                          <div key={step.id}>
+                            {/* Connector line */}
+                            {i > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px', marginBottom: 4 }}>
+                                <div style={{ width: 1, height: 24, background: '#D5CEC0', marginLeft: 11 }} />
+                                <span style={{ fontSize: 10, color: '#AAAABC' }}>+{step.delay_days} day{step.delay_days !== 1 ? 's' : ''} after previous</span>
+                              </div>
+                            )}
+                            <div style={{ background: step.active ? '#fff' : '#FAFAF9', borderRadius: 10, border: `1px solid ${step.active ? 'rgba(142,155,139,0.2)' : 'rgba(62,66,61,0.08)'}`, padding: '16px 20px', opacity: step.active ? 1 : 0.6 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                    <span style={{ background: '#8E9B8B', color: '#fff', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{step.step_number}</span>
+                                    <span style={{ color: '#717182', fontSize: 11 }}>
+                                      {i === 0 ? `Send ${step.delay_days} day${step.delay_days !== 1 ? 's' : ''} after signup` : `Send ${step.delay_days} day${step.delay_days !== 1 ? 's' : ''} after previous`}
+                                    </span>
+                                  </div>
+                                  <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 600, margin: '0 0 2px' }}>{step.subject || '— No subject —'}</p>
+                                  <p style={{ color: '#AAAABC', fontSize: 11, margin: 0 }}>
+                                    {step.crm_email_design_templates?.name || 'No design template'}
+                                  </p>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                  <div onClick={() => toggleStepActive(step)}
+                                    style={{ width: 28, height: 16, borderRadius: 8, background: step.active ? '#8E9B8B' : '#D5CEC0', cursor: 'pointer', position: 'relative' }}>
+                                    <div style={{ position: 'absolute', top: 2, left: step.active ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                                  </div>
+                                  <button onClick={() => { setEditingStep(step); setStepForm({ delay_days: step.delay_days, subject: step.subject || '', body_html: step.body_html || '', design_template_id: step.design_template_id || '', active: step.active }); setShowDripEditor(true); }}
+                                    style={{ background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#3E423D' }}>✏️ Edit</button>
+                                  <button onClick={() => deleteStep(step.id)}
+                                    style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Drip Step Editor Modal */}
+        {showDripEditor && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ background: '#fff', borderRadius: 16, width: '90vw', maxWidth: 800, height: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
+              <div style={{ padding: '20px 28px', borderBottom: '1px solid rgba(62,66,61,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                <h2 style={{ color: '#3E423D', fontSize: 18, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>
+                  {editingStep ? 'Edit Step' : 'New Step'} — {selectedSequence?.name}
+                </h2>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={saveStep} disabled={savingStep}
+                    style={{ background: savingStep ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, cursor: 'pointer' }}>
+                    {savingStep ? '⏳ Saving...' : '💾 Save Step'}
+                  </button>
+                  <button onClick={() => { setShowDripEditor(false); setEditingStep(null); }}
+                    style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>✕</button>
+                </div>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', padding: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div>
+                    <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Send after (days)</label>
+                    <input type="number" min="1" value={stepForm.delay_days}
+                      onChange={e => setStepForm(prev => ({ ...prev, delay_days: parseInt(e.target.value) || 1 }))}
+                      style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                    <p style={{ color: '#AAAABC', fontSize: 11, margin: '4px 0 0' }}>Days after signup (step 1) or previous step</p>
+                  </div>
+                  <div>
+                    <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Design Template</label>
+                    <select value={stepForm.design_template_id || ''} onChange={e => setStepForm(prev => ({ ...prev, design_template_id: e.target.value }))}
+                      style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none' }}>
+                      <option value="">— Default Transactional —</option>
+                      {designTemplates.filter(d => d.active).map(d => <option key={d.id} value={d.id}>{d.name} ({d.type})</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Subject Line</label>
+                  <input value={stepForm.subject} onChange={e => setStepForm(prev => ({ ...prev, subject: e.target.value }))}
+                    placeholder="e.g. You're on the list ✨"
+                    style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Email Body</label>
+                  <HtmlEditor value={stepForm.body_html} onChange={val => setStepForm(prev => ({ ...prev, body_html: val }))} minHeight="300px" />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
 {/* Waitlist View */}
 {subView === 'waitlist' && (
           <div>

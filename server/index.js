@@ -32,6 +32,8 @@ app.use('/api/calendar', require('./routes/calendar'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/waitlist', require('./routes/waitlist'));
 app.use('/api/design-templates', require('./routes/designTemplates'));
+app.use('/api/drip', require('./routes/drip'));
+
 
 
 
@@ -112,6 +114,24 @@ const autoRecordCheck = async () => {
 };
 
 setInterval(autoRecordCheck, 60000);
+
+// ─── DRIP SEQUENCE RUNNER (every hour) ───────────────────────────────────────
+const { runDripSequences } = require('./services/dripRunner');
+let dripRunning = false;
+
+const runDrip = async () => {
+  if (dripRunning) return;
+  dripRunning = true;
+  try {
+    await runDripSequences();
+  } catch (err) {
+    console.error('Drip runner error:', err.message);
+  }
+  dripRunning = false;
+};
+
+setTimeout(runDrip, 60 * 1000); // first run 60s after startup
+setInterval(runDrip, 60 * 60 * 1000); // then every hour
 
 // ─── START SERVER ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {

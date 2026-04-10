@@ -51,6 +51,7 @@ export default function Emails() {
   const [designForm, setDesignForm] = useState({ name: '', type: 'transactional', width: 600, header_html: '', footer_html: '', wrapper_html: '', active: true });
   const [showDesignEditor, setShowDesignEditor] = useState(false);
   const [savingDesign, setSavingDesign] = useState(false);
+  const [previewDesign, setPreviewDesign] = useState(null);
 
   const { role } = useRole();
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -297,6 +298,8 @@ export default function Emails() {
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button onClick={() => { setEditingDesign(existing); setDesignForm({ name: existing.name, type: existing.type, width: existing.width, header_html: existing.header_html || '', footer_html: existing.footer_html || '', wrapper_html: existing.wrapper_html || '', active: existing.active }); setShowDesignEditor(true); }}
                           style={{ flex: 1, background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '8px', fontSize: 12, cursor: 'pointer', color: '#3E423D' }}>✏️ Edit</button>
+                        <button onClick={() => setPreviewDesign(existing)}
+                          style={{ flex: 1, background: '#EBF4FF', border: 'none', borderRadius: 6, padding: '8px', fontSize: 12, cursor: 'pointer', color: '#1a6fad' }}>👁 Preview</button>
                         <button onClick={() => deleteDesignTemplate(existing.id)}
                           style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '8px 12px', fontSize: 12, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
                       </div>
@@ -404,6 +407,28 @@ export default function Emails() {
                   <p style={{ color: '#717182', fontSize: 11, margin: '0 0 6px' }}>Use <code style={{ background: '#F5F3EF', padding: '1px 4px', borderRadius: 3 }}>{'{{content}}'}</code> where the email body should go</p>
                   <HtmlEditor value={designForm.wrapper_html} onChange={val => setDesignForm(prev => ({ ...prev, wrapper_html: val }))} minHeight="200px" />
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── DESIGN TEMPLATE PREVIEW MODAL ───────────────────────────── */}
+        {previewDesign && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ background: '#fff', borderRadius: 16, width: '90vw', maxWidth: 800, height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                <h3 style={{ color: '#3E423D', fontSize: 16, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>
+                  Preview — {previewDesign.name}
+                </h3>
+                <button onClick={() => setPreviewDesign(null)}
+                  style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>✕ Close</button>
+              </div>
+              <div style={{ flex: 1, overflow: 'auto', background: '#F5F3EF', padding: 24 }}>
+                <div dangerouslySetInnerHTML={{
+                  __html: (previewDesign.wrapper_html || '')
+                    .replace('{{content}}', '<div style="padding:20px;background:#fff8f0;border-radius:8px;border:2px dashed #D4A574;text-align:center;color:#717182;font-size:14px;">✉️ Your email content will appear here</div>')
+                    .replace('{{unsubscribe_url}}', '#')
+                }} />
               </div>
             </div>
           </div>
