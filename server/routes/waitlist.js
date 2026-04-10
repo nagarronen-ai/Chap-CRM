@@ -129,19 +129,22 @@ router.post('/subscribe', async (req, res) => {
       .catch(err => console.error('Confirmation email error:', err.message));
 
     // Auto-enroll in active drip sequences
-    const { data: activeSequences } = await supabase
+    const { data: activeSequences, error: seqError } = await supabase
       .from('crm_drip_sequences')
       .select('id')
       .eq('active', true)
       .eq('audience', 'waitlist');
 
+    console.log('💧 Auto-enroll: found sequences:', activeSequences?.length, seqError?.message);
+
     for (const seq of (activeSequences || [])) {
-      await supabase.from('crm_drip_enrollments').insert([{
+      const { error: enrollError } = await supabase.from('crm_drip_enrollments').insert([{
         sequence_id: seq.id,
         email: normalizedEmail,
         first_name: first_name?.trim() || null,
         recipient_type: 'waitlist',
       }]);
+      console.log('💧 Auto-enroll:', normalizedEmail, 'into', seq.id, enrollError?.message || '✓');
     }
 
     res.json({ success: true, message: "You're on the list!" });

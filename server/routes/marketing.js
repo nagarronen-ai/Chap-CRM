@@ -372,6 +372,34 @@ router.post('/webhook', async (req, res) => {
   for (const event of events) {
     const { campaign_id, company_id, email, email_type, user_id, event: eventType, timestamp, sg_message_id } = event;
 
+// Handle drip email events
+if (!campaign_id && email_type === 'drip') {
+  const eventTime = new Date(timestamp * 1000).toISOString();
+  const updateData = { status: eventType === 'bounce' ? 'bounced' : eventType === 'open' ? 'opened' : eventType === 'click' ? 'clicked' : null };
+
+  if (updateData.status) {
+    if (eventType === 'open') updateData.opened_at = eventTime;
+    if (eventType === 'click') updateData.clicked_at = eventTime;
+    if (eventType === 'bounce') updateData.bounced_at = eventTime;
+
+    if (sg_message_id) {
+      await supabase
+        .from('crm_drip_sends')
+        .update(updateData)
+        .eq('sendgrid_message_id', sg_message_id.split('.')[0]);
+    } else if (email) {
+      await supabase
+        .from('crm_drip_sends')
+        .update(updateData)
+        .eq('email', email)
+        .eq('status', 'sent')
+        .order('sent_at', { ascending: false })
+        .limit(1);
+    }
+  }
+  continue;
+}
+
     if (!campaign_id && email_type === 'direct') {
       const eventTime = new Date(timestamp * 1000).toISOString();
       const updateData = {};

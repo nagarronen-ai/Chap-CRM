@@ -73,25 +73,35 @@ async function runDripSequences() {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              personalizations: [{ to: [{ email: enrollment.email, name: enrollment.first_name || '' }] }],
-              from: { email: 'noreply@planfor.io', name: 'Planfor' },
-              reply_to: { email: 'hello@planfor.io', name: 'Planfor' },
-              subject: step.subject,
-              content: [{ type: 'text/html', value: html }],
-              tracking_settings: {
-                click_tracking: { enable: true },
-                open_tracking: { enable: true },
-              },
-            }),
+                personalizations: [{
+                  to: [{ email: enrollment.email, name: enrollment.first_name || '' }],
+                  custom_args: {
+                    email_type: 'drip',
+                    step_id: step.id,
+                    sequence_id: seq.id,
+                  },
+                }],
+                from: { email: 'noreply@planfor.io', name: 'Planfor' },
+                reply_to: { email: 'hello@planfor.io', name: 'Planfor' },
+                subject: step.subject,
+                content: [{ type: 'text/html', value: html }],
+                tracking_settings: {
+                  click_tracking: { enable: true },
+                  open_tracking: { enable: true },
+                },
+              }),
           });
 
           if (response.ok) {
+            const messageId = response.headers.get('x-message-id') || null;
             await supabase.from('crm_drip_sends').insert([{
               enrollment_id: enrollment.id,
               step_id: step.id,
               status: 'sent',
+              email: enrollment.email,
+              sendgrid_message_id: messageId,
             }]);
-            console.log(`💧 Sent step ${step.step_number} to ${enrollment.email}`);
+            console.log(`💧 Sent step ${step.step_number} to ${enrollment.email} — msg: ${messageId}`);
           }
         } catch (err) {
           console.error(`💧 Failed to send step ${step.step_number} to ${enrollment.email}:`, err.message);

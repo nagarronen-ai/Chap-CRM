@@ -53,11 +53,8 @@ export default function Marketing() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
-  // Campaign builder state
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({
-    name: '', subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null,
-  });
+  const [form, setForm] = useState({ name: '', subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null });
   const [filters, setFilters] = useState({ stage: '', origin: '', city: '', category: '', source: 'all' });
   const [recipients, setRecipients] = useState([]);
   const [selectedRecipients, setSelectedRecipients] = useState({});
@@ -66,15 +63,18 @@ export default function Marketing() {
   const [templates, setTemplates] = useState([]);
   const [designTemplates, setDesignTemplates] = useState([]);
 
-  // Campaign detail — hot leads
   const [recipientFilter, setRecipientFilter] = useState('all');
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState({});
 
-  // Sub navigation
   const [subView, setSubView] = useState('campaigns');
   const [waitlist, setWaitlist] = useState([]);
   const [loadingWaitlist, setLoadingWaitlist] = useState(false);
+  const [waitlistSearch, setWaitlistSearch] = useState('');
+  const [unsubscribed, setUnsubscribed] = useState([]);
+  const [selectedUnsubs, setSelectedUnsubs] = useState({});
+  const [loadingUnsubs, setLoadingUnsubs] = useState(false);
+
   const [dripSequences, setDripSequences] = useState([]);
   const [selectedSequence, setSelectedSequence] = useState(null);
   const [dripSteps, setDripSteps] = useState([]);
@@ -85,10 +85,9 @@ export default function Marketing() {
   const [showNewSequence, setShowNewSequence] = useState(false);
   const [newSequenceName, setNewSequenceName] = useState('');
   const [savingStep, setSavingStep] = useState(false);
-  const [waitlistSearch, setWaitlistSearch] = useState('');
-  const [unsubscribed, setUnsubscribed] = useState([]);
-  const [selectedUnsubs, setSelectedUnsubs] = useState({});
-  const [loadingUnsubs, setLoadingUnsubs] = useState(false);
+  const [designPreviewHtml, setDesignPreviewHtml] = useState('');
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [stepStats, setStepStats] = useState({});
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -145,14 +144,10 @@ export default function Marketing() {
     const rows = [
       ['First Name', 'Last Name', 'Email', 'Company', 'Unsubscribed At', 'IP Address', 'User Agent', 'Campaign ID'],
       ...unsubscribed.map(p => [
-        p.first_name || '',
-        p.last_name || '',
-        p.email,
+        p.first_name || '', p.last_name || '', p.email,
         p.crm_companies?.company_name || '',
         p.marketing_unsubscribed_at ? new Date(p.marketing_unsubscribed_at).toISOString() : '',
-        p.unsubscribe_ip || '',
-        p.unsubscribe_user_agent || '',
-        p.unsubscribe_campaign_id || '',
+        p.unsubscribe_ip || '', p.unsubscribe_user_agent || '', p.unsubscribe_campaign_id || '',
       ]),
     ];
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -169,18 +164,13 @@ export default function Marketing() {
     const rows = [
       ['First Name', 'Last Name', 'Email', 'Consent', 'Consent Date', 'IP Address', 'User Agent', 'Consent Text', 'Joined', 'Unsubscribed At', 'Unsubscribe IP', 'Unsubscribe User Agent'],
       ...waitlist.map(w => [
-        w.first_name || '',
-        w.last_name || '',
-        w.email,
+        w.first_name || '', w.last_name || '', w.email,
         w.marketing_consent ? 'Yes' : 'No',
         w.consent_at ? new Date(w.consent_at).toISOString() : '',
-        w.ip_address || '',
-        w.user_agent || '',
-        w.consent_text || '',
+        w.ip_address || '', w.user_agent || '', w.consent_text || '',
         w.created_at ? new Date(w.created_at).toISOString() : '',
         w.unsubscribed_at ? new Date(w.unsubscribed_at).toISOString() : '',
-        w.unsubscribe_ip || '',
-        w.unsubscribe_user_agent || '',
+        w.unsubscribe_ip || '', w.unsubscribe_user_agent || '',
       ]),
     ];
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -203,6 +193,16 @@ export default function Marketing() {
     setLoadingUnsubs(false);
   };
 
+  const resubscribeBulk = async () => {
+    const ids = Object.entries(selectedUnsubs).filter(([, v]) => v).map(([k]) => k);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Resubscribe ${ids.length} contact(s)?`)) return;
+    try {
+      await axios.post(`${API}/marketing/resubscribe-bulk`, { person_ids: ids }, { headers: getHeaders() });
+      fetchUnsubscribed();
+    } catch (err) { console.error(err); alert('Failed'); }
+  };
+
   const fetchDripSequences = async () => {
     setLoadingDrip(true);
     try {
@@ -216,7 +216,24 @@ export default function Marketing() {
     try {
       const res = await axios.get(`${API}/drip/sequences/${sequenceId}/steps`, { headers: getHeaders() });
       setDripSteps(res.data);
+      const statsMap = {};
+      for (const s of res.data) {
+        try {
+          const statsRes = await axios.get(`${API}/drip/steps/${s.id}/stats`, { headers: getHeaders() });
+          statsMap[s.id] = statsRes.data;
+        } catch (err) { console.error(err); }
+      }
+      setStepStats(statsMap);
     } catch (err) { console.error(err); }
+  };
+
+  const fetchDesignPreview = (templateId) => {
+    setLoadingPreview(true);
+    const dt = templateId
+      ? designTemplates.find(d => d.id === templateId)
+      : designTemplates.find(d => d.type === 'transactional' && d.active);
+    setDesignPreviewHtml(dt?.wrapper_html || '{{content}}');
+    setLoadingPreview(false);
   };
 
   const createSequence = async () => {
@@ -265,10 +282,10 @@ export default function Marketing() {
     setSavingStep(false);
   };
 
-  const toggleStepActive = async (step) => {
+  const toggleStepActive = async (s) => {
     try {
-      const res = await axios.put(`${API}/drip/steps/${step.id}`, { active: !step.active }, { headers: getHeaders() });
-      setDripSteps(prev => prev.map(s => s.id === step.id ? res.data : s));
+      const res = await axios.put(`${API}/drip/steps/${s.id}`, { active: !s.active }, { headers: getHeaders() });
+      setDripSteps(prev => prev.map(x => x.id === s.id ? res.data : x));
     } catch (err) { console.error(err); }
   };
 
@@ -278,16 +295,6 @@ export default function Marketing() {
       await axios.delete(`${API}/drip/steps/${id}`, { headers: getHeaders() });
       setDripSteps(prev => prev.filter(s => s.id !== id));
     } catch (err) { console.error(err); }
-  };
-
-  const resubscribeBulk = async () => {
-    const ids = Object.entries(selectedUnsubs).filter(([, v]) => v).map(([k]) => k);
-    if (ids.length === 0) return;
-    if (!window.confirm(`Resubscribe ${ids.length} contact(s)?`)) return;
-    try {
-      await axios.post(`${API}/marketing/resubscribe-bulk`, { person_ids: ids }, { headers: getHeaders() });
-      fetchUnsubscribed();
-    } catch (err) { console.error(err); alert('Failed'); }
   };
 
   const fetchRecipients = async () => {
@@ -304,7 +311,6 @@ export default function Marketing() {
       const selected = {};
       recs.forEach((r, i) => { selected[i] = true; });
       setSelectedRecipients(selected);
-
       const excRes = await axios.get(`${API}/marketing/recipients/excluded`, { headers: getHeaders() });
       setExcludedCount(excRes.data.excluded_count);
     } catch (err) { console.error(err); }
@@ -347,18 +353,13 @@ export default function Marketing() {
       setView('list');
       fetchCampaigns();
       fetchGlobalStats();
-    } catch (err) {
-      console.error(err);
-      alert('Send failed. Check console for details.');
-    }
+    } catch (err) { console.error(err); alert('Send failed. Check console for details.'); }
     setSending(false);
   };
 
   const loadTemplate = (templateId) => {
     const t = templates.find(t => t.id === templateId);
-    if (t) {
-      setForm(prev => ({ ...prev, subject: t.subject, body_html: t.body_html, template_id: t.id }));
-    }
+    if (t) setForm(prev => ({ ...prev, subject: t.subject, body_html: t.body_html, template_id: t.id }));
   };
 
   const inputStyle = { width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' };
@@ -385,7 +386,6 @@ export default function Marketing() {
             </span>
           </div>
 
-          {/* Stats Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24 }}>
             {STAT_CONFIG.map(({ key, label, icon }) => {
               const val = s[key] || 0;
@@ -403,7 +403,6 @@ export default function Marketing() {
             })}
           </div>
 
-          {/* Email Preview */}
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden', marginBottom: 24 }}>
             <div onClick={() => setShowEmailPreview(prev => !prev)}
               style={{ padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderBottom: showEmailPreview ? '1px solid rgba(62,66,61,0.08)' : 'none' }}>
@@ -420,7 +419,6 @@ export default function Marketing() {
             )}
           </div>
 
-          {/* Recipients Table */}
           {(() => {
             const filteredRecipients = (selectedCampaign.recipients || []).filter(r => {
               if (recipientFilter === 'all') return true;
@@ -431,20 +429,10 @@ export default function Marketing() {
               if (recipientFilter === 'unsubscribed') return r.status === 'unsubscribed';
               return true;
             });
-
             const selectedCount = Object.values(selectedLeads).filter(Boolean).length;
-
             const launchCampaignFromLeads = () => {
               const leads = filteredRecipients.filter((_, i) => selectedLeads[i]);
-              const prefilledRecipients = leads.map(r => ({
-                email: r.email,
-                first_name: r.crm_people?.first_name || '',
-                last_name: r.crm_people?.last_name || '',
-                company_name: r.crm_companies?.company_name || '',
-                company_id: r.company_id || null,
-                person_id: r.person_id || null,
-                source: 'Contact',
-              }));
+              const prefilledRecipients = leads.map(r => ({ email: r.email, first_name: r.crm_people?.first_name || '', last_name: r.crm_people?.last_name || '', company_name: r.crm_companies?.company_name || '', company_id: r.company_id || null, person_id: r.person_id || null, source: 'Contact' }));
               setStep(1);
               setForm({ name: `Follow-up — ${selectedCampaign.name}`, subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null });
               setRecipients(prefilledRecipients);
@@ -456,7 +444,6 @@ export default function Marketing() {
               setView('create');
               setStep(2);
             };
-
             const FILTER_TABS = [
               { key: 'all', label: 'All', count: selectedCampaign.recipients?.length || 0 },
               { key: 'opened', label: '👁 Opened', count: s.opened || 0, hot: true },
@@ -465,67 +452,37 @@ export default function Marketing() {
               { key: 'bounced', label: '↩️ Bounced', count: s.bounced || 0 },
               { key: 'unsubscribed', label: '🚫 Unsubscribed', count: s.unsubscribed || 0 },
             ];
-
             return (
               <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
-                {/* Header */}
                 <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>
-                    Recipients ({selectedCampaign.recipients?.length || 0})
-                  </h3>
+                  <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: 0 }}>Recipients ({selectedCampaign.recipients?.length || 0})</h3>
                   {selectedCount > 0 && (
-                    <button onClick={launchCampaignFromLeads}
-                      style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                    <button onClick={launchCampaignFromLeads} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
                       🚀 New Campaign from {selectedCount} Selected
                     </button>
                   )}
                 </div>
-
-                {/* Filter Tabs */}
                 <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid rgba(62,66,61,0.08)', padding: '0 8px' }}>
                   {FILTER_TABS.map(({ key, label, count, hot }) => (
                     <button key={key} onClick={() => { setRecipientFilter(key); setSelectedLeads({}); }}
-                      style={{
-                        background: 'none', border: 'none',
-                        borderBottom: recipientFilter === key ? '2px solid #8E9B8B' : '2px solid transparent',
-                        padding: '10px 14px', fontSize: 12,
-                        color: recipientFilter === key ? '#3E423D' : '#717182',
-                        fontWeight: recipientFilter === key ? 600 : 400,
-                        cursor: 'pointer', fontFamily: 'Inter, sans-serif',
-                        display: 'flex', alignItems: 'center', gap: 5,
-                      }}>
+                      style={{ background: 'none', border: 'none', borderBottom: recipientFilter === key ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 14px', fontSize: 12, color: recipientFilter === key ? '#3E423D' : '#717182', fontWeight: recipientFilter === key ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif', display: 'flex', alignItems: 'center', gap: 5 }}>
                       {label}
-                      <span style={{
-                        background: hot && count > 0 ? '#D4EDDA' : '#F5F3EF',
-                        color: hot && count > 0 ? '#155724' : '#717182',
-                        borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 600,
-                      }}>{count}</span>
+                      <span style={{ background: hot && count > 0 ? '#D4EDDA' : '#F5F3EF', color: hot && count > 0 ? '#155724' : '#717182', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 600 }}>{count}</span>
                     </button>
                   ))}
                 </div>
-
-                {/* Hot leads hint */}
                 {(recipientFilter === 'opened' || recipientFilter === 'clicked') && filteredRecipients.length > 0 && (
                   <div style={{ background: '#F0F7F0', borderBottom: '1px solid rgba(142,155,139,0.2)', padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 14 }}>🔥</span>
-                    <span style={{ fontSize: 12, color: '#3E6B3E' }}>
-                      These are your warm leads — select them and launch a follow-up campaign directly.
-                    </span>
+                    <span style={{ fontSize: 12, color: '#3E6B3E' }}>These are your warm leads — select them and launch a follow-up campaign directly.</span>
                   </div>
                 )}
-
-                {/* Table */}
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#F5F3EF' }}>
                       <th style={{ padding: '10px 16px', width: 40 }}>
-                        <input type="checkbox"
-                          checked={filteredRecipients.length > 0 && filteredRecipients.every((_, i) => selectedLeads[i])}
-                          onChange={e => {
-                            const all = {};
-                            filteredRecipients.forEach((_, i) => { all[i] = e.target.checked; });
-                            setSelectedLeads(all);
-                          }}
+                        <input type="checkbox" checked={filteredRecipients.length > 0 && filteredRecipients.every((_, i) => selectedLeads[i])}
+                          onChange={e => { const all = {}; filteredRecipients.forEach((_, i) => { all[i] = e.target.checked; }); setSelectedLeads(all); }}
                           style={{ accentColor: '#8E9B8B' }} />
                       </th>
                       {['Company', 'Contact', 'Email', 'Status', 'Delivered', 'Opened', 'Clicked', 'Bounced'].map(h => (
@@ -539,32 +496,18 @@ export default function Marketing() {
                     ) : filteredRecipients.map((r, i) => (
                       <tr key={r.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: selectedLeads[i] ? '#F0F7F0' : i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
                         <td style={{ padding: '12px 16px' }}>
-                          <input type="checkbox" checked={!!selectedLeads[i]}
-                            onChange={e => setSelectedLeads(prev => ({ ...prev, [i]: e.target.checked }))}
-                            style={{ accentColor: '#8E9B8B' }} />
+                          <input type="checkbox" checked={!!selectedLeads[i]} onChange={e => setSelectedLeads(prev => ({ ...prev, [i]: e.target.checked }))} style={{ accentColor: '#8E9B8B' }} />
                         </td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>{r.crm_companies?.company_name || '—'}</td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: '#5A6059' }}>{r.crm_people ? `${r.crm_people.first_name} ${r.crm_people.last_name}` : '—'}</td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: '#717182' }}>{r.email}</td>
                         <td style={{ padding: '12px 16px' }}>
-                          <span style={{
-                            background: r.status === 'clicked' ? '#D4EDDA' : r.status === 'opened' ? '#E8F5E9' : r.status === 'bounced' ? '#F8D7DA' : r.status === 'unsubscribed' ? '#FFE5D0' : '#F5F3EF',
-                            color: r.status === 'clicked' ? '#155724' : r.status === 'opened' ? '#2E7D32' : r.status === 'bounced' ? '#721C24' : r.status === 'unsubscribed' ? '#856404' : '#717182',
-                            borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize',
-                          }}>{r.status}</span>
+                          <span style={{ background: r.status === 'clicked' ? '#D4EDDA' : r.status === 'opened' ? '#E8F5E9' : r.status === 'bounced' ? '#F8D7DA' : r.status === 'unsubscribed' ? '#FFE5D0' : '#F5F3EF', color: r.status === 'clicked' ? '#155724' : r.status === 'opened' ? '#2E7D32' : r.status === 'bounced' ? '#721C24' : r.status === 'unsubscribed' ? '#856404' : '#717182', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{r.status}</span>
                         </td>
-                        <td style={{ padding: '12px 16px', fontSize: 12, color: ['delivered','opened','clicked'].includes(r.status) ? '#2E7D32' : '#AAAABC' }}>
-                          {['delivered','opened','clicked'].includes(r.status) ? '✓' : '—'}
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.opened_at ? '#2E7D32' : '#AAAABC' }}>
-                          {r.opened_at ? new Date(r.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.clicked_at ? '#E65100' : '#AAAABC' }}>
-                          {r.clicked_at ? new Date(r.clicked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
-                        </td>
-                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.status === 'bounced' ? '#D4183D' : '#AAAABC' }}>
-                          {r.status === 'bounced' ? '✗' : '—'}
-                        </td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: ['delivered','opened','clicked'].includes(r.status) ? '#2E7D32' : '#AAAABC' }}>{['delivered','opened','clicked'].includes(r.status) ? '✓' : '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.opened_at ? '#2E7D32' : '#AAAABC' }}>{r.opened_at ? new Date(r.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.clicked_at ? '#E65100' : '#AAAABC' }}>{r.clicked_at ? new Date(r.clicked_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: r.status === 'bounced' ? '#D4183D' : '#AAAABC' }}>{r.status === 'bounced' ? '✗' : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -586,16 +529,11 @@ export default function Marketing() {
           <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 13, cursor: 'pointer', marginBottom: 16, padding: 0 }}>← Back to Campaigns</button>
           <h1 style={{ color: '#3E423D', fontSize: 28, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 32px' }}>New Campaign</h1>
 
-          {/* Step Indicator */}
           <div style={{ display: 'flex', gap: 0, marginBottom: 40 }}>
             {['Content', 'Recipients', 'Review & Send'].map((s, i) => (
               <div key={s} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{
-                    width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: step === i + 1 ? '#8E9B8B' : step > i + 1 ? '#3E423D' : '#D5CEC0',
-                    color: step >= i + 1 ? '#fff' : '#717182', fontSize: 12, fontWeight: 600, flexShrink: 0
-                  }}>{step > i + 1 ? '✓' : i + 1}</div>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: step === i + 1 ? '#8E9B8B' : step > i + 1 ? '#3E423D' : '#D5CEC0', color: step >= i + 1 ? '#fff' : '#717182', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{step > i + 1 ? '✓' : i + 1}</div>
                   <span style={{ fontSize: 13, color: step === i + 1 ? '#3E423D' : '#717182', fontWeight: step === i + 1 ? 600 : 400 }}>{s}</span>
                 </div>
                 {i < 2 && <div style={{ flex: 1, height: 1, background: step > i + 1 ? '#8E9B8B' : '#D5CEC0', margin: '0 12px' }} />}
@@ -603,7 +541,6 @@ export default function Marketing() {
             ))}
           </div>
 
-          {/* Step 1 — Content */}
           {step === 1 && (
             <div style={{ background: '#fff', borderRadius: 12, padding: 32, border: '1px solid rgba(62,66,61,0.1)' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
@@ -654,28 +591,15 @@ export default function Marketing() {
                       <span style={{ fontSize: 11, color: '#717182', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>HTML Code</span>
                     </div>
                     <div style={{ flex: 1, minHeight: 0 }}>
-                      <HtmlEditor
-  value={prettifyHTML(form.body_html)}
-  onChange={val => setForm({ ...form, body_html: val })}
-  minHeight="100%"
-/>
+                      <HtmlEditor value={prettifyHTML(form.body_html)} onChange={val => setForm({ ...form, body_html: val })} minHeight="100%" />
                     </div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 12, padding: '12px 16px', background: '#F5F3EF', borderRadius: 8, border: '1px solid rgba(62,66,61,0.08)' }}>
                   <span style={{ fontSize: 11, color: '#717182', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', marginRight: 4 }}>Merge Tags:</span>
-                  {[
-                    { tag: '{{first_name}}', label: 'First Name' }, { tag: '{{last_name}}', label: 'Last Name' },
-                    { tag: '{{company_name}}', label: 'Company' }, { tag: '{{sender_name}}', label: 'Sender' },
-                    { tag: '{{sender_email}}', label: 'Sender Email' }, { tag: '{{city}}', label: 'City' }, { tag: '{{stage}}', label: 'Stage' },
-                  ].map(({ tag, label }) => (
+                  {[{ tag: '{{first_name}}', label: 'First Name' }, { tag: '{{last_name}}', label: 'Last Name' }, { tag: '{{company_name}}', label: 'Company' }, { tag: '{{sender_name}}', label: 'Sender' }, { tag: '{{sender_email}}', label: 'Sender Email' }, { tag: '{{city}}', label: 'City' }, { tag: '{{stage}}', label: 'Stage' }].map(({ tag, label }) => (
                     <button key={tag}
-                      onClick={() => setForm(prev => {
-                        const current = prev.body_html || '';
-                        const updated = current.replace(/<\/p>\s*$/, tag + '</p>') !== current
-                          ? current.replace(/<\/p>\s*$/, tag + '</p>') : current + tag;
-                        return { ...prev, body_html: updated };
-                      })}
+                      onClick={() => setForm(prev => { const current = prev.body_html || ''; const updated = current.replace(/<\/p>\s*$/, tag + '</p>') !== current ? current.replace(/<\/p>\s*$/, tag + '</p>') : current + tag; return { ...prev, body_html: updated }; })}
                       style={{ background: '#fff', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#5A6059', fontFamily: "'Inter', sans-serif", transition: 'all 0.1s' }}
                       onMouseOver={e => { e.currentTarget.style.background = '#8E9B8B'; e.currentTarget.style.color = '#fff'; }}
                       onMouseOut={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#5A6059'; }}>
@@ -694,7 +618,6 @@ export default function Marketing() {
             </div>
           )}
 
-          {/* Step 2 — Recipients */}
           {step === 2 && (
             <div>
               <div style={{ background: '#fff', borderRadius: 12, padding: 32, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
@@ -703,11 +626,11 @@ export default function Marketing() {
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Source</label>
                     <select value={filters.source} onChange={e => setFilters({ ...filters, source: e.target.value })} style={inputStyle}>
-                    <option value="all">All (Contacts + Clients)</option>
-                    <option value="contacts">Contacts Only</option>
-                    <option value="clients">Clients Only</option>
-                    <option value="waitlist">Waitlist Couples Only</option>
-                  </select>
+                      <option value="all">All (Contacts + Clients)</option>
+                      <option value="contacts">Contacts Only</option>
+                      <option value="clients">Clients Only</option>
+                      <option value="waitlist">Waitlist Couples Only</option>
+                    </select>
                   </div>
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Stage</label>
@@ -731,7 +654,6 @@ export default function Marketing() {
                     <button onClick={fetchRecipients} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>🔍 Apply</button>
                   </div>
                 </div>
-
                 <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16 }}>
                   <div style={{ background: '#D4EDDA', borderRadius: 8, padding: '8px 16px' }}>
                     <span style={{ color: '#155724', fontSize: 13, fontWeight: 600 }}>✅ {loadingRecipients ? '...' : Object.values(selectedRecipients).filter(Boolean).length} of {recipients.length} recipients selected</span>
@@ -742,7 +664,6 @@ export default function Marketing() {
                     </div>
                   )}
                 </div>
-
                 {recipients.length > 0 && (
                   <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8 }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -765,11 +686,7 @@ export default function Marketing() {
                               <input type="checkbox" checked={!!selectedRecipients[i]} onChange={e => setSelectedRecipients(prev => ({ ...prev, [i]: e.target.checked }))} style={{ accentColor: '#8E9B8B' }} />
                             </td>
                             <td style={{ padding: '8px 12px' }}>
-                            <span style={{
-                              background: r.source === 'Client' ? '#D4EDDA' : r.source === 'Waitlist' ? '#F3E8FF' : '#EBF4FF',
-                              color: r.source === 'Client' ? '#155724' : r.source === 'Waitlist' ? '#7C3AED' : '#1a6fad',
-                              fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600
-                            }}>{r.source || 'Contact'}</span>
+                              <span style={{ background: r.source === 'Client' ? '#D4EDDA' : r.source === 'Waitlist' ? '#F3E8FF' : '#EBF4FF', color: r.source === 'Client' ? '#155724' : r.source === 'Waitlist' ? '#7C3AED' : '#1a6fad', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>{r.source || 'Contact'}</span>
                             </td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#3E423D' }}>{r.company_name}</td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#5A6059' }}>{r.first_name} {r.last_name}</td>
@@ -782,7 +699,6 @@ export default function Marketing() {
                   </div>
                 )}
               </div>
-
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <button onClick={() => setStep(1)} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>← Back</button>
                 <button onClick={() => setStep(3)} disabled={Object.values(selectedRecipients).filter(Boolean).length === 0}
@@ -793,18 +709,12 @@ export default function Marketing() {
             </div>
           )}
 
-          {/* Step 3 — Review & Send */}
           {step === 3 && (
             <div>
               <div style={{ background: '#fff', borderRadius: 12, padding: 32, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
                 <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 20px' }}>Campaign Summary</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-                  {[
-                    { label: 'Campaign Name', value: form.name },
-                    { label: 'From', value: `${form.from_name} <${form.from_email}>` },
-                    { label: 'Subject', value: form.subject },
-                    { label: 'Recipients', value: `${Object.values(selectedRecipients).filter(Boolean).length} contacts` },
-                  ].map(({ label, value }) => (
+                  {[{ label: 'Campaign Name', value: form.name }, { label: 'From', value: `${form.from_name} <${form.from_email}>` }, { label: 'Subject', value: form.subject }, { label: 'Recipients', value: `${Object.values(selectedRecipients).filter(Boolean).length} contacts` }].map(({ label, value }) => (
                     <div key={label} style={{ background: '#F5F3EF', borderRadius: 8, padding: 16 }}>
                       <p style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>{label}</p>
                       <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 500, margin: 0 }}>{value}</p>
@@ -855,36 +765,24 @@ export default function Marketing() {
 
         {/* Sub Navigation */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid rgba(62,66,61,0.1)', marginBottom: 24 }}>
-          <button onClick={() => setSubView('campaigns')}
-            style={{ background: 'none', border: 'none', borderBottom: subView === 'campaigns' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'campaigns' ? '#1a1d1a' : '#717182', fontWeight: subView === 'campaigns' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-            Campaigns
+          {[
+            { key: 'campaigns', label: 'Campaigns', onClick: () => setSubView('campaigns') },
+            { key: 'unsubscribed', label: `Unsubscribed${unsubscribed.length > 0 ? ` (${unsubscribed.length})` : ''}`, onClick: () => { setSubView('unsubscribed'); fetchUnsubscribed(); } },
+            { key: 'drip', label: 'Drip Sequences', onClick: () => { setSubView('drip'); fetchDripSequences(); } },
+            { key: 'waitlist', label: 'Waitlist Couples', onClick: () => { setSubView('waitlist'); fetchWaitlist(); } },
+          ].map(({ key, label, onClick }) => (
+            <button key={key} onClick={onClick}
+              style={{ background: 'none', border: 'none', borderBottom: subView === key ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === key ? '#1a1d1a' : '#717182', fontWeight: subView === key ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+              {label}
             </button>
-            <button onClick={() => { setSubView('unsubscribed'); fetchUnsubscribed(); }}
-            style={{ background: 'none', border: 'none', borderBottom: subView === 'unsubscribed' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'unsubscribed' ? '#1a1d1a' : '#717182', fontWeight: subView === 'unsubscribed' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-            Unsubscribed {unsubscribed.length > 0 && <span style={{ background: '#D4183D', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10, marginLeft: 4 }}>{unsubscribed.length}</span>}
-          </button>
-          <button onClick={() => { setSubView('drip'); fetchDripSequences(); }}
-            style={{ background: 'none', border: 'none', borderBottom: subView === 'drip' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'drip' ? '#1a1d1a' : '#717182', fontWeight: subView === 'drip' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-            Drip Sequences
-          </button>
-          <button onClick={() => { setSubView('waitlist'); fetchWaitlist(); }}
-            style={{ background: 'none', border: 'none', borderBottom: subView === 'waitlist' ? '2px solid #8E9B8B' : '2px solid transparent', padding: '10px 20px', fontSize: 13, color: subView === 'waitlist' ? '#1a1d1a' : '#717182', fontWeight: subView === 'waitlist' ? 600 : 400, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-            Waitlist Couples
-          </button>
+          ))}
         </div>
 
-        {/* Campaigns View */}
+        {/* ─── CAMPAIGNS VIEW ─────────────────────────────────────────────── */}
         {subView === 'campaigns' && (<>
-          {/* Global Stats */}
           {globalStats && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 32 }}>
-              {[
-                { label: 'Total Campaigns', value: globalStats.total_campaigns, icon: '📣' },
-                { label: 'Total Sent', value: globalStats.total_sent, icon: '📤' },
-                { label: 'Avg Open Rate', value: `${globalStats.avg_open_rate}%`, icon: '👁' },
-                { label: 'Avg CTR', value: `${globalStats.avg_ctr}%`, icon: '🖱' },
-                { label: 'Unsubscribed', value: globalStats.total_unsubscribed, icon: '🚫' },
-              ].map(({ label, value, icon }) => (
+              {[{ label: 'Total Campaigns', value: globalStats.total_campaigns, icon: '📣' }, { label: 'Total Sent', value: globalStats.total_sent, icon: '📤' }, { label: 'Avg Open Rate', value: `${globalStats.avg_open_rate}%`, icon: '👁' }, { label: 'Avg CTR', value: `${globalStats.avg_ctr}%`, icon: '🖱' }, { label: 'Unsubscribed', value: globalStats.total_unsubscribed, icon: '🚫' }].map(({ label, value, icon }) => (
                 <div key={label} style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', textAlign: 'center' }}>
                   <div style={{ fontSize: 24, marginBottom: 8 }}>{icon}</div>
                   <p style={{ color: '#3E423D', fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>{value}</p>
@@ -893,8 +791,6 @@ export default function Marketing() {
               ))}
             </div>
           )}
-
-          {/* Campaign List */}
           {loading ? (
             <p style={{ color: '#717182' }}>Loading...</p>
           ) : campaigns.length === 0 ? (
@@ -916,8 +812,7 @@ export default function Marketing() {
                 </thead>
                 <tbody>
                   {campaigns.map((c, i) => (
-                    <tr key={c.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9', cursor: 'pointer' }}
-                      onClick={() => openCampaign(c)}>
+                    <tr key={c.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9', cursor: 'pointer' }} onClick={() => openCampaign(c)}>
                       <td style={{ padding: '14px 16px' }}>
                         <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 500, margin: '0 0 2px' }}>{c.name}</p>
                         <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>By {c.crm_users?.name}</p>
@@ -926,12 +821,8 @@ export default function Marketing() {
                         <span style={{ background: STATUS_COLORS[c.status]?.bg, color: STATUS_COLORS[c.status]?.color, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{c.status}</span>
                       </td>
                       <td style={{ padding: '14px 16px', fontSize: 13, color: '#5A6059' }}>{c.stats?.sent || 0}</td>
-                      <td style={{ padding: '14px 16px', fontSize: 13, color: c.stats?.open_rate >= 30 ? '#8E9B8B' : '#3E423D', fontWeight: c.stats?.open_rate >= 30 ? 600 : 400 }}>
-                        {c.status === 'sent' ? `${c.stats?.open_rate || 0}%` : '—'}
-                      </td>
-                      <td style={{ padding: '14px 16px', fontSize: 13, color: c.stats?.ctr >= 2 ? '#8E9B8B' : '#3E423D', fontWeight: c.stats?.ctr >= 2 ? 600 : 400 }}>
-                        {c.status === 'sent' ? `${c.stats?.ctr || 0}%` : '—'}
-                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: 13, color: c.stats?.open_rate >= 30 ? '#8E9B8B' : '#3E423D', fontWeight: c.stats?.open_rate >= 30 ? 600 : 400 }}>{c.status === 'sent' ? `${c.stats?.open_rate || 0}%` : '—'}</td>
+                      <td style={{ padding: '14px 16px', fontSize: 13, color: c.stats?.ctr >= 2 ? '#8E9B8B' : '#3E423D', fontWeight: c.stats?.ctr >= 2 ? 600 : 400 }}>{c.status === 'sent' ? `${c.stats?.ctr || 0}%` : '—'}</td>
                       <td style={{ padding: '14px 16px', fontSize: 12, color: '#717182' }}>{c.sent_at ? new Date(c.sent_at).toLocaleDateString() : '—'}</td>
                       <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
                         {c.status === 'draft' && canSend && (
@@ -946,18 +837,15 @@ export default function Marketing() {
           )}
         </>)}
 
-{/* Drip Sequences View */}
-{subView === 'drip' && (
+        {/* ─── DRIP SEQUENCES VIEW ────────────────────────────────────────── */}
+        {subView === 'drip' && (
           <div style={{ display: 'flex', gap: 20, height: 'calc(100vh - 220px)' }}>
-
             {/* Left — sequence list */}
             <div style={{ width: 280, flexShrink: 0, background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ color: '#1a1d1a', fontSize: 14, fontWeight: 600, margin: 0 }}>Sequences</h3>
-                <button onClick={() => setShowNewSequence(true)}
-                  style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>+ New</button>
+                <button onClick={() => setShowNewSequence(true)} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>+ New</button>
               </div>
-
               {showNewSequence && (
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(62,66,61,0.08)', background: '#F5F3EF' }}>
                   <input value={newSequenceName} onChange={e => setNewSequenceName(e.target.value)}
@@ -971,7 +859,6 @@ export default function Marketing() {
                   </div>
                 </div>
               )}
-
               <div style={{ flex: 1, overflowY: 'auto' }}>
                 {loadingDrip ? (
                   <p style={{ color: '#717182', fontSize: 12, padding: 20, textAlign: 'center' }}>Loading...</p>
@@ -981,8 +868,7 @@ export default function Marketing() {
                     <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>No sequences yet</p>
                   </div>
                 ) : dripSequences.map(seq => (
-                  <div key={seq.id}
-                    onClick={() => { setSelectedSequence(seq); fetchDripSteps(seq.id); }}
+                  <div key={seq.id} onClick={() => { setSelectedSequence(seq); fetchDripSteps(seq.id); }}
                     style={{ padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid rgba(62,66,61,0.05)', background: selectedSequence?.id === seq.id ? '#F0F4F0' : 'transparent', borderLeft: selectedSequence?.id === seq.id ? '3px solid #8E9B8B' : '3px solid transparent' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
@@ -992,11 +878,9 @@ export default function Marketing() {
                           <span style={{ fontSize: 10, color: '#717182' }}>{seq.enrollment_count} active</span>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div onClick={e => { e.stopPropagation(); toggleSequenceActive(seq); }}
-                          style={{ width: 28, height: 16, borderRadius: 8, background: seq.active ? '#8E9B8B' : '#D5CEC0', cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
-                          <div style={{ position: 'absolute', top: 2, left: seq.active ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
-                        </div>
+                      <div onClick={e => { e.stopPropagation(); toggleSequenceActive(seq); }}
+                        style={{ width: 28, height: 16, borderRadius: 8, background: seq.active ? '#8E9B8B' : '#D5CEC0', cursor: 'pointer', position: 'relative', flexShrink: 0 }}>
+                        <div style={{ position: 'absolute', top: 2, left: seq.active ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
                       </div>
                     </div>
                   </div>
@@ -1017,19 +901,14 @@ export default function Marketing() {
                   <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                     <div>
                       <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: '0 0 2px' }}>{selectedSequence.name}</h3>
-                      <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>
-                        Audience: Waitlist Couples · {dripSteps.length} steps · {selectedSequence.enrollment_count} enrolled
-                      </p>
+                      <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>Audience: Waitlist Couples · {dripSteps.length} steps · {selectedSequence.enrollment_count} enrolled</p>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { setEditingStep(null); setStepForm({ delay_days: 3, subject: '', body_html: '', design_template_id: '', active: true }); setShowDripEditor(true); }}
+                      <button onClick={() => { setEditingStep(null); setStepForm({ delay_days: 3, subject: '', body_html: '', design_template_id: '', active: true }); setShowDripEditor(true); fetchDesignPreview(''); }}
                         style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer' }}>
                         + Add Step
                       </button>
-                      <button onClick={() => deleteSequence(selectedSequence.id)}
-                        style={{ background: '#fdf0f0', color: '#D4183D', border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>
-                        Delete
-                      </button>
+                      <button onClick={() => deleteSequence(selectedSequence.id)} style={{ background: '#fdf0f0', color: '#D4183D', border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>Delete</button>
                     </div>
                   </div>
 
@@ -1039,45 +918,48 @@ export default function Marketing() {
                         <p style={{ fontSize: 32, marginBottom: 8 }}>📧</p>
                         <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 500, margin: '0 0 4px' }}>No steps yet</p>
                         <p style={{ color: '#717182', fontSize: 12, margin: '0 0 16px' }}>Add your first email step</p>
-                        <button onClick={() => { setEditingStep(null); setStepForm({ delay_days: 3, subject: '', body_html: '', design_template_id: '', active: true }); setShowDripEditor(true); }}
+                        <button onClick={() => { setEditingStep(null); setStepForm({ delay_days: 3, subject: '', body_html: '', design_template_id: '', active: true }); setShowDripEditor(true); fetchDesignPreview(''); }}
                           style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>
                           + Add First Step
                         </button>
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {dripSteps.map((step, i) => (
-                          <div key={step.id}>
-                            {/* Connector line */}
+                        {dripSteps.map((s, i) => (
+                          <div key={s.id}>
                             {i > 0 && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 20px', marginBottom: 4 }}>
                                 <div style={{ width: 1, height: 24, background: '#D5CEC0', marginLeft: 11 }} />
-                                <span style={{ fontSize: 10, color: '#AAAABC' }}>+{step.delay_days} day{step.delay_days !== 1 ? 's' : ''} after previous</span>
+                                <span style={{ fontSize: 10, color: '#AAAABC' }}>+{s.delay_days} day{s.delay_days !== 1 ? 's' : ''} after previous</span>
                               </div>
                             )}
-                            <div style={{ background: step.active ? '#fff' : '#FAFAF9', borderRadius: 10, border: `1px solid ${step.active ? 'rgba(142,155,139,0.2)' : 'rgba(62,66,61,0.08)'}`, padding: '16px 20px', opacity: step.active ? 1 : 0.6 }}>
+                            <div style={{ background: s.active ? '#fff' : '#FAFAF9', borderRadius: 10, border: `1px solid ${s.active ? 'rgba(142,155,139,0.2)' : 'rgba(62,66,61,0.08)'}`, padding: '16px 20px', opacity: s.active ? 1 : 0.6 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                    <span style={{ background: '#8E9B8B', color: '#fff', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{step.step_number}</span>
-                                    <span style={{ color: '#717182', fontSize: 11 }}>
-                                      {i === 0 ? `Send ${step.delay_days} day${step.delay_days !== 1 ? 's' : ''} after signup` : `Send ${step.delay_days} day${step.delay_days !== 1 ? 's' : ''} after previous`}
-                                    </span>
+                                    <span style={{ background: '#8E9B8B', color: '#fff', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{s.step_number}</span>
+                                    <span style={{ color: '#717182', fontSize: 11 }}>{i === 0 ? `Send ${s.delay_days} day${s.delay_days !== 1 ? 's' : ''} after signup` : `Send ${s.delay_days} day${s.delay_days !== 1 ? 's' : ''} after previous`}</span>
                                   </div>
-                                  <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 600, margin: '0 0 2px' }}>{step.subject || '— No subject —'}</p>
-                                  <p style={{ color: '#AAAABC', fontSize: 11, margin: 0 }}>
-                                    {step.crm_email_design_templates?.name || 'No design template'}
-                                  </p>
+                                  <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 600, margin: '0 0 2px' }}>{s.subject || '— No subject —'}</p>
+                                  <p style={{ color: '#AAAABC', fontSize: 11, margin: 0 }}>{s.crm_email_design_templates?.name || 'No design template'}</p>
+                                  {stepStats[s.id] && stepStats[s.id].sent > 0 && (
+                                    <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                                      {[{ label: 'Sent', value: stepStats[s.id].sent, color: '#717182' }, { label: 'Opened', value: `${stepStats[s.id].opened} (${stepStats[s.id].open_rate}%)`, color: '#8E9B8B' }, { label: 'Clicked', value: stepStats[s.id].clicked, color: '#4A7CC7' }, { label: 'Bounced', value: stepStats[s.id].bounced, color: '#D4183D' }].map(({ label, value, color }) => (
+                                        <div key={label} style={{ textAlign: 'center' }}>
+                                          <p style={{ color, fontSize: 12, fontWeight: 600, margin: '0 0 1px' }}>{value}</p>
+                                          <p style={{ color: '#AAAABC', fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                                  <div onClick={() => toggleStepActive(step)}
-                                    style={{ width: 28, height: 16, borderRadius: 8, background: step.active ? '#8E9B8B' : '#D5CEC0', cursor: 'pointer', position: 'relative' }}>
-                                    <div style={{ position: 'absolute', top: 2, left: step.active ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
+                                  <div onClick={() => toggleStepActive(s)} style={{ width: 28, height: 16, borderRadius: 8, background: s.active ? '#8E9B8B' : '#D5CEC0', cursor: 'pointer', position: 'relative' }}>
+                                    <div style={{ position: 'absolute', top: 2, left: s.active ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
                                   </div>
-                                  <button onClick={() => { setEditingStep(step); setStepForm({ delay_days: step.delay_days, subject: step.subject || '', body_html: step.body_html || '', design_template_id: step.design_template_id || '', active: step.active }); setShowDripEditor(true); }}
+                                  <button onClick={() => { setEditingStep(s); setStepForm({ delay_days: s.delay_days, subject: s.subject || '', body_html: s.body_html || '', design_template_id: s.design_template_id || '', active: s.active }); setShowDripEditor(true); fetchDesignPreview(s.design_template_id); }}
                                     style={{ background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#3E423D' }}>✏️ Edit</button>
-                                  <button onClick={() => deleteStep(step.id)}
-                                    style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
+                                  <button onClick={() => deleteStep(s.id)} style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
                                 </div>
                               </div>
                             </div>
@@ -1092,10 +974,10 @@ export default function Marketing() {
           </div>
         )}
 
-        {/* Drip Step Editor Modal */}
+        {/* ─── DRIP STEP EDITOR MODAL ─────────────────────────────────────── */}
         {showDripEditor && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: '#fff', borderRadius: 16, width: '90vw', maxWidth: 800, height: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
+            <div style={{ background: '#fff', borderRadius: 16, width: '95vw', maxWidth: 1200, height: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
               <div style={{ padding: '20px 28px', borderBottom: '1px solid rgba(62,66,61,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                 <h2 style={{ color: '#3E423D', fontSize: 18, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>
                   {editingStep ? 'Edit Step' : 'New Step'} — {selectedSequence?.name}
@@ -1109,50 +991,66 @@ export default function Marketing() {
                     style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>✕</button>
                 </div>
               </div>
-              <div style={{ flex: 1, overflow: 'auto', padding: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div>
-                    <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Send after (days)</label>
-                    <input type="number" min="1" value={stepForm.delay_days}
-                      onChange={e => setStepForm(prev => ({ ...prev, delay_days: parseInt(e.target.value) || 1 }))}
-                      style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
-                    <p style={{ color: '#AAAABC', fontSize: 11, margin: '4px 0 0' }}>Days after signup (step 1) or previous step</p>
+
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+                {/* Left — editor */}
+                <div style={{ flex: 1, overflow: 'auto', padding: 28, display: 'flex', flexDirection: 'column', gap: 16, borderRight: '1px solid rgba(62,66,61,0.08)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                    <div>
+                      <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Send after (days)</label>
+                      <input type="number" min="1" value={stepForm.delay_days}
+                        onChange={e => setStepForm(prev => ({ ...prev, delay_days: parseInt(e.target.value) || 1 }))}
+                        style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                      <p style={{ color: '#AAAABC', fontSize: 11, margin: '4px 0 0' }}>Days after signup (step 1) or previous step</p>
+                    </div>
+                    <div>
+                      <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Design Template</label>
+                      <select value={stepForm.design_template_id || ''}
+                        onChange={e => { setStepForm(prev => ({ ...prev, design_template_id: e.target.value })); fetchDesignPreview(e.target.value); }}
+                        style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none' }}>
+                        <option value="">— Default Transactional —</option>
+                        {designTemplates.filter(d => d.active).map(d => <option key={d.id} value={d.id}>{d.name} ({d.type})</option>)}
+                      </select>
+                    </div>
                   </div>
                   <div>
-                    <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Design Template</label>
-                    <select value={stepForm.design_template_id || ''} onChange={e => setStepForm(prev => ({ ...prev, design_template_id: e.target.value }))}
-                      style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none' }}>
-                      <option value="">— Default Transactional —</option>
-                      {designTemplates.filter(d => d.active).map(d => <option key={d.id} value={d.id}>{d.name} ({d.type})</option>)}
-                    </select>
+                    <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Subject Line</label>
+                    <input value={stepForm.subject} onChange={e => setStepForm(prev => ({ ...prev, subject: e.target.value }))}
+                      placeholder="e.g. You're on the list ✨"
+                      style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Email Body</label>
+                    <HtmlEditor value={stepForm.body_html} onChange={val => setStepForm(prev => ({ ...prev, body_html: val }))} minHeight="300px" />
                   </div>
                 </div>
-                <div>
-                  <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Subject Line</label>
-                  <input value={stepForm.subject} onChange={e => setStepForm(prev => ({ ...prev, subject: e.target.value }))}
-                    placeholder="e.g. You're on the list ✨"
-                    style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' }} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>Email Body</label>
-                  <HtmlEditor value={stepForm.body_html} onChange={val => setStepForm(prev => ({ ...prev, body_html: val }))} minHeight="300px" />
+
+                {/* Right — live preview */}
+                <div style={{ width: 440, flexShrink: 0, overflow: 'auto', background: '#F5F3EF' }}>
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(62,66,61,0.08)', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <p style={{ color: '#717182', fontSize: 11, margin: 0, textTransform: 'uppercase', letterSpacing: 1 }}>Live Preview</p>
+                    {loadingPreview && <p style={{ color: '#AAAABC', fontSize: 11, margin: 0 }}>Loading...</p>}
+                  </div>
+                  <div style={{ padding: 16 }}>
+                    <div dangerouslySetInnerHTML={{
+                      __html: designPreviewHtml
+                        ? designPreviewHtml
+                            .replace('{{content}}', stepForm.body_html || '<p style="color:#AAAABC;text-align:center;padding:40px;">Start typing to see preview...</p>')
+                            .replace('{{unsubscribe_url}}', '#')
+                        : stepForm.body_html || '<p style="color:#AAAABC;text-align:center;padding:40px;">Start typing to see preview...</p>'
+                    }} />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
-        
-{/* Waitlist View */}
-{subView === 'waitlist' && (
+
+        {/* ─── WAITLIST VIEW ───────────────────────────────────────────────── */}
+        {subView === 'waitlist' && (
           <div>
-            {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-              {[
-                { label: 'Total Subscribers', value: waitlist.length, icon: '💌' },
-                { label: 'Consented', value: waitlist.filter(w => w.marketing_consent).length, icon: '✅' },
-                { label: 'This Week', value: waitlist.filter(w => new Date(w.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length, icon: '📅' },
-                { label: 'Today', value: waitlist.filter(w => new Date(w.created_at).toDateString() === new Date().toDateString()).length, icon: '🌱' },
-              ].map(({ label, value, icon }) => (
+              {[{ label: 'Total Subscribers', value: waitlist.length, icon: '💌' }, { label: 'Consented', value: waitlist.filter(w => w.marketing_consent).length, icon: '✅' }, { label: 'This Week', value: waitlist.filter(w => new Date(w.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length, icon: '📅' }, { label: 'Today', value: waitlist.filter(w => new Date(w.created_at).toDateString() === new Date().toDateString()).length, icon: '🌱' }].map(({ label, value, icon }) => (
                 <div key={label} style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', textAlign: 'center' }}>
                   <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
                   <p style={{ color: '#3E423D', fontSize: 24, fontWeight: 700, margin: '0 0 4px' }}>{value}</p>
@@ -1160,48 +1058,34 @@ export default function Marketing() {
                 </div>
               ))}
             </div>
-
-            {/* Table */}
             <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden' }}>
               <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: 0 }}>
-                  Waitlist Couples ({waitlist.length})
-                </h3>
+                <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: 0 }}>Waitlist Couples ({waitlist.length})</h3>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <input
-                    value={waitlistSearch}
-                    onChange={e => setWaitlistSearch(e.target.value)}
-                    placeholder="Search name or email..."
-                    style={{ background: '#F5F3EF', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '7px 12px', fontSize: 12, outline: 'none', fontFamily: 'Inter, sans-serif', width: 200 }}
-                  />
-                  <button onClick={exportWaitlistCSV}
-                    style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
-                    ⬇ Export CSV
-                  </button>
+                  <input value={waitlistSearch} onChange={e => setWaitlistSearch(e.target.value)} placeholder="Search name or email..."
+                    style={{ background: '#F5F3EF', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '7px 12px', fontSize: 12, outline: 'none', fontFamily: 'Inter, sans-serif', width: 200 }} />
+                  <button onClick={exportWaitlistCSV} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>⬇ Export CSV</button>
                 </div>
               </div>
-
               {loadingWaitlist ? (
                 <div style={{ padding: 40, textAlign: 'center', color: '#717182' }}>Loading...</div>
               ) : waitlist.length === 0 ? (
                 <div style={{ padding: 60, textAlign: 'center', color: '#717182' }}>
                   <p style={{ fontSize: 32, marginBottom: 12 }}>💌</p>
-                  <p style={{ fontSize: 14 }}>No subscribers yet. Share your waitlist link to get started.</p>
+                  <p style={{ fontSize: 14 }}>No subscribers yet.</p>
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: '#F9F9F7' }}>
-                      {['First Name', 'Last Name', 'Email', 'Consent', 'Joined', 'IP Address', 'Actions'].map(h => (
+                        {['First Name', 'Last Name', 'Email', 'Consent', 'Joined', 'IP Address', 'Actions'].map(h => (
                           <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(62,66,61,0.08)' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {waitlist
-                        .filter(w => !waitlistSearch || w.email.toLowerCase().includes(waitlistSearch.toLowerCase()) || (w.name || '').toLowerCase().includes(waitlistSearch.toLowerCase()))
-                        .map((w, i) => (
+                      {waitlist.filter(w => !waitlistSearch || w.email.toLowerCase().includes(waitlistSearch.toLowerCase()) || (w.name || '').toLowerCase().includes(waitlistSearch.toLowerCase())).map((w, i) => (
                         <tr key={w.id} style={{ borderBottom: '1px solid rgba(62,66,61,0.05)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
                           <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{w.first_name || <span style={{ color: '#AAAABC' }}>—</span>}</td>
                           <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D' }}>{w.last_name || <span style={{ color: '#AAAABC' }}>—</span>}</td>
@@ -1211,17 +1095,10 @@ export default function Marketing() {
                               {w.marketing_consent ? '✓ Consented' : '✗ No consent'}
                             </span>
                           </td>
-                          <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>
-                            {new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                          <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', fontFamily: 'monospace' }}>
-                            {w.ip_address || '—'}
-                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', fontFamily: 'monospace' }}>{w.ip_address || '—'}</td>
                           <td style={{ padding: '12px 16px' }}>
-                            <button onClick={() => deleteWaitlistEntry(w.id)}
-                              style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>
-                              Delete
-                            </button>
+                            <button onClick={() => deleteWaitlistEntry(w.id)} style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Delete</button>
                           </td>
                         </tr>
                       ))}
@@ -1232,20 +1109,17 @@ export default function Marketing() {
             </div>
           </div>
         )}
-        {/* Unsubscribed View */}
+
+        {/* ─── UNSUBSCRIBED VIEW ───────────────────────────────────────────── */}
         {subView === 'unsubscribed' && (
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <h3 style={{ color: '#1a1d1a', fontSize: 15, fontWeight: 600, margin: 0 }}>Unsubscribed Contacts ({unsubscribed.length})</h3>
-                <button onClick={exportUnsubscribedCSV}
-                  style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
-                  ⬇ Export CSV
-                </button>
+                <button onClick={exportUnsubscribedCSV} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>⬇ Export CSV</button>
               </div>
               {Object.values(selectedUnsubs).some(Boolean) && (
-                <button onClick={resubscribeBulk}
-                  style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                <button onClick={resubscribeBulk} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
                   Resubscribe {Object.values(selectedUnsubs).filter(Boolean).length} Selected
                 </button>
               )}
@@ -1262,8 +1136,7 @@ export default function Marketing() {
                 <thead>
                   <tr style={{ background: '#F5F3EF' }}>
                     <th style={{ padding: '10px 16px', textAlign: 'left', width: 40 }}>
-                      <input type="checkbox"
-                        checked={Object.values(selectedUnsubs).filter(Boolean).length === unsubscribed.length && unsubscribed.length > 0}
+                      <input type="checkbox" checked={Object.values(selectedUnsubs).filter(Boolean).length === unsubscribed.length && unsubscribed.length > 0}
                         onChange={e => { const all = {}; unsubscribed.forEach(p => { all[p.id] = e.target.checked; }); setSelectedUnsubs(all); }}
                         style={{ accentColor: '#8E9B8B' }} />
                     </th>
@@ -1280,31 +1153,18 @@ export default function Marketing() {
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 13, color: '#1a1d1a', fontWeight: 500 }}>{p.first_name} {p.last_name}</td>
                       <td style={{ padding: '12px 16px', fontSize: 13, color: '#717182' }}>{p.email}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', cursor: 'pointer' }}
-                        onClick={() => p.crm_companies?.id && window.open(`/contacts/${p.crm_companies.id}`, '_blank')}>
-                        {p.crm_companies?.company_name || '—'}
-                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', cursor: 'pointer' }} onClick={() => p.crm_companies?.id && window.open(`/contacts/${p.crm_companies.id}`, '_blank')}>{p.crm_companies?.company_name || '—'}</td>
                       <td style={{ padding: '12px 16px' }}>
                         <span style={{ background: p.crm_companies?.stage === 'Converted' ? '#E3F2FD' : '#F5F3EF', color: p.crm_companies?.stage === 'Converted' ? '#1a6fad' : '#717182', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>
                           {p.crm_companies?.stage === 'Converted' ? 'Client' : 'Contact'}
                         </span>
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>
-                        {p.marketing_unsubscribed_at ? new Date(p.marketing_unsubscribed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', fontFamily: 'monospace' }}>
-                        {p.unsubscribe_ip || '—'}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {p.unsubscribe_user_agent || '—'}
-                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{p.marketing_unsubscribed_at ? new Date(p.marketing_unsubscribed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', fontFamily: 'monospace' }}>{p.unsubscribe_ip || '—'}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.unsubscribe_user_agent || '—'}</td>
                       <td style={{ padding: '12px 16px' }}>
-                        <button onClick={async () => {
-                          try {
-                            await axios.post(`${API}/marketing/resubscribe/${p.id}`, {}, { headers: getHeaders() });
-                            fetchUnsubscribed();
-                          } catch (err) { console.error(err); }
-                        }} style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+                        <button onClick={async () => { try { await axios.post(`${API}/marketing/resubscribe/${p.id}`, {}, { headers: getHeaders() }); fetchUnsubscribed(); } catch (err) { console.error(err); } }}
+                          style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
                           Resubscribe
                         </button>
                       </td>
