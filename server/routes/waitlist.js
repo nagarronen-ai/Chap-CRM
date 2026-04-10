@@ -135,7 +135,6 @@ router.post('/subscribe', async (req, res) => {
       .eq('active', true)
       .eq('audience', 'waitlist');
 
-    console.log('💧 Auto-enroll: found sequences:', activeSequences?.length, seqError?.message);
 
     for (const seq of (activeSequences || [])) {
       const { error: enrollError } = await supabase.from('crm_drip_enrollments').insert([{
@@ -144,7 +143,6 @@ router.post('/subscribe', async (req, res) => {
         first_name: first_name?.trim() || null,
         recipient_type: 'waitlist',
       }]);
-      console.log('💧 Auto-enroll:', normalizedEmail, 'into', seq.id, enrollError?.message || '✓');
     }
 
     res.json({ success: true, message: "You're on the list!" });
