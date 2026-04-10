@@ -113,4 +113,23 @@ router.get('/sequences/:id/enrollments', auth, async (req, res) => {
   res.json(data);
 });
 
+// GET /api/drip/steps/:id/stats
+router.get('/steps/:id/stats', auth, async (req, res) => {
+    const { data, error } = await supabase
+      .from('crm_drip_sends')
+      .select('status, opened_at, clicked_at, bounced_at')
+      .eq('step_id', req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+  
+    const stats = {
+      sent: data?.length || 0,
+      opened: data?.filter(s => s.opened_at).length || 0,
+      clicked: data?.filter(s => s.clicked_at).length || 0,
+      bounced: data?.filter(s => s.bounced_at).length || 0,
+    };
+    stats.open_rate = stats.sent > 0 ? Math.round((stats.opened / stats.sent) * 100) : 0;
+  
+    res.json(stats);
+  });
+
 module.exports = router;
