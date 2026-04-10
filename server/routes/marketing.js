@@ -96,6 +96,20 @@ router.get('/recipients', auth, async (req, res) => {
     }
   }
 
+  const recipientRows = recipients.map(r => {
+    const token = crypto.randomBytes(16).toString('hex');
+    recipientTokens[r.email] = token;
+    return {
+      campaign_id: campaign.id,
+      company_id: r.company_id || null,
+      person_id: r.person_id || null,
+      email: r.email,
+      status: 'pending',
+      unsubscribe_token: token,
+      recipient_type: r.source === 'Waitlist' ? 'waitlist' : 'contact',
+    };
+  });
+
   res.json({ count: recipients.length, recipients });
 });
 
@@ -552,7 +566,7 @@ router.get('/unsubscribe/:token', async (req, res) => {
 
     const { data: recipient } = await supabase
       .from('crm_campaign_recipients')
-      .select('email, campaign_id')
+      .select('email, campaign_id, recipient_type')
       .eq('unsubscribe_token', token)
       .single();
 
@@ -560,17 +574,30 @@ router.get('/unsubscribe/:token', async (req, res) => {
 
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || null;
     const userAgent = req.headers['user-agent'] || null;
+    const now = new Date().toISOString();
 
-    await supabase
-      .from('crm_people')
-      .update({
-        marketing_unsubscribed: true,
-        marketing_unsubscribed_at: new Date().toISOString(),
-        unsubscribe_ip: ip,
-        unsubscribe_user_agent: userAgent,
-        unsubscribe_campaign_id: recipient.campaign_id || null,
-      })
-      .eq('email', recipient.email);
+    if (recipient.recipient_type === 'waitlist') {
+      await supabase
+        .from('waitlist_couples')
+        .update({
+          marketing_consent: false,
+          unsubscribed_at: now,
+          unsubscribe_ip: ip,
+          unsubscribe_user_agent: userAgent,
+        })
+        .eq('email', recipient.email);
+    } else {
+      await supabase
+        .from('crm_people')
+        .update({
+          marketing_unsubscribed: true,
+          marketing_unsubscribed_at: now,
+          unsubscribe_ip: ip,
+          unsubscribe_user_agent: userAgent,
+          unsubscribe_campaign_id: recipient.campaign_id || null,
+        })
+        .eq('email', recipient.email);
+    }
 
     res.send(`
       <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#F5F3EF;">

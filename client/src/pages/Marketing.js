@@ -616,10 +616,11 @@ export default function Marketing() {
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Source</label>
                     <select value={filters.source} onChange={e => setFilters({ ...filters, source: e.target.value })} style={inputStyle}>
-                      <option value="all">All (Contacts + Clients)</option>
-                      <option value="contacts">Contacts Only</option>
-                      <option value="clients">Clients Only</option>
-                    </select>
+                    <option value="all">All (Contacts + Clients)</option>
+                    <option value="contacts">Contacts Only</option>
+                    <option value="clients">Clients Only</option>
+                    <option value="waitlist">Waitlist Couples Only</option>
+                  </select>
                   </div>
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Stage</label>
@@ -677,7 +678,11 @@ export default function Marketing() {
                               <input type="checkbox" checked={!!selectedRecipients[i]} onChange={e => setSelectedRecipients(prev => ({ ...prev, [i]: e.target.checked }))} style={{ accentColor: '#8E9B8B' }} />
                             </td>
                             <td style={{ padding: '8px 12px' }}>
-                              <span style={{ background: r.source === 'Client' ? '#D4EDDA' : '#EBF4FF', color: r.source === 'Client' ? '#155724' : '#1a6fad', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>{r.source || 'Contact'}</span>
+                            <span style={{
+                              background: r.source === 'Client' ? '#D4EDDA' : r.source === 'Waitlist' ? '#F3E8FF' : '#EBF4FF',
+                              color: r.source === 'Client' ? '#155724' : r.source === 'Waitlist' ? '#7C3AED' : '#1a6fad',
+                              fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600
+                            }}>{r.source || 'Contact'}</span>
                             </td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#3E423D' }}>{r.company_name}</td>
                             <td style={{ padding: '8px 12px', fontSize: 13, color: '#5A6059' }}>{r.first_name} {r.last_name}</td>
