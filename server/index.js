@@ -133,6 +133,24 @@ const runDrip = async () => {
 setTimeout(runDrip, 60 * 1000); // first run 60s after startup
 setInterval(runDrip, 60 * 60 * 1000); // then every hour
 
+// ─── RAG INGESTION (every 6 hours) ───────────────────────────────────────────
+const { runFullIngestion } = require('./services/ragIngestion');
+let ragRunning = false;
+
+const runRag = async () => {
+  if (ragRunning) return;
+  ragRunning = true;
+  try {
+    await runFullIngestion();
+  } catch (err) {
+    console.error('RAG ingestion error:', err.message);
+  }
+  ragRunning = false;
+};
+
+setTimeout(runRag, 2 * 60 * 1000); // first run 2 minutes after startup
+setInterval(runRag, 6 * 60 * 60 * 1000); // then every 6 hours
+
 // ─── START SERVER ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

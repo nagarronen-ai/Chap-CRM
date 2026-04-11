@@ -115,6 +115,22 @@ const toolDefinitions = [
   {
     type: 'function',
     function: {
+      name: 'search_memory',
+      description: 'Semantic search over all CRM history — emails, notes, meetings, thoughts, sent emails. Use when the user asks about past interactions, what was discussed, what happened with a contact, or anything that requires searching historical context. Examples: "what did QualifAI say about pricing?", "did we ever discuss partnerships?", "what were my thoughts on the Houston campaign?"',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Natural language search query' },
+          source: { type: 'string', description: 'Optional — filter by source: crm_synced_emails, crm_activity, crm_thoughts, crm_emails_sent, crm_meetings', },
+        },
+        required: ['query'],
+      },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
       name: 'get_stale_leads',
       description: 'Get contacts/companies with no activity in the last X days',
       parameters: {
@@ -452,7 +468,7 @@ async function executeTool(toolName, args, userId) {
     case 'get_all_campaigns': return await getAllCampaigns();
     case 'get_waitlist_stats': return await getWaitlistStats();
     case 'get_waitlist_list': return await getWaitlistList(args.limit || 20);
-    case 'search_conversation_history': return await searchConversationHistory(userId, args.query, args.date_hint);
+    case 'search_memory': return await searchMemory(args.query, args.source);
     case 'get_campaign_stats': return await getCampaignStats(userId, args.campaign_name);
     case 'add_note': return await addNote(userId, args.entity_type, args.entity_id, args.note);
     case 'update_pipeline_stage': return await updatePipelineStage(userId, args.company_id, args.stage);
@@ -621,6 +637,35 @@ async function searchConversationHistory(userId, query, dateHint) {
     count: matches.length,
     conversations: matches.slice(0, 5), // Return top 5 matches
   };
+}
+
+async function searchMemory(query, source = null) {
+  const { searchMemory: ragSearch } = require('./ragSearch');
+  try {
+    const results = await ragSearch(query, {
+      matchThreshold: 0.5,
+      matchCount: 8,
+      sourceTable: source || null,
+    });
+
+    if (!results || results.length === 0) {
+      return { found: false, message: 'No relevant memory found for that query.' };
+    }
+
+    return {
+      found: true,
+      count: results.length,
+      results: results.map(r => ({
+        source: r.source,
+        text: r.text,
+        metadata: r.metadata,
+        similarity: r.similarity,
+      })),
+    };
+  } catch (err) {
+    console.error('search_memory error:', err.message);
+    return { error: err.message };
+  }
 }
 
 async function getWaitlistStats() {

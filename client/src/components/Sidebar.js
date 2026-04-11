@@ -5,7 +5,7 @@ import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 
 export default function Sidebar() {
-  const APP_VERSION = 'v1.9.1';
+  const APP_VERSION = 'v2.0';
   const navigate = useNavigate();
   const location = useLocation();
   const { can, role } = useRole();
