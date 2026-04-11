@@ -45,13 +45,29 @@ router.put('/sequences/:id', auth, async (req, res) => {
 });
 
 router.delete('/sequences/:id', auth, async (req, res) => {
-  const { error } = await supabase
-    .from('crm_drip_sequences')
-    .delete()
-    .eq('id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
-});
+    const id = req.params.id;
+  
+    // Delete child rows first to avoid FK constraint errors
+    const { data: steps } = await supabase
+      .from('crm_drip_steps')
+      .select('id')
+      .eq('sequence_id', id);
+  
+    for (const step of (steps || [])) {
+      await supabase.from('crm_drip_sends').delete().eq('step_id', step.id);
+    }
+  
+    await supabase.from('crm_drip_enrollments').delete().eq('sequence_id', id);
+    await supabase.from('crm_drip_steps').delete().eq('sequence_id', id);
+  
+    const { error } = await supabase
+      .from('crm_drip_sequences')
+      .delete()
+      .eq('id', id);
+  
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  });
 
 // ─── STEPS ────────────────────────────────────────────────────────────────────
 
