@@ -9,6 +9,8 @@ const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 // ─── HELPER: SEND CONFIRMATION EMAIL ─────────────────────────────────────────
 
 async function sendConfirmationEmail(email, first_name) {
+  const { randomUUID } = require('crypto');
+  const messageRef = randomUUID();
   try {
     // Fetch the Waitlist Confirmation template from CRM
     const { data: template } = await supabase
@@ -53,7 +55,10 @@ async function sendConfirmationEmail(email, first_name) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        personalizations: [{ to: [{ email, name: first_name || '' }] }],
+        personalizations: [{
+          to: [{ email, name: first_name || '' }],
+          custom_args: { message_ref: messageRef },
+        }],
         from: { email: 'noreply@planfor.io', name: 'Planfor' },
         reply_to: { email: 'hello@planfor.io', name: 'Planfor' },
         subject,
@@ -69,12 +74,19 @@ async function sendConfirmationEmail(email, first_name) {
       }),
     });
 
+    console.log('SendGrid response status:', res.status);
     if (!res.ok) {
       const err = await res.text();
       console.error('SendGrid confirmation email error:', err);
+      return null;
     }
+
+    console.log('SendGrid messageRef saved:', messageRef);
+    return messageRef;
+
   } catch (err) {
     console.error('sendConfirmationEmail error:', err.message);
+    return null;
   }
 }
 
@@ -124,9 +136,20 @@ router.post('/subscribe', async (req, res) => {
       return res.status(500).json({ error: 'Something went wrong. Please try again.' });
     }
 
-    // Send confirmation email (async — don't block response)
-    sendConfirmationEmail(normalizedEmail, first_name)
-      .catch(err => console.error('Confirmation email error:', err.message));
+    // Send confirmation email and capture message ID
+    let sgMessageId = null;
+    try {
+      sgMessageId = await sendConfirmationEmail(normalizedEmail, first_name);
+    } catch (err) {
+      console.error('Confirmation email error:', err.message);
+    }
+
+    if (sgMessageId) {
+      await supabase
+        .from('waitlist_couples')
+        .update({ sendgrid_message_id: sgMessageId, email_status: 'pending' })
+        .eq('email', normalizedEmail);
+    }
 
     // Auto-enroll in active drip sequences
     const { data: activeSequences, error: seqError } = await supabase
