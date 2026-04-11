@@ -365,12 +365,12 @@ router.post('/webhook', async (req, res) => {
     return res.sendStatus(400);
   }
 
-  console.log('📣 Marketing webhook hit:', JSON.stringify(events).slice(0, 200));
+  console.log('📣 Marketing webhook hit:', JSON.stringify(events).slice(0, 500));
 
   if (!Array.isArray(events)) return res.sendStatus(200);
 
   for (const event of events) {
-    const { campaign_id, company_id, email, email_type, user_id, event: eventType, timestamp, sg_message_id } = event;
+    const { campaign_id, company_id, email, email_type, user_id, event: eventType, timestamp, sg_message_id, custom_args } = event;
 
 // Handle drip email events
 if (!campaign_id && email_type === 'drip') {
@@ -396,6 +396,32 @@ if (!campaign_id && email_type === 'drip') {
         .order('sent_at', { ascending: false })
         .limit(1);
     }
+  }
+  continue;
+}
+
+// Handle waitlist confirmation email events
+const { message_ref } = event.custom_args || {};
+if (message_ref && !campaign_id && email_type !== 'drip' && email_type !== 'direct') {
+  const eventTime = new Date(timestamp * 1000).toISOString();
+  const updateData = {};
+
+  if (eventType === 'delivered') {
+    updateData.email_status = 'delivered';
+    updateData.email_delivered_at = eventTime;
+  } else if (eventType === 'open') {
+    updateData.email_status = 'opened';
+    updateData.email_opened_at = eventTime;
+  } else if (eventType === 'bounce') {
+    updateData.email_status = 'bounced';
+    updateData.email_bounced_at = eventTime;
+  }
+
+  if (Object.keys(updateData).length > 0) {
+    await supabase
+      .from('waitlist_couples')
+      .update(updateData)
+      .eq('sendgrid_message_id', message_ref);
   }
   continue;
 }

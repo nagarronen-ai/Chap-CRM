@@ -1079,7 +1079,7 @@ export default function Marketing() {
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: '#F9F9F7' }}>
-                        {['First Name', 'Last Name', 'Email', 'Consent', 'Joined', 'IP Address', 'Actions'].map(h => (
+                      {['First Name', 'Last Name', 'Email', 'Consent', 'Email Status', 'Joined', 'IP Address', 'Actions'].map(h => (
                           <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(62,66,61,0.08)' }}>{h}</th>
                         ))}
                       </tr>
@@ -1094,6 +1094,16 @@ export default function Marketing() {
                             <span style={{ background: w.marketing_consent ? '#E8F5E9' : '#FFEBEE', color: w.marketing_consent ? '#2E7D32' : '#D4183D', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>
                               {w.marketing_consent ? '✓ Consented' : '✗ No consent'}
                             </span>
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                            {(() => {
+                              const s = w.email_status;
+                              if (!s || s === 'pending') return <span style={{ background: '#F5F3EF', color: '#717182', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>⏳ Pending</span>;
+                              if (s === 'delivered') return <span style={{ background: '#E8F5E9', color: '#2E7D32', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>✅ Delivered</span>;
+                              if (s === 'opened') return <span style={{ background: '#E8F0FE', color: '#1a6fad', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>📬 Opened</span>;
+                              if (s === 'bounced') return <span style={{ background: '#FFEBEE', color: '#D4183D', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>❌ Bounced</span>;
+                              return <span style={{ background: '#F5F3EF', color: '#717182', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{s}</span>;
+                            })()}
                           </td>
                           <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{new Date(w.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                           <td style={{ padding: '12px 16px', fontSize: 11, color: '#AAAABC', fontFamily: 'monospace' }}>{w.ip_address || '—'}</td>
