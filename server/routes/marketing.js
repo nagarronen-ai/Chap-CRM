@@ -370,7 +370,7 @@ router.post('/webhook', async (req, res) => {
   if (!Array.isArray(events)) return res.sendStatus(200);
 
   for (const event of events) {
-    const { campaign_id, company_id, email, email_type, user_id, event: eventType, timestamp, sg_message_id, custom_args } = event;
+    const { campaign_id, company_id, email, email_type, user_id, event: eventType, timestamp, sg_message_id, custom_args, message_ref: topLevelMessageRef } = event;
 
 // Handle drip email events
 if (!campaign_id && email_type === 'drip') {
@@ -401,8 +401,8 @@ if (!campaign_id && email_type === 'drip') {
 }
 
 // Handle waitlist confirmation email events
-const { message_ref } = event.custom_args || {};
-if (message_ref && !campaign_id && email_type !== 'drip' && email_type !== 'direct') {
+const message_ref = topLevelMessageRef || (custom_args && custom_args.message_ref);
+    if (message_ref && !campaign_id && email_type !== 'drip' && email_type !== 'direct') {
   const eventTime = new Date(timestamp * 1000).toISOString();
   const updateData = {};
 
