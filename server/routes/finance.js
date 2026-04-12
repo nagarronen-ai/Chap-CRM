@@ -179,4 +179,24 @@ router.delete('/expenses/:id', auth, checkPermission('finance:general'), async (
   }
 });
 
+// POST /api/finance/invoices/parse — parse invoice with Claude Vision
+router.post('/invoices/parse', auth, checkPermission('finance:general'), async (req, res) => {
+  try {
+    const multer = require('multer');
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).single('invoice');
+
+    upload(req, res, async (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      const { parseInvoice } = require('../services/invoiceParser');
+      const result = await parseInvoice(req.file.buffer, req.file.mimetype);
+      res.json(result);
+    });
+  } catch (err) {
+    console.error('Invoice parse error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -34,6 +34,7 @@ app.use('/api/waitlist', require('./routes/waitlist'));
 app.use('/api/design-templates', require('./routes/designTemplates'));
 app.use('/api/drip', require('./routes/drip'));
 app.use('/api/roles', require('./routes/roles'));
+app.use('/api/insights', require('./routes/insights'));
 
 
 
@@ -151,6 +152,24 @@ const runRag = async () => {
 
 setTimeout(runRag, 2 * 60 * 1000); // first run 2 minutes after startup
 setInterval(runRag, 6 * 60 * 60 * 1000); // then every 6 hours
+
+// ─── TEAM SUPERBRAIN (daily) ──────────────────────────────────────────────────
+const { generateTeamInsight } = require('./services/teamBrain');
+let teamBrainRunning = false;
+
+const runTeamBrain = async () => {
+  if (teamBrainRunning) return;
+  teamBrainRunning = true;
+  try {
+    await generateTeamInsight();
+  } catch (err) {
+    console.error('Team Superbrain error:', err.message);
+  }
+  teamBrainRunning = false;
+};
+
+setTimeout(runTeamBrain, 5 * 60 * 1000); // first run 5 min after startup
+setInterval(runTeamBrain, 24 * 60 * 60 * 1000); // then every 24 hours
 
 // ─── START SERVER ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
+import { useRole } from '../hooks/useRole';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
@@ -33,9 +34,11 @@ export default function Dashboard() {
   const [thoughtsCount, setThoughtsCount] = useState(0);
   const [campaignStats, setCampaignStats] = useState([]);
   const [savingCompletion, setSavingCompletion] = useState(false);
+  const [teamInsight, setTeamInsight] = useState(null);
+  const [generatingInsight, setGeneratingInsight] = useState(false);
   const navigate = useNavigate();
+  const { role } = useRole();
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData(); }, []);
 
@@ -50,6 +53,10 @@ export default function Dashboard() {
     } catch (err) { console.error(err); }
 
     try { const res = await axios.get(`${API}/clients`, { headers: getHeaders() }); setClients(res.data); } catch (err) {}
+    try {
+      const insightRes = await axios.get(`${API}/insights/latest`, { headers: getHeaders() });
+      setTeamInsight(insightRes.data);
+    } catch (err) { console.error(err); }
     try {
       const res = await axios.get(`${API}/emails/sent`, { headers: getHeaders() });
       const emails = res.data.filter(e => e.status === 'sent');
@@ -441,6 +448,48 @@ export default function Dashboard() {
             </div>
           </div>
 
+        </div>
+
+        {/* Team Superbrain */}
+        <div style={{ background: 'linear-gradient(135deg, #3E423D 0%, #5A6059 100%)', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)', marginBottom: 20, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: -20, right: -20, fontSize: 80, opacity: 0.06 }}>🧠</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 16 }}>🧠</span>
+                <h3 style={{ color: '#fff', fontSize: 14, fontWeight: 600, margin: 0 }}>Team Superbrain</h3>
+                {teamInsight && (
+                  <span style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', fontSize: 10, borderRadius: 20, padding: '2px 8px' }}>
+                    {new Date(teamInsight.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+              </div>
+              {teamInsight && (
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, margin: 0 }}>
+                  From {teamInsight.thought_count} thoughts · {teamInsight.user_count} {teamInsight.user_count === 1 ? 'contributor' : 'contributors'}
+                </p>
+              )}
+            </div>
+            {role === 'admin' && (
+              <button onClick={async () => {
+                setGeneratingInsight(true);
+                try {
+                  const res = await axios.post(`${API}/insights/generate`, {}, { headers: getHeaders() });
+                  setTeamInsight(res.data);
+                } catch (err) { console.error(err); }
+                setGeneratingInsight(false);
+              }} disabled={generatingInsight} style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '6px 14px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>
+                {generatingInsight ? '⏳ Generating...' : '✨ Generate Now'}
+              </button>
+            )}
+          </div>
+          {teamInsight ? (
+            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, lineHeight: 1.7, margin: 0 }}>{teamInsight.insight}</p>
+          ) : (
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, margin: 0, fontStyle: 'italic' }}>
+              No insight yet — add thoughts in My Thoughts and click Generate Now to surface team patterns.
+            </p>
+          )}
         </div>
 
         {/* Bottom Grid — 3 columns */}

@@ -49,10 +49,13 @@ export default function Finance() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
     title: '', amount: '', date: '', category: 'Server',
-    vendor: '', status: 'pending', recurring: false, notes: '', receipt_url: '', paid_by: ''
+    vendor: '', status: 'pending', recurring: false, recurring_interval: 'monthly', notes: '', receipt_url: '', paid_by: ''
   });
   const [error, setError] = useState('');
   const [teamUsers, setTeamUsers] = useState([]);
+  const [parsedInvoice, setParsedInvoice] = useState(null);
+  const [parsingInvoice, setParsingInvoice] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
   // Per-person state
   const [personData, setPersonData] = useState([]);
@@ -119,7 +122,8 @@ export default function Finance() {
     setForm({
       title: exp.title, amount: exp.amount, date: exp.date, category: exp.category,
       vendor: exp.vendor || '', status: exp.status, recurring: exp.recurring || false,
-      notes: exp.notes || '', receipt_url: exp.receipt_url || '', paid_by: exp.paid_by || ''
+      notes: exp.notes || '', receipt_url: exp.receipt_url || '', paid_by: exp.paid_by || '',
+      recurring_interval: exp.recurring_interval || 'monthly'
     });
     setShowModal(true);
   };
@@ -186,13 +190,66 @@ export default function Finance() {
             <p style={{ color: '#5A6059', fontSize: 14, margin: '4px 0 0' }}>Track company expenses and spending</p>
           </div>
           {isAdmin && (
-            <button onClick={openAdd} style={{
-              background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8,
-              padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              fontFamily: "'Inter', sans-serif",
-            }}>
-              + Add Expense
-            </button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <label style={{ background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8, padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: parsingInvoice ? 'not-allowed' : 'pointer', fontFamily: "'Inter', sans-serif", opacity: parsingInvoice ? 0.6 : 1 }}>
+                {parsingInvoice ? '⏳ Parsing...' : '📄 Upload Invoice'}
+                <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} onChange={async (e) => {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  setParsingInvoice(true);
+                  try {
+                    const formData = new FormData();
+                    formData.append('invoice', file);
+                    
+                    // Parse invoice with Claude
+                    const parseRes = await axios.post(`${API}/finance/invoices/parse`, formData, {
+                      headers: { ...headers(), 'Content-Type': 'multipart/form-data' }
+                    });
+
+                    // Also upload file as receipt
+                    const receiptForm = new FormData();
+                    receiptForm.append('file', file);
+                    let receiptUrl = '';
+                    try {
+                      const uploadRes = await axios.post(`${API}/uploads/receipts`, receiptForm, {
+                        headers: { ...headers(), 'Content-Type': 'multipart/form-data' }
+                      });
+                      receiptUrl = uploadRes.data.url || '';
+                    } catch (uploadErr) {
+                      console.error('Receipt upload failed:', uploadErr.message);
+                    }
+
+                    setParsedInvoice(parseRes.data);
+                    setForm({
+                      title: parseRes.data.title || '',
+                      amount: parseRes.data.amount || '',
+                      date: parseRes.data.date || new Date().toISOString().split('T')[0],
+                      category: parseRes.data.category || 'Other',
+                      vendor: parseRes.data.vendor || '',
+                      status: 'paid',
+                      recurring: parseRes.data.recurring || false,
+                      recurring_interval: parseRes.data.recurring_interval || 'monthly',
+                      notes: parseRes.data.notes || '',
+                      receipt_url: receiptUrl,
+                      paid_by: user.id || '',
+                    });
+                    setEditing(null);
+                    setShowModal(true);
+                  } catch (err) {
+                    setError('Failed to parse invoice: ' + (err.response?.data?.error || err.message));
+                  }
+                  setParsingInvoice(false);
+                  e.target.value = '';
+                }} />
+              </label>
+              <button onClick={openAdd} style={{
+                background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8,
+                padding: '10px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                fontFamily: "'Inter', sans-serif",
+              }}>
+                + Add Expense
+              </button>
+            </div>
           )}
         </div>
 
@@ -505,6 +562,16 @@ export default function Finance() {
                   style={{ width: 16, height: 16, accentColor: '#8E9B8B' }} />
                 <label style={{ fontSize: 13, color: '#5A6059' }}>Recurring expense</label>
               </div>
+              {form.recurring && (
+                <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#5A6059', display: 'block', marginBottom: 4 }}>Billing Interval</label>
+                <select value={form.recurring_interval || 'monthly'} onChange={e => setForm({ ...form, recurring_interval: e.target.value })} style={inputStyle}>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 28 }}>
