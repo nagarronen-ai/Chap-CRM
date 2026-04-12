@@ -111,6 +111,12 @@ export default function CompanyProfile() {
   const [teamUsers, setTeamUsers] = useState([]);
   const { can } = useRole();
   const [marketingData, setMarketingData] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [showDocModal, setShowDocModal] = useState(false);
+  const [docForm, setDocForm] = useState({ title: '', type: 'Other', notes: '' });
+  const [docFile, setDocFile] = useState(null);
+  const [savingDoc, setSavingDoc] = useState(false);
+  const [editingDoc, setEditingDoc] = useState(null);
   const [emailTrackingData, setEmailTrackingData] = useState([]);
   const [expandedActivity, setExpandedActivity] = useState({});
   const [emailBodies, setEmailBodies] = useState({});
@@ -215,6 +221,13 @@ export default function CompanyProfile() {
     } catch (err) { console.error(err); }
   };
 
+  const fetchDocuments = async () => {
+    try {
+      const res = await axios.get(`${API}/documents?company_id=${id}`, { headers: getHeaders() });
+      setDocuments(res.data);
+    } catch (err) { console.error(err); }
+  };
+
   const fetchMeetings = async () => {
     try {
       const res = await axios.get(`${API}/calendar/meetings/company/${id}`, { headers: getHeaders() });
@@ -232,6 +245,7 @@ export default function CompanyProfile() {
       setCompletingMeeting(null);
       setCompletionNotes('');
       fetchMeetings();
+      fetchDocuments();
       fetchActivity();
     } catch (err) { console.error(err); }
     setSavingCompletion(false);
@@ -649,10 +663,10 @@ export default function CompanyProfile() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid rgba(62,66,61,0.1)' }}>
-        {['overview', 'people', 'activity', 'meetings', 'emails', 'marketing'].map(tab => (
+        {['overview', 'people', 'activity', 'meetings', 'emails', 'marketing', 'documents'].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ background: 'none', border: 'none', padding: '10px 20px', fontSize: 13, cursor: 'pointer', color: activeTab === tab ? '#3E423D' : '#717182', fontWeight: activeTab === tab ? 600 : 400, borderBottom: activeTab === tab ? '2px solid #8E9B8B' : '2px solid transparent', textTransform: 'capitalize', fontFamily: 'Inter, sans-serif' }}>
-{tab} {tab === 'people' ? `(${company.crm_people?.length || 0})` : tab === 'activity' ? `(${activity.length})` : tab === 'meetings' ? `(${meetings.length})` : tab === 'emails' ? `(${emailTrackingData.length + marketingData.length})` : tab === 'marketing' ? `(${marketingData.length})` : ''}
+              {tab} {tab === 'people' ? `(${company.crm_people?.length || 0})` : tab === 'activity' ? `(${activity.length})` : tab === 'meetings' ? `(${meetings.length})` : tab === 'emails' ? `(${emailTrackingData.length + marketingData.length})` : tab === 'marketing' ? `(${marketingData.length})` : tab === 'documents' ? `(${documents.length})` : ''}
             </button>
           ))}
         </div>
@@ -1339,6 +1353,140 @@ export default function CompanyProfile() {
                   </table>
                 </div>
               </>
+            )}
+          </div>
+        )}
+
+        {/* DOCUMENTS TAB */}
+        {activeTab === 'documents' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>{documents.length} document{documents.length !== 1 ? 's' : ''}</p>
+              <button onClick={() => { setEditingDoc(null); setDocForm({ title: '', type: 'Other', notes: '' }); setDocFile(null); setShowDocModal(true); }}
+                style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
+                + Add Document
+              </button>
+            </div>
+
+            {documents.length === 0 ? (
+              <div style={{ background: '#fff', borderRadius: 12, padding: 40, textAlign: 'center', border: '1px solid rgba(62,66,61,0.08)' }}>
+                <p style={{ color: '#CBCED4', fontSize: 14, margin: 0 }}>No documents yet</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {documents.map(doc => (
+                  <div key={doc.id} style={{ background: '#fff', borderRadius: 10, padding: '14px 18px', border: '1px solid rgba(62,66,61,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 24 }}>📄</span>
+                      <div>
+                        <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 600, margin: 0 }}>{doc.title}</p>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 3 }}>
+                          <span style={{ background: '#F5F3EF', color: '#717182', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>{doc.type}</span>
+                          <span style={{ color: '#CBCED4', fontSize: 11 }}>{doc.uploaded_by_user?.name} · {new Date(doc.created_at).toLocaleDateString()}</span>
+                          {doc.notes && <span style={{ color: '#717182', fontSize: 11 }}>· {doc.notes}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                    <a 
+                        href={doc.file_url}
+                        target="_blank" rel="noreferrer"
+                        style={{ background: '#F5F3EF', color: '#3E423D', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', textDecoration: 'none' }}>
+                        {doc.file_url?.match(/\.(pdf|png|jpg|jpeg|gif|webp)(\?|$)/i) ? '👁 View' : '📥 Download'}
+                      </a>
+                      <button onClick={() => { setEditingDoc(doc); setDocForm({ title: doc.title, type: doc.type, notes: doc.notes || '' }); setDocFile(null); setShowDocModal(true); }}
+                        style={{ background: '#F5F3EF', color: '#3E423D', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                        Edit
+                      </button>
+                      <button onClick={async () => {
+                        if (!window.confirm('Delete this document?')) return;
+                        await axios.delete(`${API}/documents/${doc.id}`, { headers: getHeaders() });
+                        fetchDocuments();
+                      }} style={{ background: 'none', color: '#D4183D', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, cursor: 'pointer' }}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Document Modal */}
+            {showDocModal && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 480, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
+                  <h2 style={{ color: '#3E423D', fontSize: 18, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 20px' }}>
+                    {editingDoc ? 'Edit Document' : 'Add Document'}
+                  </h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div>
+                      <label style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 }}>Title *</label>
+                      <input value={docForm.title} onChange={e => setDocForm(p => ({ ...p, title: e.target.value }))}
+                        style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif', color: '#3E423D' }}
+                        placeholder="e.g. Signed Contract 2026" />
+                    </div>
+                    <div>
+                      <label style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 }}>Type</label>
+                      <select value={docForm.type} onChange={e => setDocForm(p => ({ ...p, type: e.target.value }))}
+                        style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif', color: '#3E423D' }}>
+                        {['Contract', 'Invoice', 'Proposal', 'NDA', 'Presentation', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 }}>Notes (optional)</label>
+                      <textarea value={docForm.notes} onChange={e => setDocForm(p => ({ ...p, notes: e.target.value }))}
+                        rows={2} placeholder="Any relevant notes..."
+                        style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif', color: '#3E423D', resize: 'vertical' }} />
+                    </div>
+                    {!editingDoc && (
+                      <div>
+                        <label style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 }}>File *</label>
+                        <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.csv"
+                          onChange={e => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              setDocFile(file);
+                              if (!docForm.title) setDocForm(p => ({ ...p, title: file.name.replace(/\.[^.]+$/, '') }));
+                            }
+                          }}
+                          style={{ fontSize: 13, width: '100%' }} />
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                    <button onClick={async () => {
+                      if (!editingDoc && !docFile) return alert('Please select a file');
+                      if (!docForm.title) return alert('Title is required');
+                      setSavingDoc(true);
+                      try {
+                        if (editingDoc) {
+                          await axios.put(`${API}/documents/${editingDoc.id}`, docForm, { headers: getHeaders() });
+                        } else {
+                          const formData = new FormData();
+                          formData.append('file', docFile);
+                          formData.append('title', docForm.title);
+                          formData.append('type', docForm.type);
+                          formData.append('notes', docForm.notes);
+                          formData.append('company_id', id);
+                          await axios.post(`${API}/documents/upload`, formData, {
+                            headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
+                          });
+                        }
+                        fetchDocuments();
+                        setShowDocModal(false);
+                      } catch (err) { console.error(err); alert('Failed to save document'); }
+                      setSavingDoc(false);
+                    }} disabled={savingDoc}
+                      style={{ flex: 1, background: savingDoc ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                      {savingDoc ? '⏳ Saving...' : editingDoc ? 'Update' : 'Upload'}
+                    </button>
+                    <button onClick={() => setShowDocModal(false)}
+                      style={{ flex: 1, background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}

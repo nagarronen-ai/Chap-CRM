@@ -36,6 +36,11 @@ export default function Dashboard() {
   const [savingCompletion, setSavingCompletion] = useState(false);
   const [teamInsight, setTeamInsight] = useState(null);
   const [generatingInsight, setGeneratingInsight] = useState(false);
+  const [recurringData, setRecurringData] = useState(null);
+  const [markPaidModal, setMarkPaidModal] = useState(null); // holds the expense being marked paid
+  const [markPaidParsing, setMarkPaidParsing] = useState(false);
+  const [markPaidSaving, setMarkPaidSaving] = useState(false);
+  const [markPaidForm, setMarkPaidForm] = useState({ amount: '', receipt_url: '' });
   const navigate = useNavigate();
   const { role } = useRole();
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -56,6 +61,10 @@ export default function Dashboard() {
     try {
       const insightRes = await axios.get(`${API}/insights/latest`, { headers: getHeaders() });
       setTeamInsight(insightRes.data);
+    } catch (err) { console.error(err); }
+    try {
+      const recurringRes = await axios.get(`${API}/finance/expenses/recurring`, { headers: getHeaders() });
+      setRecurringData(recurringRes.data);
     } catch (err) { console.error(err); }
     try {
       const res = await axios.get(`${API}/emails/sent`, { headers: getHeaders() });
@@ -449,6 +458,151 @@ export default function Dashboard() {
           </div>
 
         </div>
+{/* Recurring Payments */}
+{recurringData?.upcoming?.filter(e => e.due_soon).length > 0 && (
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)', marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🔄</span>
+                <h3 style={{ color: '#1a1d1a', fontSize: 14, fontWeight: 600, margin: 0 }}>Upcoming Recurring Payments</h3>
+                <span style={{ background: '#FFF3CD', color: '#856404', fontSize: 11, fontWeight: 600, borderRadius: 10, padding: '2px 8px' }}>
+                  {recurringData.upcoming.filter(e => e.due_soon).length} due this week
+                </span>
+              </div>
+              <button onClick={() => navigate('/finance')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 12, cursor: 'pointer', padding: 0 }}>View all →</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {recurringData.upcoming.filter(e => e.due_soon).map(exp => (
+                <div key={exp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#F5F3EF', borderRadius: 8 }}>
+                  <div>
+                    <p style={{ color: '#1a1d1a', fontSize: 13, fontWeight: 500, margin: 0 }}>{exp.title}</p>
+                    <p style={{ color: '#717182', fontSize: 11, margin: '2px 0 0' }}>{exp.vendor} · {exp.recurring_interval}</p>
+                  </div>
+                  <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 700, margin: 0 }}>${parseFloat(exp.amount).toFixed(2)}</p>
+                    <p style={{ color: exp.days_until <= 2 ? '#D4183D' : '#D4A574', fontSize: 11, fontWeight: 600, margin: 0 }}>
+                      {exp.days_until === 0 ? 'Due today' : exp.days_until === 1 ? 'Due tomorrow' : `Due in ${exp.days_until}d`}
+                    </p>
+                    <button onClick={() => {
+                      setMarkPaidModal(exp);
+                      setMarkPaidForm({ amount: exp.amount, receipt_url: '' });
+                    }} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>
+                      ✓ Mark Paid
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+{/* Mark Paid Modal */}
+{markPaidModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 460, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
+              <h2 style={{ color: '#3E423D', fontSize: 18, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 6px' }}>
+                Mark as Paid
+              </h2>
+              <p style={{ color: '#717182', fontSize: 13, margin: '0 0 20px' }}>{markPaidModal.title} · {markPaidModal.vendor}</p>
+
+              {/* Amount */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 }}>Amount Paid ($)</label>
+                <input type="number" step="0.01" value={markPaidForm.amount}
+                  onChange={e => setMarkPaidForm(p => ({ ...p, amount: e.target.value }))}
+                  style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif', color: '#3E423D' }} />
+              </div>
+
+              {/* Invoice upload */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 }}>Upload Invoice (optional)</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#F5F3EF', border: '1px dashed rgba(62,66,61,0.2)', borderRadius: 8, padding: '12px 16px', cursor: markPaidParsing ? 'not-allowed' : 'pointer' }}>
+                  <span style={{ fontSize: 20 }}>📄</span>
+                  <div style={{ flex: 1 }}>
+                    {markPaidParsing ? (
+                      <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>⏳ Parsing invoice with AI...</p>
+                    ) : markPaidForm.receipt_url ? (
+                      <p style={{ color: '#8E9B8B', fontSize: 13, margin: 0, fontWeight: 600 }}>✅ Invoice uploaded & parsed</p>
+                    ) : (
+                      <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>Click to upload PDF or image</p>
+                    )}
+                  </div>
+                  <input type="file" accept=".pdf,image/*" style={{ display: 'none' }} disabled={markPaidParsing}
+                    onChange={async (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      setMarkPaidParsing(true);
+                      try {
+                        // Parse invoice
+                        const parseForm = new FormData();
+                        parseForm.append('invoice', file);
+                        const parseRes = await axios.post(`${API}/finance/invoices/parse`, parseForm, {
+                          headers: { ...{ Authorization: `Bearer ${localStorage.getItem('token')}` }, 'Content-Type': 'multipart/form-data' }
+                        });
+
+                        // Upload receipt
+                        const receiptForm = new FormData();
+                        receiptForm.append('file', file);
+                        let receiptUrl = '';
+                        try {
+                          const uploadRes = await axios.post(`${API}/uploads/receipts`, receiptForm, {
+                            headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'multipart/form-data' }
+                          });
+                          receiptUrl = uploadRes.data.url || '';
+                        } catch (err) { console.error('Receipt upload failed:', err); }
+
+                        setMarkPaidForm(p => ({
+                          ...p,
+                          amount: parseRes.data.amount || p.amount,
+                          receipt_url: receiptUrl,
+                        }));
+                      } catch (err) {
+                        console.error('Parse error:', err);
+                      }
+                      setMarkPaidParsing(false);
+                      e.target.value = '';
+                    }} />
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={async () => {
+                  setMarkPaidSaving(true);
+                  try {
+                    await axios.post(`${API}/finance/expenses`, {
+                      title: markPaidModal.title,
+                      amount: markPaidForm.amount,
+                      date: new Date().toISOString().split('T')[0],
+                      category: markPaidModal.category,
+                      vendor: markPaidModal.vendor,
+                      status: 'paid',
+                      recurring: false,
+                      notes: markPaidModal.notes || '',
+                      receipt_url: markPaidForm.receipt_url || '',
+                      paid_by: markPaidModal.paid_by,
+                      recurring_parent_id: markPaidModal.id,
+                    }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+
+                    // Update last_paid_date on the parent recurring row
+                    await axios.put(`${API}/finance/expenses/${markPaidModal.id}`, {
+                      ...markPaidModal,
+                      last_paid_date: new Date().toISOString().split('T')[0],
+                    }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+                    const res = await axios.get(`${API}/finance/expenses/recurring`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+                    setRecurringData(res.data);
+                    setMarkPaidModal(null);
+                  } catch (err) { console.error(err); }
+                  setMarkPaidSaving(false);
+                }} disabled={markPaidSaving} style={{ flex: 1, background: markPaidSaving ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                  {markPaidSaving ? '⏳ Saving...' : '✓ Confirm Payment'}
+                </button>
+                <button onClick={() => setMarkPaidModal(null)} style={{ flex: 1, background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Team Superbrain */}
         <div style={{ background: 'linear-gradient(135deg, #3E423D 0%, #5A6059 100%)', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.08)', marginBottom: 20, position: 'relative', overflow: 'hidden' }}>

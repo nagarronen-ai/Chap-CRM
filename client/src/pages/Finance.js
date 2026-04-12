@@ -56,6 +56,7 @@ export default function Finance() {
   const [parsedInvoice, setParsedInvoice] = useState(null);
   const [parsingInvoice, setParsingInvoice] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [recurringExpenses, setRecurringExpenses] = useState(null);
 
   // Per-person state
   const [personData, setPersonData] = useState([]);
@@ -99,6 +100,15 @@ export default function Finance() {
   }, [personYear, personMonth]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    const fetchRecurring = async () => {
+      try {
+        const res = await axios.get(`${API}/finance/expenses/recurring`, { headers: headers() });
+        setRecurringExpenses(res.data);
+      } catch (err) { console.error(err); }
+    };
+    fetchRecurring();
+  }, []);
   useEffect(() => { fetchPersonData(); }, [fetchPersonData]);
 
   useEffect(() => {
@@ -252,6 +262,57 @@ export default function Finance() {
             </div>
           )}
         </div>
+
+        {/* Yearly Projection */}
+        {recurringExpenses && recurringExpenses.monthly_projection && (
+          <div style={{ background: '#FFFFFF', borderRadius: 12, padding: '24px 28px', border: '1px solid rgba(62,66,61,0.08)', marginBottom: 28 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 700, color: '#3E423D', margin: 0, fontFamily: "'Playfair Display', Georgia, serif" }}>Recurring Expenses Projection</h2>
+                <p style={{ color: '#717182', fontSize: 13, margin: '4px 0 0' }}>Estimated yearly cost: <strong style={{ color: '#3E423D' }}>${recurringExpenses.yearly_total?.toLocaleString()}</strong></p>
+              </div>
+              <span style={{ background: '#F5F3EF', color: '#8E9B8B', fontSize: 12, borderRadius: 8, padding: '6px 14px', fontWeight: 600 }}>
+                {recurringExpenses.all_recurring?.length || 0} recurring expenses
+              </span>
+            </div>
+            {/* Bar chart */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 120 }}>
+              {recurringExpenses.monthly_projection.map((m, i) => {
+                const max = Math.max(...recurringExpenses.monthly_projection.map(x => x.amount), 1);
+                const height = Math.max((m.amount / max) * 100, m.amount > 0 ? 4 : 2);
+                return (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <p style={{ color: '#717182', fontSize: 9, margin: 0, fontWeight: 600 }}>${m.amount > 0 ? m.amount.toFixed(0) : ''}</p>
+                    <div style={{ width: '100%', height: height, background: m.amount > 0 ? '#8E9B8B' : '#E5E1D8', borderRadius: '4px 4px 0 0', transition: 'height 0.3s' }} title={`${m.month}: $${m.amount}`} />
+                    <p style={{ color: '#717182', fontSize: 10, margin: 0 }}>{m.month}</p>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Upcoming this week */}
+            {recurringExpenses.upcoming?.filter(e => e.due_soon).length > 0 && (
+              <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(62,66,61,0.08)' }}>
+                <p style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: 600, margin: '0 0 10px' }}>Due This Week</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {recurringExpenses.upcoming.filter(e => e.due_soon).map(exp => (
+                    <div key={exp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#F5F3EF', borderRadius: 8 }}>
+                      <div>
+                        <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 500, margin: 0 }}>{exp.title}</p>
+                        <p style={{ color: '#717182', fontSize: 11, margin: '2px 0 0' }}>{exp.vendor} · {exp.next_due_date}</p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 700, margin: 0 }}>${parseFloat(exp.amount).toFixed(2)}</p>
+                        <p style={{ color: exp.days_until <= 2 ? '#D4183D' : '#D4A574', fontSize: 11, fontWeight: 600, margin: '2px 0 0' }}>
+                          {exp.days_until === 0 ? 'Today' : exp.days_until === 1 ? 'Tomorrow' : `In ${exp.days_until}d`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Summary Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>

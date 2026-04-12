@@ -35,6 +35,7 @@ app.use('/api/design-templates', require('./routes/designTemplates'));
 app.use('/api/drip', require('./routes/drip'));
 app.use('/api/roles', require('./routes/roles'));
 app.use('/api/insights', require('./routes/insights'));
+app.use('/api/documents', require('./routes/documents'));
 
 
 

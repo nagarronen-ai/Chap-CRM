@@ -120,7 +120,7 @@ router.get('/expenses/by-person', auth, checkPermission('finance:general'), asyn
 // POST /api/finance/expenses — create expense (admin only)
 router.post('/expenses', auth, checkPermission('finance:general'), async (req, res) => {
   try {
-    const { title, amount, date, category, vendor, status, recurring, notes, receipt_url } = req.body;
+    const { title, amount, date, category, vendor, status, recurring, notes, receipt_url, recurring_parent_id } = req.body;
 
     if (!title || !amount || !date || !category) {
       return res.status(400).json({ error: 'Title, amount, date, and category are required' });
@@ -133,7 +133,8 @@ router.post('/expenses', auth, checkPermission('finance:general'), async (req, r
         paid_by: req.body.paid_by || req.user.id,
         status: status || 'pending',
         recurring: recurring || false,
-        notes, receipt_url
+        notes, receipt_url,
+        recurring_parent_id: recurring_parent_id || null,
       }])
       .select('*, paid_by_user:crm_users!paid_by(name)')
       .single();
@@ -148,11 +149,11 @@ router.post('/expenses', auth, checkPermission('finance:general'), async (req, r
 // PUT /api/finance/expenses/:id — update expense (admin only)
 router.put('/expenses/:id', auth, checkPermission('finance:general'), async (req, res) => {
   try {
-    const { title, amount, date, category, vendor, status, recurring, notes, receipt_url, paid_by } = req.body;
+    const { title, amount, date, category, vendor, status, recurring, notes, receipt_url, paid_by, last_paid_date, recurring_interval } = req.body;
 
     const { data, error } = await supabase
       .from('crm_expenses')
-      .update({ title, amount, date, category, vendor, status, recurring, notes, receipt_url, paid_by })
+      .update({ title, amount, date, category, vendor, status, recurring, notes, receipt_url, paid_by, last_paid_date, recurring_interval })
       .eq('id', req.params.id)
       .select('*, paid_by_user:crm_users!paid_by(name)')
       .single();
@@ -195,6 +196,87 @@ router.post('/invoices/parse', auth, checkPermission('finance:general'), async (
     });
   } catch (err) {
     console.error('Invoice parse error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/finance/expenses/recurring — upcoming recurring payments
+router.get('/expenses/recurring', auth, checkPermission('finance:general'), async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('crm_expenses')
+      .select('*')
+      .eq('recurring', true)
+      .order('date', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const today = new Date();
+    const in7Days = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const in30Days = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const withNextDue = (data || []).map(exp => {
+      const interval = exp.recurring_interval || 'monthly';
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+      // Use last_paid_date if available, otherwise fall back to date
+      const baseDate = new Date(exp.last_paid_date || exp.date);
+
+      // Calculate next due by advancing one interval from last paid
+      let nextDue = new Date(baseDate);
+      if (interval === 'monthly') nextDue.setMonth(nextDue.getMonth() + 1);
+      else if (interval === 'quarterly') nextDue.setMonth(nextDue.getMonth() + 3);
+      else if (interval === 'yearly') nextDue.setFullYear(nextDue.getFullYear() + 1);
+
+      // If still in the past, keep advancing (handles missed payments)
+      while (nextDue < todayStart) {
+        if (interval === 'monthly') nextDue.setMonth(nextDue.getMonth() + 1);
+        else if (interval === 'quarterly') nextDue.setMonth(nextDue.getMonth() + 3);
+        else if (interval === 'yearly') nextDue.setFullYear(nextDue.getFullYear() + 1);
+      }
+
+      const daysUntil = Math.ceil((nextDue - todayStart) / (1000 * 60 * 60 * 24));
+
+      return {
+        ...exp,
+        next_due_date: nextDue.toISOString().split('T')[0],
+        days_until: daysUntil,
+        due_soon: daysUntil <= 7,
+      };
+    });
+
+    // Also build yearly projection by month
+    const monthlyProjection = Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1;
+      const monthTotal = (data || []).reduce((sum, exp) => {
+        const interval = exp.recurring_interval || 'monthly';
+        const amount = parseFloat(exp.amount) || 0;
+        if (interval === 'monthly') return sum + amount;
+        if (interval === 'quarterly' && month % 3 === 1) return sum + amount;
+        if (interval === 'yearly' && new Date(exp.date).getMonth() + 1 === month) return sum + amount;
+        return sum;
+      }, 0);
+      return {
+        month: new Date(2026, i, 1).toLocaleDateString('en-US', { month: 'short' }),
+        amount: Math.round(monthTotal * 100) / 100,
+      };
+    });
+
+    res.json({
+      upcoming: withNextDue.filter(e => e.days_until <= 30).sort((a, b) => a.days_until - b.days_until),
+      all_recurring: withNextDue,
+      monthly_projection: monthlyProjection,
+      yearly_total: Math.round((data || []).reduce((sum, exp) => {
+        const interval = exp.recurring_interval || 'monthly';
+        const amount = parseFloat(exp.amount) || 0;
+        if (interval === 'monthly') return sum + amount * 12;
+        if (interval === 'quarterly') return sum + amount * 4;
+        if (interval === 'yearly') return sum + amount;
+        return sum;
+      }, 0) * 100) / 100,
+    });
+
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

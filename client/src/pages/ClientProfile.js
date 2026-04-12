@@ -175,8 +175,10 @@ export default function ClientProfile() {
   const [editField, setEditField] = useState(null);
   const [note, setNote] = useState('');
   const [showDocModal, setShowDocModal] = useState(false);
-  const [docForm, setDocForm] = useState({ title: '', doc_type: 'Contract', status: 'Draft', file_url: '', notes: '' });
+  const [docForm, setDocForm] = useState({ title: '', type: 'Contract', notes: '' });
+  const [docFile, setDocFile] = useState(null);
   const [editingDoc, setEditingDoc] = useState(null);
+  const [savingDoc, setSavingDoc] = useState(false);
   const [showFinanceModal, setShowFinanceModal] = useState(false);
   const [financeForm, setFinanceForm] = useState({ type: 'Commission', amount: '', description: '', status: 'Pending', date: new Date().toISOString().split('T')[0] });
   const [editingFinance, setEditingFinance] = useState(null);
@@ -332,10 +334,9 @@ export default function ClientProfile() {
   const fetchAll = async () => {
     try {
       const [clientRes, activityRes, docsRes, vpRes, finRes] = await Promise.all([
-        
         axios.get(`${API}/clients/${id}`, { headers: getHeaders() }),
         axios.get(`${API}/clients/${id}/activity`, { headers: getHeaders() }),
-        axios.get(`${API}/clients/${id}/documents`, { headers: getHeaders() }),
+        axios.get(`${API}/documents?client_id=${id}`, { headers: getHeaders() }),
         axios.get(`${API}/clients/${id}/vendor-page`, { headers: getHeaders() }),
         canFinance ? axios.get(`${API}/clients/${id}/finance`, { headers: getHeaders() }) : Promise.resolve({ data: [] }),
       ]);
@@ -345,6 +346,13 @@ export default function ClientProfile() {
       setVendorPage(vpRes.data || {});
       setFinance(finRes.data);
       if (clientRes.data?.converted_from) fetchEmailHistory(clientRes.data.converted_from);
+      // Fetch documents including from original contact
+    if (clientRes.data?.converted_from) {
+      try {
+        const docsRes2 = await axios.get(`${API}/documents?client_id=${id}&company_id=${clientRes.data.converted_from}`, { headers: getHeaders() });
+        setDocuments(docsRes2.data);
+      } catch (err) { console.error(err); }
+    }
     } catch (err) { console.error(err); }
     // Fetch synced emails for this client
 try {
@@ -1348,8 +1356,14 @@ try {
         {/* ─── DOCUMENTS TAB ─── */}
         {activeTab === 'documents' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-              {isAdmin && <button onClick={() => { setEditingDoc(null); setDocForm({ title: '', doc_type: 'Contract', status: 'Draft', file_url: '', notes: '' }); setShowDocModal(true); }} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 13, cursor: 'pointer' }}>+ Add Document</button>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>{documents.length} document{documents.length !== 1 ? 's' : ''}</p>
+              {isAdmin && (
+                <button onClick={() => { setEditingDoc(null); setDocForm({ title: '', type: 'Contract', notes: '' }); setDocFile(null); setShowDocModal(true); }}
+                  style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
+                  + Add Document
+                </button>
+              )}
             </div>
             {documents.length === 0 ? (
               <div style={{ background: '#fff', borderRadius: 12, padding: 60, textAlign: 'center', border: '1px solid rgba(62,66,61,0.1)' }}>
@@ -1358,23 +1372,45 @@ try {
                 <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>Add contracts, proposals, or invoices</p>
               </div>
             ) : (
-              <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.1)', overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr style={{ background: '#F5F3EF' }}>{['Title', 'Type', 'Status', 'Signed', 'Expires', 'By', 'Date', ''].map(h => (<th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: '#717182', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>))}</tr></thead>
-                  <tbody>{documents.map((d, i) => (
-                    <tr key={d.id} style={{ borderTop: '1px solid rgba(62,66,61,0.06)', background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
-<td style={{ padding: '12px 16px', fontSize: 13, color: '#3E423D', fontWeight: 500 }}>
-                        {d.file_url ? <a href={d.file_url} target="_blank" rel="noreferrer" style={{ color: '#3E423D', textDecoration: 'none' }}>{d.title} 📎</a> : d.title}
-                      </td>                      <td style={{ padding: '12px 16px' }}><span style={{ background: '#F5F3EF', color: '#717182', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{d.doc_type}</span></td>
-                      <td style={{ padding: '12px 16px' }}><span style={{ background: d.status === 'Signed' ? '#D4EDDA' : d.status === 'Expired' ? '#F8D7DA' : '#F5F3EF', color: d.status === 'Signed' ? '#155724' : d.status === 'Expired' ? '#721C24' : '#717182', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{d.status}</span></td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{d.signed_date ? new Date(d.signed_date).toLocaleDateString() : '—'}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{d.expires_date ? new Date(d.expires_date).toLocaleDateString() : '—'}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#717182' }}>{d.crm_users?.name || '—'}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#CBCED4' }}>{new Date(d.created_at).toLocaleDateString()}</td>
-                      <td style={{ padding: '12px 16px' }}>{isAdmin && (<div style={{ display: 'flex', gap: 6 }}><button onClick={() => { setEditingDoc(d); setDocForm({ title: d.title, doc_type: d.doc_type, status: d.status, file_url: d.file_url || '', notes: d.notes || '', signed_date: d.signed_date || '', expires_date: d.expires_date || '' }); setShowDocModal(true); }} style={{ background: '#F5F3EF', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#5A6059' }}>Edit</button><button onClick={() => deleteDocument(d.id)} style={{ background: '#fdf0f0', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 11, cursor: 'pointer', color: '#D4183D' }}>Del</button></div>)}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {documents.map(doc => (
+                  <div key={doc.id} style={{ background: '#fff', borderRadius: 10, padding: '14px 18px', border: '1px solid rgba(62,66,61,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 24 }}>📄</span>
+                      <div>
+                        <p style={{ color: '#3E423D', fontSize: 13, fontWeight: 600, margin: 0 }}>{doc.title}</p>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 3 }}>
+                          <span style={{ background: '#F5F3EF', color: '#717182', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>{doc.type}</span>
+                          <span style={{ color: '#CBCED4', fontSize: 11 }}>{doc.uploaded_by_user?.name} · {new Date(doc.created_at).toLocaleDateString()}</span>
+                          {doc.notes && <span style={{ color: '#717182', fontSize: 11 }}>· {doc.notes}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                    <a 
+                        href={doc.file_url}
+                        target="_blank" rel="noreferrer"
+                        style={{ background: '#F5F3EF', color: '#3E423D', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer', textDecoration: 'none' }}>
+                        {doc.file_url?.match(/\.(pdf|png|jpg|jpeg|gif|webp)(\?|$)/i) ? '👁 View' : '📥 Download'}
+                      </a>
+                      {isAdmin && (
+                        <>
+                          <button onClick={() => { setEditingDoc(doc); setDocForm({ title: doc.title, type: doc.type, notes: doc.notes || '' }); setDocFile(null); setShowDocModal(true); }}
+                            style={{ background: '#F5F3EF', color: '#3E423D', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                            Edit
+                          </button>
+                          <button onClick={async () => {
+                            if (!window.confirm('Delete this document?')) return;
+                            await axios.delete(`${API}/documents/${doc.id}`, { headers: getHeaders() });
+                            fetchAll();
+                          }} style={{ background: 'none', color: '#D4183D', border: 'none', borderRadius: 6, padding: '6px 8px', fontSize: 12, cursor: 'pointer' }}>
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1457,44 +1493,72 @@ try {
         {/* Document Modal */}
         {showDocModal && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 500, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
-              <h2 style={{ color: '#3E423D', fontSize: 18, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 20px' }}>{editingDoc ? 'Edit Document' : 'Add Document'}</h2>
+            <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 480, boxShadow: '0 20px 60px rgba(62,66,61,0.2)' }}>
+              <h2 style={{ color: '#3E423D', fontSize: 18, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 20px' }}>
+                {editingDoc ? 'Edit Document' : 'Add Document'}
+              </h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div><label style={labelStyle}>Title *</label><input value={docForm.title} onChange={e => setDocForm(prev => ({ ...prev, title: e.target.value }))} style={inputStyle} placeholder="e.g. Service Agreement 2026" /></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div><label style={labelStyle}>Type</label><select value={docForm.doc_type} onChange={e => setDocForm(prev => ({ ...prev, doc_type: e.target.value }))} style={inputStyle}>{DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                  <div><label style={labelStyle}>Status</label><select value={docForm.status} onChange={e => setDocForm(prev => ({ ...prev, status: e.target.value }))} style={inputStyle}>{DOC_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div><label style={labelStyle}>Signed Date</label><input type="date" value={docForm.signed_date || ''} onChange={e => setDocForm(prev => ({ ...prev, signed_date: e.target.value }))} style={inputStyle} /></div>
-                  <div><label style={labelStyle}>Expires Date</label><input type="date" value={docForm.expires_date || ''} onChange={e => setDocForm(prev => ({ ...prev, expires_date: e.target.value }))} style={inputStyle} /></div>
+                <div>
+                  <label style={labelStyle}>Title *</label>
+                  <input value={docForm.title} onChange={e => setDocForm(p => ({ ...p, title: e.target.value }))}
+                    style={inputStyle} placeholder="e.g. Signed Contract 2026" />
                 </div>
                 <div>
-                  <label style={labelStyle}>Document File</label>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                      onChange={async (e) => {
+                  <label style={labelStyle}>Type</label>
+                  <select value={docForm.type} onChange={e => setDocForm(p => ({ ...p, type: e.target.value }))} style={inputStyle}>
+                    {['Contract', 'Invoice', 'Proposal', 'NDA', 'Presentation', 'Other'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Notes (optional)</label>
+                  <textarea value={docForm.notes} onChange={e => setDocForm(p => ({ ...p, notes: e.target.value }))}
+                    rows={2} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Any relevant notes..." />
+                </div>
+                {!editingDoc && (
+                  <div>
+                    <label style={labelStyle}>File *</label>
+                    <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.csv"
+                      onChange={e => {
                         const file = e.target.files[0];
-                        if (!file) return;
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        try {
-                          const res = await axios.post(`${API}/uploads/client-documents`, formData, {
-                            headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
-                          });
-                          setDocForm(prev => ({ ...prev, file_url: res.data.url }));
-                        } catch (err) { console.error(err); alert('Upload failed'); }
-                      }}
-                      style={{ fontSize: 12, flex: 1 }}
-                    />
-                    {docForm.file_url && <a href={docForm.file_url} target="_blank" rel="noreferrer" style={{ color: '#94B0BC', fontSize: 12 }}>View file</a>}
+                        if (file) {
+                          setDocFile(file);
+                          if (!docForm.title) setDocForm(p => ({ ...p, title: file.name.replace(/\.[^.]+$/, '') }));
+                        }
+                      }} style={{ fontSize: 13, width: '100%' }} />
                   </div>
-                  {!docForm.file_url && <input value={docForm.file_url || ''} onChange={e => setDocForm(prev => ({ ...prev, file_url: e.target.value }))} style={{ ...inputStyle, marginTop: 6 }} placeholder="Or paste URL manually..." />}
-                </div>                <div><label style={labelStyle}>Notes</label><textarea value={docForm.notes} onChange={e => setDocForm(prev => ({ ...prev, notes: e.target.value }))} rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-                <button onClick={saveDocument} disabled={!docForm.title} style={{ flex: 1, background: docForm.title ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, cursor: docForm.title ? 'pointer' : 'default' }}>{editingDoc ? 'Save Changes' : 'Add Document'}</button>
-                <button onClick={() => { setShowDocModal(false); setEditingDoc(null); }} style={{ flex: 1, background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                <button onClick={async () => {
+                  if (!editingDoc && !docFile) return alert('Please select a file');
+                  if (!docForm.title) return alert('Title is required');
+                  setSavingDoc(true);
+                  try {
+                    if (editingDoc) {
+                      await axios.put(`${API}/documents/${editingDoc.id}`, docForm, { headers: getHeaders() });
+                    } else {
+                      const formData = new FormData();
+                      formData.append('file', docFile);
+                      formData.append('title', docForm.title);
+                      formData.append('type', docForm.type);
+                      formData.append('notes', docForm.notes);
+                      formData.append('client_id', id);
+                      await axios.post(`${API}/documents/upload`, formData, {
+                        headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
+                      });
+                    }
+                    fetchAll();
+                    setShowDocModal(false);
+                  } catch (err) { console.error(err); alert('Failed to save document'); }
+                  setSavingDoc(false);
+                }} disabled={savingDoc}
+                  style={{ flex: 1, background: savingDoc ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                  {savingDoc ? '⏳ Saving...' : editingDoc ? 'Save Changes' : 'Upload'}
+                </button>
+                <button onClick={() => { setShowDocModal(false); setEditingDoc(null); }}
+                  style={{ flex: 1, background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
