@@ -182,14 +182,14 @@ export default function Dashboard() {
   if (loading) return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40, color: '#717182' }}>Loading...</div>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40, color: '#717182' }}>Loading...</div>
     </div>
   );
 
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: '32px 40px' }}>
+      <div style={{ marginLeft: 220, flex: 1, padding: '32px 40px' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>

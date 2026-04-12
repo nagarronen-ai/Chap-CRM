@@ -240,7 +240,7 @@ export default function Emails() {
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
 
         <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 4px' }}>Communication</p>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>

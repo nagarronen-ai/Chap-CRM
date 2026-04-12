@@ -167,7 +167,7 @@ export default function Finance() {
     return (
       <div style={{ display: 'flex', fontFamily: "'Inter', sans-serif" }}>
         <Sidebar />
-        <div style={{ marginLeft: 240, padding: 32, flex: 1 }}>
+        <div style={{ marginLeft: 220, padding: 32, flex: 1 }}>
           <p style={{ color: '#D4183D', fontSize: 16 }}>You do not have permission to view this page.</p>
         </div>
       </div>
@@ -177,7 +177,7 @@ export default function Finance() {
   return (
     <div style={{ display: 'flex', fontFamily: "'Inter', sans-serif", background: '#E5E1D8', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, padding: 32, flex: 1 }}>
+      <div style={{ marginLeft: 220, padding: 32, flex: 1 }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>

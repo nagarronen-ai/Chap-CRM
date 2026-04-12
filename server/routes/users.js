@@ -46,6 +46,37 @@ router.put('/me/slack', auth, async (req, res) => {
   res.json(data);
 });
 
+
+// PUT /api/users/me/password — change own password
+router.put('/me/password', auth, async (req, res) => {
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) return res.status(400).json({ error: 'Both current and new password are required' });
+  if (new_password.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+
+  const { data: user } = await supabase.from('crm_users').select('password').eq('id', req.user.id).single();
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  const valid = await bcrypt.compare(current_password, user.password);
+  if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+  const hashed = await bcrypt.hash(new_password, 10);
+  await supabase.from('crm_users').update({ password: hashed }).eq('id', req.user.id);
+  res.json({ success: true });
+});
+
+// PUT /api/users/:id/reset-password — admin resets any user's password
+router.put('/:id/reset-password', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+  const { randomBytes } = require('crypto');
+  const tempPassword = randomBytes(4).toString('hex').toUpperCase();
+  const hashed = await bcrypt.hash(tempPassword, 10);
+
+  const { error } = await supabase.from('crm_users').update({ password: hashed }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.json({ temp_password: tempPassword });
+});
 // PUT /api/users/me/signature — update own signature
 router.put('/me/signature', auth, async (req, res) => {
   const { signature } = req.body;

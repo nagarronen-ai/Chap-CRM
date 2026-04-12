@@ -371,7 +371,7 @@ export default function Marketing() {
     return (
       <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
         <Sidebar />
-        <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
+        <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
           <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 13, cursor: 'pointer', marginBottom: 16, padding: 0 }}>← Back to Campaigns</button>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32 }}>
             <div>
@@ -525,7 +525,7 @@ export default function Marketing() {
     return (
       <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
         <Sidebar />
-        <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
+        <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
           <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 13, cursor: 'pointer', marginBottom: 16, padding: 0 }}>← Back to Campaigns</button>
           <h1 style={{ color: '#3E423D', fontSize: 28, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 32px' }}>New Campaign</h1>
 
@@ -751,7 +751,7 @@ export default function Marketing() {
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
         <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 4px' }}>Growth</p>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h1 style={{ color: '#3E423D', fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>Marketing</h1>

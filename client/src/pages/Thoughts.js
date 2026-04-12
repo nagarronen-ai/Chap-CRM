@@ -114,7 +114,7 @@ export default function Thoughts() {
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', height: '100vh', overflow: 'hidden' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <div style={{ marginLeft: 220, flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
         {/* Header */}
         <div style={{ padding: '32px 40px 20px', flexShrink: 0 }}>

@@ -92,7 +92,7 @@ export default function AiLog() {
       <Sidebar />
 
       {/* Main content — fixed height, no outer scroll */}
-      <div style={{ marginLeft: 240, flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <div style={{ marginLeft: 220, flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
         {/* Header */}
         <div style={{ padding: '32px 40px 20px', flexShrink: 0 }}>

@@ -160,7 +160,7 @@ export default function Import() {
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
 
         <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 4px' }}>Data</p>
         <h1 style={{ color: '#3E423D', fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 32px' }}>Import CSV</h1>

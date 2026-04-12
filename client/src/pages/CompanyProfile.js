@@ -546,21 +546,21 @@ export default function CompanyProfile() {
   if (loading) return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40, color: '#717182' }}>Loading...</div>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40, color: '#717182' }}>Loading...</div>
     </div>
   );
 
   if (!company) return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40, color: '#D4183D' }}>Company not found.</div>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40, color: '#D4183D' }}>Company not found.</div>
     </div>
   );
 
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
 
         <button onClick={() => navigate('/contacts')} style={{ background: 'none', border: 'none', color: '#717182', fontSize: 13, cursor: 'pointer', marginBottom: 16, padding: 0 }}>← Back to Companies</button>
 

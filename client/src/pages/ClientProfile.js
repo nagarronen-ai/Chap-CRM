@@ -44,40 +44,87 @@ const PRICE_TIERS = ['$', '$$', '$$$', '$$$$'];
 
 
 function PeopleFromContact({ companyId, getHeaders }) {
-    const [people, setPeople] = useState([]);
-    const [editing, setEditing] = useState(null);
-    const [editForm, setEditForm] = useState({});
-  
-    const fetchPeople = async () => {
-      try {
-        const res = await axios.get(`${API}/contacts/companies/${companyId}`, { headers: getHeaders() });
-        setPeople(res.data.crm_people || []);
-      } catch (err) {}
-    };
-  
-    useEffect(() => {
+  const [people, setPeople] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ first_name: '', last_name: '', title: '', email: '', work_phone: '', mobile_phone: '' });
+  const [saving, setSaving] = useState(false);
+
+  const fetchPeople = async () => {
+    try {
+      const res = await axios.get(`${API}/contacts/companies/${companyId}`, { headers: getHeaders() });
+      setPeople(res.data.crm_people || []);
+    } catch (err) {}
+  };
+
+  useEffect(() => {
+    fetchPeople();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
+
+  const savePerson = async () => {
+    try {
+      await axios.put(`${API}/contacts/people/${editing}`, editForm, { headers: getHeaders() });
+      setEditing(null);
       fetchPeople();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [companyId]);
-  
-    const savePerson = async () => {
-      try {
-        await axios.put(`${API}/contacts/people/${editing}`, editForm, { headers: getHeaders() });
-        setEditing(null);
-        fetchPeople();
-      } catch (err) { console.error(err); }
-    };
-  
-    if (people.length === 0) return null;
-  
-    const inputStyle = { width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '5px 8px', color: '#3E423D', fontSize: 12, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' };
-  
-    return (
-      <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
-        <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>People ({people.length})</h3>
-        {people.map(p => (
-          <div key={p.id} style={{ background: '#F5F3EF', borderRadius: 10, padding: 12, marginBottom: 8 }}>
-            {editing === p.id ? (
+    } catch (err) { console.error(err); }
+  };
+
+  const addPerson = async () => {
+    if (!addForm.first_name) return;
+    setSaving(true);
+    try {
+      await axios.post(`${API}/contacts/companies/${companyId}/people`, addForm, { headers: getHeaders() });
+      setAddForm({ first_name: '', last_name: '', title: '', email: '', work_phone: '', mobile_phone: '' });
+      setShowAdd(false);
+      fetchPeople();
+    } catch (err) { console.error(err); }
+    setSaving(false);
+  };
+
+  const deletePerson = async (personId) => {
+    if (!window.confirm('Remove this person?')) return;
+    try {
+      await axios.delete(`${API}/contacts/people/${personId}`, { headers: getHeaders() });
+      fetchPeople();
+    } catch (err) { console.error(err); }
+  };
+
+  const inputStyle = { width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '5px 8px', color: '#3E423D', fontSize: 12, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' };
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: 0 }}>People ({people.length})</h3>
+        <button onClick={() => setShowAdd(true)} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>+ Add Person</button>
+      </div>
+
+      {/* Add Person Form */}
+      {showAdd && (
+        <div style={{ background: '#F5F3EF', borderRadius: 10, padding: 16, marginBottom: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+            <div><label style={{ color: '#717182', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 3 }}>First Name *</label><input value={addForm.first_name} onChange={e => setAddForm(p => ({ ...p, first_name: e.target.value }))} style={inputStyle} /></div>
+            <div><label style={{ color: '#717182', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 3 }}>Last Name</label><input value={addForm.last_name} onChange={e => setAddForm(p => ({ ...p, last_name: e.target.value }))} style={inputStyle} /></div>
+            <div><label style={{ color: '#717182', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 3 }}>Title</label><input value={addForm.title} onChange={e => setAddForm(p => ({ ...p, title: e.target.value }))} style={inputStyle} /></div>
+            <div><label style={{ color: '#717182', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 3 }}>Email</label><input value={addForm.email} onChange={e => setAddForm(p => ({ ...p, email: e.target.value }))} style={inputStyle} /></div>
+            <div><label style={{ color: '#717182', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 3 }}>Work Phone</label><input value={addForm.work_phone} onChange={e => setAddForm(p => ({ ...p, work_phone: e.target.value }))} style={inputStyle} /></div>
+            <div><label style={{ color: '#717182', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 3 }}>Mobile Phone</label><input value={addForm.mobile_phone} onChange={e => setAddForm(p => ({ ...p, mobile_phone: e.target.value }))} style={inputStyle} /></div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={addPerson} disabled={saving || !addForm.first_name} style={{ background: saving ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 12, cursor: 'pointer' }}>{saving ? '⏳ Saving...' : 'Save'}</button>
+            <button onClick={() => { setShowAdd(false); setAddForm({ first_name: '', last_name: '', title: '', email: '', work_phone: '', mobile_phone: '' }); }} style={{ background: '#fff', color: '#717182', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 6, padding: '7px 16px', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {people.length === 0 && !showAdd && (
+        <p style={{ color: '#CBCED4', fontSize: 13, margin: 0 }}>No people added yet</p>
+      )}
+
+      {people.map(p => (
+        <div key={p.id} style={{ background: '#F5F3EF', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+          {editing === p.id ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input value={editForm.first_name || ''} onChange={e => setEditForm(prev => ({ ...prev, first_name: e.target.value }))} placeholder="First" style={inputStyle} />
@@ -517,14 +564,14 @@ try {
   if (loading) return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40, color: '#717182' }}>Loading...</div>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40, color: '#717182' }}>Loading...</div>
     </div>
   );
 
   if (!client) return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40, color: '#717182' }}>Client not found</div>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40, color: '#717182' }}>Client not found</div>
     </div>
   );
 
@@ -534,7 +581,7 @@ try {
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
 
         <button onClick={() => navigate('/clients')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 13, cursor: 'pointer', marginBottom: 8, padding: 0 }}>← Back to Clients</button>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
@@ -600,6 +647,7 @@ try {
             { key: 'meetings', label: `Meetings (${meetings.length})` },
             { key: 'documents', label: `Documents (${documents.length})` },
             { key: 'emails', label: `Emails (${contactEmailHistory.length + contactMarketingHistory.length})` },
+            { key: 'people', label: `People` },
             { key: 'vendor-page', label: 'Vendor Page' },
             
             ...(canFinance ? [{ key: 'finance', label: `Finance (${finance.length})` }] : []),
@@ -610,6 +658,11 @@ try {
             </button>
           ))}
         </div>
+
+{/* ─── PEOPLE TAB ─── */}
+{activeTab === 'people' && (
+  <PeopleFromContact companyId={client?.converted_from} getHeaders={getHeaders} />
+)}
 
 {/* ─── OVERVIEW TAB ─── */}
 {activeTab === 'overview' && (

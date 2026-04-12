@@ -35,6 +35,9 @@ export default function Settings() {
   const [signature, setSignature] = useState('');
   const [savingSignature, setSavingSignature] = useState(false);
   const [showSignaturePreview, setShowSignaturePreview] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState(null);
   const [slackUserId, setSlackUserId] = useState('');
   const [savingSlack, setSavingSlack] = useState(false);
   const [slackSaved, setSlackSaved] = useState(false);
@@ -329,6 +332,53 @@ export default function Settings() {
                 )}
               </div>
               {slackUserId && <p style={{ color: '#8E9B8B', fontSize: 12, marginTop: 8 }}>✅ Slack connected — you can now DM Chappie in your Slack workspace</p>}
+            </div>
+
+            {/* Change Password */}
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid rgba(62,66,61,0.08)', padding: '24px 28px', marginBottom: 20 }}>
+              <h2 style={{ color: '#3E423D', fontSize: 17, fontWeight: 600, margin: '0 0 4px' }}>Change Password</h2>
+              <p style={{ color: '#717182', fontSize: 13, margin: '0 0 16px' }}>Update your login password.</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 400 }}>
+                {[
+                  { key: 'current_password', label: 'Current Password' },
+                  { key: 'new_password', label: 'New Password' },
+                  { key: 'confirm_password', label: 'Confirm New Password' },
+                ].map(({ key, label }) => (
+                  <div key={key}>
+                    <label style={{ color: '#717182', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 }}>{label}</label>
+                    <input type="password" value={passwordForm[key]} onChange={e => setPasswordForm(p => ({ ...p, [key]: e.target.value }))}
+                      style={{ width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '10px 12px', color: '#3E423D', fontSize: 13, outline: 'none', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box' }} />
+                  </div>
+                ))}
+                {passwordMsg && (
+                  <p style={{ color: passwordMsg.type === 'error' ? '#D4183D' : '#2E7D32', fontSize: 13, margin: 0 }}>
+                    {passwordMsg.type === 'error' ? '❌' : '✅'} {passwordMsg.text}
+                  </p>
+                )}
+                <button onClick={async () => {
+                  if (passwordForm.new_password !== passwordForm.confirm_password) {
+                    return setPasswordMsg({ type: 'error', text: 'New passwords do not match' });
+                  }
+                  if (passwordForm.new_password.length < 6) {
+                    return setPasswordMsg({ type: 'error', text: 'Password must be at least 6 characters' });
+                  }
+                  setSavingPassword(true);
+                  try {
+                    await axios.put(`${API}/users/me/password`, {
+                      current_password: passwordForm.current_password,
+                      new_password: passwordForm.new_password,
+                    }, { headers: getHeaders() });
+                    setPasswordMsg({ type: 'success', text: 'Password updated successfully' });
+                    setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
+                  } catch (err) {
+                    setPasswordMsg({ type: 'error', text: err.response?.data?.error || 'Failed to update password' });
+                  }
+                  setSavingPassword(false);
+                }} disabled={savingPassword || !passwordForm.current_password || !passwordForm.new_password}
+                  style={{ background: savingPassword ? '#A5B2A3' : '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer', width: 'fit-content' }}>
+                  {savingPassword ? '⏳ Saving...' : '🔒 Update Password'}
+                </button>
+              </div>
             </div>
           </div>
         )}

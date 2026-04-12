@@ -24,6 +24,7 @@ export default function Team() {
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [resetResult, setResetResult] = useState(null);
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
   const headers = { Authorization: `Bearer ${token}` };
@@ -47,6 +48,16 @@ export default function Team() {
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
     } catch (err) {
       alert('Failed to update role');
+    }
+  };
+
+  const handleResetPassword = async (userId, name) => {
+    if (!window.confirm(`Reset password for ${name}? A new temp password will be generated.`)) return;
+    try {
+      const res = await axios.put(`${API}/users/${userId}/reset-password`, {}, { headers });
+      setResetResult({ name, temp_password: res.data.temp_password });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to reset password');
     }
   };
 
@@ -78,14 +89,14 @@ export default function Team() {
   if (loading) return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40, color: '#717182' }}>Loading...</div>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40, color: '#717182' }}>Loading...</div>
     </div>
   );
 
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: '#F5F3EF', minHeight: '100vh' }}>
       <Sidebar />
-      <div style={{ marginLeft: 240, flex: 1, padding: 40 }}>
+      <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
 
         {/* Header */}
         <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 4px' }}>Settings</p>
@@ -139,10 +150,16 @@ export default function Team() {
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                     {user.id !== currentUser.id && (
-                      <button onClick={() => handleDelete(user.id, user.full_name)}
-                        style={{ background: 'none', border: 'none', color: '#D4183D', cursor: 'pointer', fontSize: 13, padding: '4px 8px', borderRadius: 6 }}>
-                        Remove
-                      </button>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button onClick={() => handleResetPassword(user.id, user.name)}
+                          style={{ background: 'none', border: '1px solid rgba(62,66,61,0.15)', color: '#717182', cursor: 'pointer', fontSize: 12, padding: '4px 10px', borderRadius: 6 }}>
+                          🔑 Reset Password
+                        </button>
+                        <button onClick={() => handleDelete(user.id, user.full_name)}
+                          style={{ background: 'none', border: 'none', color: '#D4183D', cursor: 'pointer', fontSize: 13, padding: '4px 8px', borderRadius: 6 }}>
+                          Remove
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -150,6 +167,24 @@ export default function Team() {
             </tbody>
           </table>
         </div>
+
+{/* Reset Password Result Modal */}
+{resetResult && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 380, boxShadow: '0 8px 40px rgba(62,66,61,0.15)' }}>
+              <h2 style={{ color: '#3E423D', fontSize: 18, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 16px' }}>Password Reset</h2>
+              <div style={{ background: '#F0FAF0', border: '1px solid #4CAF50', borderRadius: 8, padding: 16, marginBottom: 20 }}>
+                <p style={{ color: '#2E7D32', fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>✓ Password reset for {resetResult.name}</p>
+                <p style={{ color: '#5A6059', fontSize: 13, margin: '0 0 4px' }}>New temporary password:</p>
+                <code style={{ background: '#fff', border: '1px solid rgba(62,66,61,0.15)', borderRadius: 6, padding: '6px 12px', fontSize: 16, fontWeight: 700, letterSpacing: 2, color: '#3E423D', display: 'block', textAlign: 'center', marginTop: 8 }}>
+                  {resetResult.temp_password}
+                </code>
+                <p style={{ color: '#717182', fontSize: 11, margin: '10px 0 0', textAlign: 'center' }}>Share this with the user. It won't be shown again.</p>
+              </div>
+              <button onClick={() => setResetResult(null)} style={{ width: '100%', background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: 12, fontSize: 14, cursor: 'pointer' }}>Done</button>
+            </div>
+          </div>
+        )}
 
         {/* Invite Modal */}
         {showInvite && (
