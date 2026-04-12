@@ -43,6 +43,9 @@ export default function AiBrain() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [attachedFile, setAttachedFile] = useState(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -66,21 +69,83 @@ export default function AiBrain() {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+    if ((!input.trim() && !attachedFile) || loading) return;
     const userMessage = input.trim();
+    const file = attachedFile;
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setAttachedFile(null);
     setLoading(true);
     setPendingActions(null);
 
     try {
-      const res = await axios.post(`${API}/ai/chat`, { message: userMessage, conversationId: currentConversationId }, { headers: getHeaders() });
-      if (res.data.conversationId) setCurrentConversationId(res.data.conversationId);
-      handleResponse(res.data);
+      if (file) {
+        setUploadingFile(true);
+        // Upload file first
+        const formData = new FormData();
+        formData.append('file', file);
+        let fileUrl = '';
+        let parsedData = null;
+
+        // Try to parse if it looks like an invoice
+        const isInvoiceLike = /\.(pdf|png|jpg|jpeg)$/i.test(file.name);
+        if (isInvoiceLike) {
+          try {
+            const parseForm = new FormData();
+            parseForm.append('invoice', file);
+            const parseRes = await axios.post(`${API}/finance/invoices/parse`, parseForm, {
+              headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
+            });
+            parsedData = parseRes.data;
+          } catch (err) {
+            // Not an invoice — that's fine, continue without parsed data
+            console.log('File is not an invoice, skipping parse');
+          }
+        }
+
+        // Upload to storage
+        try {
+          const uploadRes = await axios.post(`${API}/uploads/receipts`, formData, {
+            headers: { ...getHeaders(), 'Content-Type': 'multipart/form-data' }
+          });
+          fileUrl = uploadRes.data.url || '';
+        } catch (err) { console.error('Upload failed:', err); }
+
+        setUploadingFile(false);
+
+        // Build message with file context
+        let messageContent = userMessage || '';
+        if (parsedData && !userMessage) {
+          messageContent = `I uploaded a file: "${file.name}". It looks like an invoice from ${parsedData.vendor || 'unknown vendor'} for $${parsedData.amount || '?'}. What should I do with it?`;
+        } else if (!userMessage) {
+          messageContent = `I uploaded a file: "${file.name}". What should I do with it?`;
+        } else {
+          messageContent = `${userMessage} [File attached: ${file.name}${fileUrl ? `, url: ${fileUrl}` : ''}${parsedData ? `, parsed: ${JSON.stringify(parsedData)}` : ''}]`;
+        }
+
+        setMessages(prev => [...prev, { 
+          role: 'user', 
+          content: userMessage || `📎 ${file.name}`,
+          fileAttachment: { name: file.name, url: fileUrl, parsed: parsedData }
+        }]);
+
+        const res = await axios.post(`${API}/ai/chat`, { 
+          message: messageContent, 
+          conversationId: currentConversationId,
+          fileContext: { name: file.name, url: fileUrl, parsed: parsedData }
+        }, { headers: getHeaders() });
+        if (res.data.conversationId) setCurrentConversationId(res.data.conversationId);
+        handleResponse(res.data);
+      } else {
+        setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+        const res = await axios.post(`${API}/ai/chat`, { message: userMessage, conversationId: currentConversationId }, { headers: getHeaders() });
+        if (res.data.conversationId) setCurrentConversationId(res.data.conversationId);
+        handleResponse(res.data);
+      }
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: '❌ Something went wrong. Please try again.' }]);
     }
     setLoading(false);
+    setUploadingFile(false);
   };
 
   const handleResponse = (data) => {
@@ -220,7 +285,7 @@ export default function AiBrain() {
                   </div>
                 )}
 
-                {messages.map((msg, i) => (
+{messages.map((msg, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                     <div style={{
                       maxWidth: '85%', padding: '10px 14px', borderRadius: 12,
@@ -231,6 +296,13 @@ export default function AiBrain() {
                       borderBottomLeftRadius: msg.role === 'assistant' ? 4 : 12,
                       whiteSpace: 'pre-wrap',
                     }}>
+                      {msg.fileAttachment && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.2)', borderRadius: 6, padding: '4px 8px', marginBottom: 6, fontSize: 11 }}>
+                          <span>📎</span>
+                          <span style={{ opacity: 0.9 }}>{msg.fileAttachment.name}</span>
+                          {msg.fileAttachment.parsed && <span style={{ opacity: 0.7 }}>· parsed ✓</span>}
+                        </div>
+                      )}
                       <span>{msg.content}</span>
                       {msg.timestamp && (
                         <div style={{ fontSize: 10, color: msg.role === 'user' ? 'rgba(255,255,255,0.6)' : '#AAAABC', marginTop: 4, textAlign: 'right' }}>
@@ -283,12 +355,29 @@ export default function AiBrain() {
 
               {/* Input */}
               <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(62,66,61,0.08)', flexShrink: 0 }}>
+                {/* File attachment preview */}
+                {attachedFile && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F5F3EF', borderRadius: 8, padding: '6px 10px', marginBottom: 8 }}>
+                    <span style={{ fontSize: 16 }}>📎</span>
+                    <span style={{ flex: 1, fontSize: 12, color: '#3E423D', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{attachedFile.name}</span>
+                    <button onClick={() => setAttachedFile(null)} style={{ background: 'none', border: 'none', color: '#D4183D', cursor: 'pointer', fontSize: 14, padding: 0 }}>✕</button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                  {/* Paperclip button */}
+                  <button onClick={() => fileInputRef.current?.click()} disabled={loading}
+                    style={{ background: '#F5F3EF', border: 'none', borderRadius: 10, width: 38, height: 38, cursor: 'pointer', fontSize: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    title="Attach file">
+                    📎
+                  </button>
+                  <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx,.csv"
+                    style={{ display: 'none' }}
+                    onChange={e => { const file = e.target.files[0]; if (file) setAttachedFile(file); e.target.value = ''; }} />
                   <textarea
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                    placeholder="Ask me anything..."
+                    placeholder={attachedFile ? "Add a message or just send the file..." : "Ask me anything..."}
                     rows={2}
                     style={{
                       flex: 1, background: '#F5F3EF', border: 'none', borderRadius: 10,
@@ -296,9 +385,9 @@ export default function AiBrain() {
                       fontFamily: 'Inter, sans-serif', color: '#3E423D', lineHeight: 1.5,
                     }}
                   />
-                  <button onClick={sendMessage} disabled={!input.trim() || loading}
+                  <button onClick={sendMessage} disabled={(!input.trim() && !attachedFile) || loading}
                     style={{
-                      background: input.trim() && !loading ? '#8E9B8B' : '#D5CEC0',
+                      background: (input.trim() || attachedFile) && !loading ? '#8E9B8B' : '#D5CEC0',
                       color: '#fff', border: 'none', borderRadius: 10,
                       width: 38, height: 38, cursor: input.trim() && !loading ? 'pointer' : 'default',
                       fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',

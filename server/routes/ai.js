@@ -7,12 +7,13 @@ const { chat } = require('../services/aiBrain');
 // POST /api/ai/chat
 router.post('/chat', auth, async (req, res) => {
   try {
-    const { message, pendingConfirmation } = req.body;
-    if (!message && !pendingConfirmation) {
+    const { message, pendingConfirmation, fileContext } = req.body;
+    if (!message && !pendingConfirmation && !fileContext) {
       return res.status(400).json({ error: 'message or pendingConfirmation required' });
     }
 
-    const result = await chat(req.user.id, message, pendingConfirmation, req.body.conversationId || null);
+    const effectiveMessage = message || (fileContext ? `I uploaded a file: "${fileContext.name}". What should I do with it?` : null);
+    const result = await chat(req.user.id, effectiveMessage, pendingConfirmation, req.body.conversationId || null);
     res.json(result);
   } catch (err) {
     console.error('AI chat error:', err.message);

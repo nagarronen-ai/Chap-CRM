@@ -191,8 +191,16 @@ router.post('/invoices/parse', auth, checkPermission('finance:general'), async (
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
       const { parseInvoice } = require('../services/invoiceParser');
-      const result = await parseInvoice(req.file.buffer, req.file.mimetype);
-      res.json(result);
+      try {
+        const result = await parseInvoice(req.file.buffer, req.file.mimetype);
+        res.json(result);
+      } catch (parseErr) {
+        if (parseErr.notAnInvoice || parseErr.message === 'NOT_AN_INVOICE') {
+          return res.status(422).json({ error: 'NOT_AN_INVOICE' });
+        }
+        console.error('Invoice parse error:', parseErr.message);
+        return res.status(500).json({ error: parseErr.message });
+      }
     });
   } catch (err) {
     console.error('Invoice parse error:', err.message);

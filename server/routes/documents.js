@@ -84,12 +84,31 @@ router.post('/upload', auth, upload.single('file'), async (req, res) => {
       .select('*, uploaded_by_user:crm_users!uploaded_by(name)')
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Log to activity
+      if (data.company_id) {
+        await supabase.from('crm_activity_log').insert([{
+          company_id: data.company_id,
+          client_id: data.client_id || null,
+          user_id: req.user.id,
+          action: 'Document Added',
+          details: `Document added: "${data.title}" (${data.type})`,
+        }]);
+      } else if (data.client_id) {
+        await supabase.from('crm_activity_log').insert([{
+          client_id: data.client_id,
+          user_id: req.user.id,
+          action: 'Document Added',
+          details: `Document added: "${data.title}" (${data.type})`,
+        }]);
+      }
+  
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
 // DELETE /api/documents/:id
 router.delete('/:id', auth, async (req, res) => {

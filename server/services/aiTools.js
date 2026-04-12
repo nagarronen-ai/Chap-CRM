@@ -223,6 +223,26 @@ const toolDefinitions = [
       },
     },
   },
+
+  {
+    type: 'function',
+    function: {
+      name: 'attach_document',
+      description: 'Attach a document/file to a company or client record. Use when user uploads a file and wants to save it to a contact or client. Always call search_contacts first to get the correct entity ID.',
+      parameters: {
+        type: 'object',
+        properties: {
+          entity_type: { type: 'string', enum: ['company', 'client'], description: 'Whether to attach to a company or client' },
+          entity_id: { type: 'string', description: 'The company or client UUID from search_contacts' },
+          file_url: { type: 'string', description: 'The uploaded file URL' },
+          title: { type: 'string', description: 'Document title' },
+          type: { type: 'string', enum: ['Contract', 'Invoice', 'Proposal', 'NDA', 'Presentation', 'Other'], description: 'Document type' },
+          notes: { type: 'string', description: 'Optional notes about the document' },
+        },
+        required: ['entity_type', 'entity_id', 'file_url', 'title', 'type'],
+      },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -470,6 +490,7 @@ async function executeTool(toolName, args, userId) {
     case 'get_waitlist_list': return await getWaitlistList(args.limit || 20);
     case 'search_memory': return await searchMemory(args.query, args.source);
     case 'get_campaign_stats': return await getCampaignStats(userId, args.campaign_name);
+    case 'attach_document': return await attachDocument(userId, args.entity_type, args.entity_id, args.file_url, args.title, args.type, args.notes);
     case 'add_note': return await addNote(userId, args.entity_type, args.entity_id, args.note);
     case 'update_pipeline_stage': return await updatePipelineStage(userId, args.company_id, args.stage);
     case 'update_client_stage': return await updateClientStage(userId, args.client_id, args.stage);
@@ -980,6 +1001,60 @@ async function getEmailThread(userId, threadId, companyId, personId) {
     })),
   };
 }
+
+async function attachDocument(userId, entityType, entityId, fileUrl, title, type, notes) {
+  let companyId = entityType === 'company' ? entityId : null;
+  let clientId = entityType === 'client' ? entityId : null;
+
+  // If attaching to a client, also link to the original company
+  if (entityType === 'client') {
+    const { data: client } = await supabase
+      .from('crm_clients')
+      .select('converted_from')
+      .eq('id', entityId)
+      .single();
+    if (client?.converted_from) companyId = client.converted_from;
+  }
+
+  // If attaching to a company, also link to the client if converted
+  if (entityType === 'company') {
+    const { data: client } = await supabase
+      .from('crm_clients')
+      .select('id')
+      .eq('converted_from', entityId)
+      .single();
+    if (client) clientId = client.id;
+  }
+
+  const insert = {
+    title: title || 'Untitled',
+    file_url: fileUrl,
+    type: type || 'Other',
+    notes: notes || null,
+    uploaded_by: userId,
+    company_id: companyId,
+    client_id: clientId,
+  };
+
+  const { data, error } = await supabase
+    .from('crm_documents')
+    .insert([insert])
+    .select()
+    .single();
+
+    if (error) throw new Error(error.message);
+
+    // Log to activity
+    await supabase.from('crm_activity_log').insert([{
+      company_id: companyId || null,
+      client_id: clientId || null,
+      user_id: userId,
+      action: 'Document Added',
+      details: `Document added via Chappie: "${title}" (${type || 'Other'})`,
+    }]);
+  
+    return { success: true, document_id: data.id, message: `Document "${title}" attached to ${entityType} successfully.` };
+  }
 
 async function addNote(userId, entityType, entityId, note) {
   const insert = { user_id: userId, action: 'Note Added', details: note, created_at: new Date().toISOString() };

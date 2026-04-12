@@ -94,7 +94,7 @@ function PeopleFromContact({ companyId, getHeaders }) {
   const inputStyle = { width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 6, padding: '5px 8px', color: '#3E423D', fontSize: 12, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' };
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
+    <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16, overflow: 'hidden', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: 0 }}>People ({people.length})</h3>
         <button onClick={() => setShowAdd(true)} style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>+ Add Person</button>
@@ -144,7 +144,7 @@ function PeopleFromContact({ companyId, getHeaders }) {
                 <div>
                   <p style={{ color: '#3E423D', fontWeight: 600, margin: '0 0 2px', fontSize: 13 }}>{p.first_name} {p.last_name}</p>
                   {p.title && <p style={{ color: '#717182', fontSize: 12, margin: '0 0 4px' }}>{p.title}</p>}
-                  {p.email && <p style={{ color: '#94B0BC', fontSize: 12, margin: '0 0 2px' }}>✉️ {p.email}</p>}
+                  {p.email && <p style={{ color: '#94B0BC', fontSize: 12, margin: '0 0 2px', wordBreak: 'break-all' }}>✉️ {p.email}</p>}
                   {p.work_phone && <p style={{ color: '#5A6059', fontSize: 12, margin: '0 0 2px' }}>📞 {p.work_phone}</p>}
                   {p.mobile_phone && <p style={{ color: '#5A6059', fontSize: 12, margin: 0 }}>📱 {p.mobile_phone}</p>}
                 </div>
@@ -174,6 +174,7 @@ export default function ClientProfile() {
   const [activeTab, setActiveTab] = useState('overview');
   const [editField, setEditField] = useState(null);
   const [note, setNote] = useState('');
+  const [notePersonId, setNotePersonId] = useState('');
   const [showDocModal, setShowDocModal] = useState(false);
   const [docForm, setDocForm] = useState({ title: '', type: 'Contract', notes: '' });
   const [docFile, setDocFile] = useState(null);
@@ -413,8 +414,9 @@ try {
   const addNote = async () => {
     if (!note.trim()) return;
     try {
-      await axios.post(`${API}/clients/${id}/note`, { note }, { headers: getHeaders() });
+      await axios.post(`${API}/clients/${id}/note`, { note, person_id: notePersonId || null }, { headers: getHeaders() });
       setNote('');
+      setNotePersonId('');
       const res = await axios.get(`${API}/clients/${id}/activity`, { headers: getHeaders() });
       setActivity(res.data);
     } catch (err) { console.error(err); }
@@ -674,7 +676,7 @@ try {
 
 {/* ─── OVERVIEW TAB ─── */}
 {activeTab === 'overview' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, minWidth: 0, width: '100%' }}>
             <div style={{ background: '#fff', borderRadius: 12, padding: 28, border: '1px solid rgba(62,66,61,0.1)' }}>
             <h3 style={{ color: '#3E423D', fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Contact Info</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
@@ -797,7 +799,7 @@ try {
                 ))}
               </div>
             </div>
-            <div>
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
               {client.converted_from && <PeopleFromContact companyId={client.converted_from} getHeaders={getHeaders} />}
               <div style={{ background: '#fff', borderRadius: 12, padding: 20, border: '1px solid rgba(62,66,61,0.1)', marginBottom: 16 }}>
                 <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>Quick Note</h3>
@@ -808,7 +810,7 @@ try {
                 <h3 style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>Recent Notes</h3>
                 {activity.filter(a => a.action === 'Note Added').slice(0, 3).map(a => (
                   <div key={a.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(62,66,61,0.06)' }}>
-                    <p style={{ color: '#3E423D', fontSize: 12, margin: '0 0 2px' }}>{a.details}</p>
+                    <p style={{ color: '#3E423D', fontSize: 12, margin: '0 0 2px', wordBreak: 'break-word' }}>{a.details?.length > 120 ? a.details.substring(0, 120) + '...' : a.details}</p>
                     <p style={{ color: '#CBCED4', fontSize: 10, margin: 0 }}>{new Date(a.created_at).toLocaleDateString()}</p>
                   </div>
                 ))}
@@ -936,11 +938,29 @@ try {
 {activeTab === 'activity' && (
   <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid rgba(62,66,61,0.1)' }}>
 
+    {/* Add Note */}
+    <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid rgba(62,66,61,0.08)' }}>
+      <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note..." rows={2}
+        style={{ ...inputStyle, marginBottom: 8, resize: 'vertical' }} />
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <select value={notePersonId} onChange={e => setNotePersonId(e.target.value)} style={{ ...inputStyle, width: 220 }}>
+          <option value="">🏢 Company note</option>
+          {(clientPeople || []).map(p => <option key={p.id} value={p.id}>👤 {p.first_name} {p.last_name}</option>)}
+        </select>
+        <button onClick={addNote} disabled={!note.trim()}
+          style={{ background: note.trim() ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: note.trim() ? 'pointer' : 'default' }}>
+          Add Note
+        </button>
+      </div>
+    </div>
+
     {/* Filter buttons */}
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
       {[
         { key: 'all', label: 'All' },
         { key: 'meetings', label: '📅 Meetings' },
+        { key: 'documents', label: '📄 Documents' },
+        ...(clientPeople || []).map(p => ({ key: `person_${p.id}`, label: `👤 ${p.first_name} ${p.last_name}` })),
         { key: 'emails', label: '📧 Emails' },
         { key: 'notes', label: '📌 Notes' },
       ].map(f => (
@@ -966,14 +986,21 @@ try {
           .sort((a, b) => b.sortDate - a.sortDate)
           .filter(item => {
             if (activityFilter === 'all') return true;
-            if (activityFilter === 'meetings') {
-              return item.type === 'activity' && ['Meeting Scheduled', 'Meeting Completed', 'Meeting Cancelled', 'Meeting No-show', 'Meeting Recorded'].includes(item.action);
+            if (activityFilter.startsWith('person_')) {
+              const personId = activityFilter.replace('person_', '');
+              return item.type === 'activity' && item.person_id === personId;
             }
             if (activityFilter === 'emails') {
               return item.type === 'synced_email' || (item.type === 'activity' && ['Email Sent', 'Email Received', 'Email Opened', 'Email Clicked', 'Email Bounced'].includes(item.action));
             }
             if (activityFilter === 'notes') {
               return item.type === 'activity' && item.action === 'Note Added';
+            }
+            if (activityFilter === 'documents') {
+              return item.type === 'activity' && item.action === 'Document Added';
+            }
+            if (activityFilter === 'meetings') {
+              return item.type === 'activity' && ['Meeting Scheduled', 'Meeting Completed', 'Meeting Cancelled', 'Meeting No-show', 'Meeting Recorded'].includes(item.action);
             }
             return true;
           })
@@ -1030,7 +1057,7 @@ try {
                     <span style={{ color: '#3E423D', fontSize: 13, fontWeight: 500 }}>{item.crm_users?.name || '—'}</span>
                     <span style={{ background: '#F5F3EF', color: '#717182', fontSize: 10, borderRadius: 20, padding: '1px 8px' }}>{item.action}</span>
                   </div>
-                  <p style={{ color: '#717182', fontSize: 12, margin: 0 }}>{item.details}</p>
+                  <p style={{ color: '#717182', fontSize: 12, margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{item.details}</p>
                 </div>
                 <span style={{ color: '#CBCED4', fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
               </div>

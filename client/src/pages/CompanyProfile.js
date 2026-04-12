@@ -165,7 +165,7 @@ export default function CompanyProfile() {
     setConverting(false);
   };
 
-  useEffect(() => { fetchCompany(); fetchActivity(); fetchTemplates(); fetchMarketingData(); fetchEmailTracking(); fetchMeetings(); }, [id]);
+  useEffect(() => { fetchCompany(); fetchActivity(); fetchTemplates(); fetchMarketingData(); fetchEmailTracking(); fetchMeetings(); fetchDocuments(); }, [id]);
     const fetchTeamUsers = async () => {
     try {
       const res = await axios.get(`${API}/users`, { headers: getHeaders() });
@@ -546,6 +546,9 @@ export default function CompanyProfile() {
         ['Meeting Scheduled', 'Meeting Completed', 'Meeting Cancelled', 'Meeting No-show', 'Meeting Recorded'].includes(a.action)
       );
     }
+    if (filterPerson === 'documents') {
+      return activity.filter(a => a.action === 'Document Added');
+    }
     if (filterPerson) {
       return activity.filter(a => a.person_id === filterPerson || (!a.person_id && filterPerson === 'company'));
     }
@@ -760,7 +763,7 @@ export default function CompanyProfile() {
                     <p style={{ color: '#717182', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 8px' }}>Recent Notes</p>
                     {activity.filter(a => a.action === 'Note Added').slice(0, 3).map(a => (
                       <div key={a.id} style={{ borderLeft: '2px solid #E5E1D8', paddingLeft: 10, marginBottom: 8 }}>
-                        <p style={{ color: '#3E423D', fontSize: 13, margin: '0 0 2px' }}>{a.details}</p>
+                        <p style={{ color: '#3E423D', fontSize: 13, margin: '0 0 2px', wordBreak: 'break-word' }}>{a.details?.length > 120 ? a.details.substring(0, 120) + '...' : a.details}</p>
                         <p style={{ color: '#CBCED4', fontSize: 11, margin: 0 }}>{new Date(a.created_at).toLocaleDateString()}</p>
                       </div>
                     ))}
@@ -823,9 +826,13 @@ export default function CompanyProfile() {
             <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
               <button onClick={() => { setFilterPerson(''); setActivityPage(1); }} style={{ background: filterPerson === '' ? '#8E9B8B' : '#F5F3EF', color: filterPerson === '' ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>All</button>
               
-<button onClick={() => { setFilterPerson('meetings'); setActivityPage(1); }}
+              <button onClick={() => { setFilterPerson('meetings'); setActivityPage(1); }}
   style={{ background: filterPerson === 'meetings' ? '#B4A5D6' : '#F5F3EF', color: filterPerson === 'meetings' ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
   📅 Meetings
+</button>
+<button onClick={() => { setFilterPerson('documents'); setActivityPage(1); }}
+  style={{ background: filterPerson === 'documents' ? '#94B0BC' : '#F5F3EF', color: filterPerson === 'documents' ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
+  📄 Documents
 </button>
 <button onClick={() => { setFilterPerson('company'); setActivityPage(1); }}
   style={{ background: filterPerson === 'company' ? '#8E9B8B' : '#F5F3EF', color: filterPerson === 'company' ? '#fff' : '#5A6059', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
@@ -877,7 +884,7 @@ export default function CompanyProfile() {
                           })()}                          {a.crm_people && <span style={{ color: '#8E9B8B', fontSize: 12 }}>👤 {a.crm_people.first_name} {a.crm_people.last_name}</span>}
                           {!a.person_id && a.action === 'Note Added' && <span style={{ color: '#94B0BC', fontSize: 12 }}>🏢 Company</span>}
                         </div>
-                        <p style={{ color: '#3E423D', fontSize: 14, margin: '0 0 4px' }}>{a.details}</p>
+                        <p style={{ color: '#3E423D', fontSize: 14, margin: '0 0 4px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{a.details?.length > 200 ? a.details.substring(0, 200) + '...' : a.details}</p>
                         <p style={{ color: '#CBCED4', fontSize: 11, margin: 0 }}>{new Date(a.created_at).toLocaleString()}</p>
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 12 }}>

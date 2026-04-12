@@ -78,6 +78,14 @@ Return only this JSON structure:
 
     // Strip markdown if present
     const clean = text.replace(/```json|```/g, '').trim();
+    
+    // Check if it looks like JSON before parsing
+    if (!clean.startsWith('{')) {
+        const err = new Error('NOT_AN_INVOICE');
+        err.notAnInvoice = true;
+        throw err;
+      }
+    
     const parsed = JSON.parse(clean);
 
     // Validate and sanitize
