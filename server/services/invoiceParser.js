@@ -90,15 +90,15 @@ Return only this JSON structure:
 
     // Validate and sanitize
     return {
-      title: parsed.title || '',
-      amount: parseFloat(parsed.amount) || 0,
-      date: parsed.date || new Date().toISOString().split('T')[0],
-      vendor: parsed.vendor || '',
-      category: CATEGORIES.includes(parsed.category) ? parsed.category : 'Other',
-      recurring: !!parsed.recurring,
-      recurring_interval: parsed.recurring_interval || (parsed.recurring ? 'monthly' : null),
-      notes: parsed.notes || '',
-    };
+        title: parsed.title || '',
+        amount: parseFloat(parsed.amount) || 0,
+        date: parsed.date || new Date().toISOString().split('T')[0],
+        vendor: parsed.vendor || '',
+        category: CATEGORIES.includes(parsed.category) ? parsed.category : 'Other',
+        recurring: !!parsed.recurring,
+        recurring_interval: parsed.recurring_interval || (parsed.recurring ? 'monthly' : null),
+        notes: parsed.title && parsed.amount > 0 ? (parsed.notes || '') : '',
+      };
 
   } catch (err) {
     console.error('Invoice parser error:', err.message);

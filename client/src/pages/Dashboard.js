@@ -469,7 +469,7 @@ export default function Dashboard() {
                   {recurringData.upcoming.filter(e => e.due_soon).length} due this week
                 </span>
               </div>
-              <button onClick={() => navigate('/finance')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 12, cursor: 'pointer', padding: 0 }}>View all →</button>
+              <button onClick={() => navigate('/finance?filter=recurring')} style={{ background: 'none', border: 'none', color: '#8E9B8B', fontSize: 12, cursor: 'pointer', padding: 0 }}>View all →</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {recurringData.upcoming.filter(e => e.due_soon).map(exp => (

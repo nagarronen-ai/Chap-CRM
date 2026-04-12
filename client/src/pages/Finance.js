@@ -43,8 +43,10 @@ export default function Finance() {
   const [expenses, setExpenses] = useState([]);
   const [summary, setSummary] = useState({});
   const [loading, setLoading] = useState(true);
+  const urlParams = new URLSearchParams(window.location.search);
   const [filterCategory, setFilterCategory] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterRecurring, setFilterRecurring] = useState(urlParams.get('filter') === 'recurring');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
@@ -70,6 +72,7 @@ export default function Finance() {
       const params = {};
       if (filterCategory) params.category = filterCategory;
       if (filterStatus) params.status = filterStatus;
+      if (filterRecurring) params.recurring = true;
 
       const [expRes, sumRes] = await Promise.all([
         axios.get(`${API}/finance/expenses`, { headers: headers(), params }),
@@ -83,7 +86,7 @@ export default function Finance() {
     } finally {
       setLoading(false);
     }
-  }, [filterCategory, filterStatus, navigate]);
+  }, [filterCategory, filterStatus, filterRecurring, navigate]);
 
   const fetchPersonData = useCallback(async () => {
     try {
@@ -436,6 +439,12 @@ export default function Finance() {
             <option value="">All Statuses</option>
             {STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
           </select>
+          {filterRecurring && (
+            <button onClick={() => setFilterRecurring(false)}
+              style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>
+              🔄 Recurring only ✕
+            </button>
+          )}
           {(filterCategory || filterStatus) && (
             <button onClick={() => { setFilterCategory(''); setFilterStatus(''); }}
               style={{ background: 'none', border: '1px solid #D5CEC0', borderRadius: 8, padding: '8px 16px', fontSize: 13, color: '#5A6059', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>

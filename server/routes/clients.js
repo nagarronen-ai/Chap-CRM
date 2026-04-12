@@ -133,6 +133,27 @@ router.post('/convert/:companyId', auth, checkPermission('company:edit'), async 
     .update({ stage: 'Converted' })
     .eq('id', companyId);
 
+// Copy documents from company to client
+const { data: companyDocs } = await supabase
+.from('crm_documents')
+.select('*')
+.eq('company_id', companyId);
+
+if (companyDocs && companyDocs.length > 0) {
+await supabase.from('crm_documents').insert(
+  companyDocs.map(doc => ({
+    title: doc.title,
+    file_url: doc.file_url,
+    type: doc.type,
+    notes: doc.notes,
+    company_id: companyId,
+    client_id: client.id,
+    uploaded_by: doc.uploaded_by,
+    created_at: doc.created_at,
+  }))
+);
+}
+
   // Log activity on the company
   await supabase.from('crm_activity_log').insert([{
     company_id: companyId,

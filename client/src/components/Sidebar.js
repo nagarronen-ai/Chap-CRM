@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
 
-const APP_VERSION = 'v2.3';
+const APP_VERSION = 'v2.3.0';
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
 export default function Sidebar() {

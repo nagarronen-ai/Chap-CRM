@@ -64,6 +64,7 @@ FILE HANDLING RULES:
 - If the user says "add to X" or "attach to X" with a file → search_contacts → attach_document with the file_url from the message.
 - Always ask for document type if not specified: Contract, Invoice, Proposal, NDA, Presentation, or Other.
 - Never use add_note to store file URLs — always use attach_document.
+- For the notes field in attach_document: only use notes the USER explicitly provides. Never use Claude's file analysis or invoice parsing descriptions as document notes. If no notes provided, pass null.
 - If no instruction given with a file → ask: "What should I do with this file? I can attach it to a contact or client, or add it as an expense if it's an invoice."
 - After search_contacts: check companies, clients, AND people arrays. If person found, use their company. Never say not found without checking all three.
 

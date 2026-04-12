@@ -611,7 +611,7 @@ try {
               📅 Schedule Meeting
             </button>
             {client.converted_from && (
-              <button onClick={() => navigate(`/contacts/${client.converted_from}`)}
+              <button onClick={() => navigate(`/companies/${client.converted_from}`)}
                 style={{ background: '#F5F3EF', color: '#717182', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '8px 14px', fontSize: 12, cursor: 'pointer' }}>
                 📋 View Original Contact
               </button>
