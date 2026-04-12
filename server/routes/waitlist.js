@@ -19,7 +19,7 @@ async function sendConfirmationEmail(email, first_name) {
       .eq('name', 'Waitlist Confirmation')
       .single();
 
-    const unsubscribeUrl = `https://crm-api.planfor.io/api/waitlist/unsubscribe?email=${encodeURIComponent(email)}`;
+    const unsubscribeUrl = `https://api.chap-crm.io/api/waitlist/unsubscribe?email=${encodeURIComponent(email)}`;
 
     let subject = "You're on the list ✨";
     let html = '';
@@ -45,7 +45,7 @@ async function sendConfirmationEmail(email, first_name) {
     } else {
       // Fallback if template not found
       console.warn('Waitlist Confirmation template not found — using fallback');
-      html = `<p>Hi ${first_name || 'there'},</p><p>You're on the Planfor waitlist. We'll be in touch soon.</p>`;
+      html = `<p>Hi ${first_name || 'there'},</p><p>You're on the waitlist. We'll be in touch soon.</p>`;
     }
 
     const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
@@ -59,12 +59,12 @@ async function sendConfirmationEmail(email, first_name) {
           to: [{ email, name: first_name || '' }],
           custom_args: { message_ref: messageRef },
         }],
-        from: { email: 'noreply@planfor.io', name: 'Planfor' },
-        reply_to: { email: 'hello@planfor.io', name: 'Planfor' },
+        from: { email: 'noreply@chap-crm.io', name: 'Chap CRM' },
+        reply_to: { email: 'hello@chap-crm.io', name: 'Chap CRM' },
         subject,
         content: [{ type: 'text/html', value: html }],
         headers: {
-          'List-Unsubscribe': `<https://crm-api.planfor.io/api/waitlist/unsubscribe?email=${encodeURIComponent(email)}>`,
+          'List-Unsubscribe': `<https://api.chap-crm.io/api/waitlist/unsubscribe?email=${encodeURIComponent(email)}>`,
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         },
         tracking_settings: {
@@ -128,7 +128,7 @@ router.post('/subscribe', async (req, res) => {
         consent_at: new Date().toISOString(),
         ip_address: req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || null,
         user_agent: req.headers['user-agent'] || null,
-        consent_text: 'I agree to receive updates and marketing emails from Planfor. Unsubscribe anytime.',
+        consent_text: 'I agree to receive updates and marketing emails from Chap CRM. Unsubscribe anytime.',
       }]);
 
     if (insertError) {
@@ -200,7 +200,7 @@ router.get('/unsubscribe', async (req, res) => {
     res.send(`
       <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#F0EDE8;">
         <h2 style="color:#3E423D;">You've been unsubscribed.</h2>
-        <p style="color:#717182;">You won't receive any more emails from Planfor.</p>
+        <p style="color:#717182;">You won't receive any more emails from Chap CRM.</p>
       </body></html>
     `);
   } catch (err) {

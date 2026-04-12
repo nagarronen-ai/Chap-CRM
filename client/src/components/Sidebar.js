@@ -132,7 +132,7 @@ export default function Sidebar() {
     }}>
       {/* Logo */}
       <div style={{ marginBottom: 24, paddingLeft: 12 }}>
-        <p style={{ color: '#8E9B8B', fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 2px' }}>Planfor</p>
+        <p style={{ color: '#8E9B8B', fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 2px' }}>Chap CRM</p>
         <p style={{ color: '#3E423D', fontSize: 18, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>CRM</p>
       </div>
 

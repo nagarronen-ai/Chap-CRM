@@ -286,7 +286,7 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
           {/* Additional attendees */}
           <div>
             <label style={labelStyle}>Additional Attendees (comma-separated emails)</label>
-            <input value={form.attendee_emails} onChange={e => setForm(prev => ({ ...prev, attendee_emails: e.target.value }))} style={inputStyle} placeholder="e.g. colleague@planfor.io" />
+            <input value={form.attendee_emails} onChange={e => setForm(prev => ({ ...prev, attendee_emails: e.target.value }))} style={inputStyle} placeholder="e.g. colleague@company.com" />
           </div>
 
           {/* Description */}
@@ -304,7 +304,7 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input type="checkbox" checked={form.auto_record || false} onChange={e => setForm(prev => ({ ...prev, auto_record: e.target.checked }))} style={{ accentColor: '#D4183D' }} />
-                <span style={{ color: '#1a6fad', fontSize: 12, fontWeight: 500 }}>🔴 Auto-record this meeting (Planfor Assistant will join and transcribe)</span>
+                <span style={{ color: '#1a6fad', fontSize: 12, fontWeight: 500 }}>🔴 Auto-record this meeting (Chap CRM Assistant will join and transcribe)</span>
               </label>
             </div>
           )}

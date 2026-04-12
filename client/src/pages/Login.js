@@ -30,7 +30,7 @@ export default function Login() {
   return (
     <div style={{ minHeight: '100vh', background: '#E5E1D8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif' }}>
       <div style={{ background: '#F5F3EF', borderRadius: 16, padding: 48, width: 380, boxShadow: '0 4px 24px rgba(62,66,61,0.1)', border: '1px solid rgba(62,66,61,0.1)' }}>
-        <p style={{ color: '#8E9B8B', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' }}>Planfor</p>
+        <p style={{ color: '#8E9B8B', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' }}>Chap CRM</p>
         <h1 style={{ color: '#3E423D', fontSize: 28, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 32px' }}>Welcome back</h1>
 
         {error && (

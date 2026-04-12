@@ -448,7 +448,7 @@ export default function CompanyProfile() {
       .replace(/{{last_name}}/g, person?.last_name || '')
       .replace(/{{company_name}}/g, company?.company_name || '')
       .replace(/{{sender_name}}/g, user?.full_name || user?.name || 'Dan Sitbon')
-      .replace(/{{sender_email}}/g, user?.email || 'dan.s@planfor.io')
+      .replace(/{{sender_email}}/g, user?.email || 'you@yourcompany.com')
       .replace(/{{city}}/g, company?.city || '')
       .replace(/{{stage}}/g, company?.stage || '');
   };

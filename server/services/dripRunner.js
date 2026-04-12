@@ -54,7 +54,7 @@ async function runDripSequences() {
             .replace(/{{first_name}}/g, enrollment.first_name || 'there')
             .replace(/{{email}}/g, enrollment.email);
 
-          const unsubscribeUrl = `https://crm-api.planfor.io/api/waitlist/unsubscribe?email=${encodeURIComponent(enrollment.email)}`;
+          const unsubscribeUrl = `https://api.chap-crm.io/api/waitlist/unsubscribe?email=${encodeURIComponent(enrollment.email)}`;
 
           if (step.design_template_id) {
             html = await wrapWithDesignTemplateById(html, step.design_template_id);
@@ -81,8 +81,8 @@ async function runDripSequences() {
                     sequence_id: seq.id,
                   },
                 }],
-                from: { email: 'noreply@planfor.io', name: 'Planfor' },
-                reply_to: { email: 'hello@planfor.io', name: 'Planfor' },
+                from: { email: 'noreply@chap-crm.io', name: 'Chap CRM' },
+                reply_to: { email: 'hello@chap-crm.io', name: 'Chap CRM' },
                 subject: step.subject,
                 content: [{ type: 'text/html', value: html }],
                 tracking_settings: {

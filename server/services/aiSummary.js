@@ -18,7 +18,7 @@ async function generateMeetingSummary(transcript, meetingContext = {}) {
 
   const contextStr = contextParts.length > 0 ? `\n\nMeeting context:\n${contextParts.join('\n')}` : '';
 
-  const prompt = `You are a sales meeting analyst for a wedding vendor marketplace company called Planfor. 
+  const prompt = `You are a sales meeting analyst for a company. 
 Your job is to analyze meeting transcripts and provide actionable insights.${contextStr}
 
 Analyze the following meeting transcript and respond with ONLY valid JSON (no markdown, no backticks, no preamble) in this exact format:

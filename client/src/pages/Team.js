@@ -216,7 +216,7 @@ export default function Team() {
                   )}
                   {[
                     { label: 'Full Name', key: 'full_name', type: 'text', placeholder: 'Jane Smith' },
-                    { label: 'Email', key: 'email', type: 'email', placeholder: 'jane@planfor.io' },
+                    { label: 'Email', key: 'email', type: 'email', placeholder: 'jane@company.com' },
                     { label: 'Temporary Password', key: 'password', type: 'text', placeholder: 'Leave blank for default' },
                   ].map(field => (
                     <div key={field.key} style={{ marginBottom: 16 }}>

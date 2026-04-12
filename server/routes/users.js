@@ -106,7 +106,7 @@ router.get('/', auth, checkPermission('users:manage'), async (req, res) => {
 router.post('/invite', auth, checkPermission('users:manage'), async (req, res) => {
     const { email, full_name, role, password } = req.body;
     if (!email || !full_name || !role) return res.status(400).json({ error: 'email, full_name and role are required' });
-    const tempPassword = password || 'Planfor2024!';
+    const tempPassword = password || 'Welcome2024';
     const hash = await bcrypt.hash(tempPassword, 10);
     const { error: insertError } = await supabase
       .from('crm_users')

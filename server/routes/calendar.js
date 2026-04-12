@@ -298,13 +298,13 @@ router.put('/meetings/:id/reschedule', auth, async (req, res) => {
       const newDate = new Date(start_time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       const newTime = new Date(start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
       const user = await supabase.from('crm_users').select('name, email').eq('id', req.user.id).single();
-      const senderName = user.data?.name || 'The Planfor Team';
+      const senderName = user.data?.name || 'The Chap Team';
 
       const sgMail = require('@sendgrid/mail');
       sgMail.setApiKey(process.env.SENDGRID_API_KEY);
       await sgMail.send({
         to: contactEmail,
-        from: { email: process.env.SENDGRID_FROM_EMAIL, name: process.env.SENDGRID_FROM_NAME || 'Planfor' },
+        from: { email: process.env.SENDGRID_FROM_EMAIL, name: process.env.SENDGRID_FROM_NAME || 'Chap CRM' },
         subject: `Meeting Rescheduled: ${meeting.title}`,
         text: `Hi ${contactName || 'there'},\n\nI wanted to let you know that our meeting "${meeting.title}" has been rescheduled.\n\nNew date: ${newDate}\nNew time: ${newTime}\n\n${meeting.meet_link ? `Google Meet link: ${meeting.meet_link}\n\n` : ''}Please let me know if this new time doesn't work for you.\n\nBest,\n${senderName}`,
       });
@@ -703,7 +703,7 @@ router.post('/meetings/:id/record', auth, async (req, res) => {
     }
 
     const recallService = require('../services/recallService');
-    const { botId } = await recallService.createBot(meetingUrl, 'Planfor Assistant');
+    const { botId } = await recallService.createBot(meetingUrl, 'Chap Assistant');
 
     // Update meeting with bot ID and status
     const { data, error } = await supabase

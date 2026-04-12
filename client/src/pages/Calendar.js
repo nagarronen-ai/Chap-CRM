@@ -809,7 +809,7 @@ export default function Calendar() {
                   { meeting_url: selectedEvent.meet_link },
                   { headers: getHeaders() }
                 );
-                alert('🎙️ Recording bot sent! Planfor Assistant will join the Google Meet shortly.');
+                alert('🎙️ Recording bot sent! Chap CRM Assistant will join the Google Meet shortly.');
                 setSelectedEvent(null);
                 fetchEvents();
               } catch (err) {
@@ -842,7 +842,7 @@ export default function Calendar() {
                       { meeting_url: zoomLinkInput },
                       { headers: getHeaders() }
                     );
-                    alert('🎙️ Recording bot sent! Planfor Assistant will join the Zoom shortly.');
+                    alert('🎙️ Recording bot sent! Chap CRM Assistant will join the Zoom shortly.');
                     setShowZoomInput(false);
                     setZoomLinkInput('');
                     setSelectedEvent(null);
@@ -1119,7 +1119,7 @@ export default function Calendar() {
 
                 <div>
                   <label style={labelStyle}>Additional Attendees (comma-separated emails)</label>
-                  <input value={form.attendee_emails} onChange={e => setForm(prev => ({ ...prev, attendee_emails: e.target.value }))} style={inputStyle} placeholder="e.g. john@venue.com, sarah@planfor.io" />
+                  <input value={form.attendee_emails} onChange={e => setForm(prev => ({ ...prev, attendee_emails: e.target.value }))} style={inputStyle} placeholder="e.g. john@venue.com, sarah@company.com" />
                 </div>
 
                 <div>
@@ -1136,7 +1136,7 @@ export default function Calendar() {
                     </div>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                       <input type="checkbox" checked={form.auto_record || false} onChange={e => setForm(prev => ({ ...prev, auto_record: e.target.checked }))} style={{ accentColor: '#D4183D' }} />
-                      <span style={{ color: '#1a6fad', fontSize: 12, fontWeight: 500 }}>🔴 Auto-record this meeting (Planfor Assistant will join and transcribe)</span>
+                      <span style={{ color: '#1a6fad', fontSize: 12, fontWeight: 500 }}>🔴 Auto-record this meeting (Chap CRM Assistant will join and transcribe)</span>
                     </label>
                   </div>
                 )}

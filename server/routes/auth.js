@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const supabase = require('../db');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'venueflow_secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'chap_secret';
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;

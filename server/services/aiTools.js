@@ -65,7 +65,7 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'search_conversation_history',
-      description: 'Search past Chappie conversations by date or topic keyword. Use when user references a past conversation — e.g. "last Thursday we spoke about X", "what did we discuss about QualifAI last week", "find our conversation about the Houston campaign".',
+      description: 'Search past Chappie conversations by date or topic keyword. Use when user references a past conversation — e.g. "last Thursday we spoke about X", "what did we discuss about a contact last week", "find our conversation about the Houston campaign".',
       parameters: {
         type: 'object',
         properties: {
@@ -80,7 +80,7 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'get_waitlist_stats',
-      description: 'Get Planfor couples waitlist stats — total subscribers, consented, joined this week, joined today',
+      description: 'Get waitlist stats — total subscribers, consented, joined this week, joined today',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -88,7 +88,7 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'get_waitlist_list',
-      description: 'Get the list of couples on the Planfor waitlist — name, email, consent status, date joined',
+      description: 'Get the list of subscribers on the waitlist — name, email, consent status, date joined',
       parameters: {
         type: 'object',
         properties: {
@@ -116,7 +116,7 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'search_memory',
-      description: 'Semantic search over all CRM history — emails, notes, meetings, thoughts, sent emails. Use when the user asks about past interactions, what was discussed, what happened with a contact, or anything that requires searching historical context. Examples: "what did QualifAI say about pricing?", "did we ever discuss partnerships?", "what were my thoughts on the Houston campaign?"',
+      description: 'Semantic search over all CRM history — emails, notes, meetings, thoughts, sent emails. Use when the user asks about past interactions, what was discussed, what happened with a contact, or anything that requires searching historical context. Examples: "what did a contact say about pricing?", "did we ever discuss partnerships?", "what were my thoughts on the Houston campaign?"',
       parameters: {
         type: 'object',
         properties: {

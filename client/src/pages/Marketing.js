@@ -9,7 +9,7 @@ const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
 const STAGES = ['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'];
 const ORIGINS = ['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'];
-const FROM_EMAILS = ['marketing@planfor.io', 'noreply@planfor.io', 'dan.s@planfor.io'];
+const FROM_EMAILS = ['marketing@yourcompany.com', 'noreply@yourcompany.com', 'you@yourcompany.com'];
 
 const STATUS_COLORS = {
   draft: { bg: '#F5F3EF', color: '#717182' },
@@ -54,7 +54,7 @@ export default function Marketing() {
   const [sending, setSending] = useState(false);
 
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: '', subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null });
+  const [form, setForm] = useState({ name: '', subject: '', body_html: '', from_name: 'Chap CRM', from_email: 'marketing@yourcompany.com', template_id: null });
   const [filters, setFilters] = useState({ stage: '', origin: '', city: '', category: '', source: 'all' });
   const [recipients, setRecipients] = useState([]);
   const [selectedRecipients, setSelectedRecipients] = useState({});
@@ -434,7 +434,7 @@ export default function Marketing() {
               const leads = filteredRecipients.filter((_, i) => selectedLeads[i]);
               const prefilledRecipients = leads.map(r => ({ email: r.email, first_name: r.crm_people?.first_name || '', last_name: r.crm_people?.last_name || '', company_name: r.crm_companies?.company_name || '', company_id: r.company_id || null, person_id: r.person_id || null, source: 'Contact' }));
               setStep(1);
-              setForm({ name: `Follow-up — ${selectedCampaign.name}`, subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null });
+              setForm({ name: `Follow-up — ${selectedCampaign.name}`, subject: '', body_html: '', from_name: 'Chap CRM', from_email: 'marketing@yourcompany.com', template_id: null });
               setRecipients(prefilledRecipients);
               const sel = {};
               prefilledRecipients.forEach((_, i) => { sel[i] = true; });
@@ -556,7 +556,7 @@ export default function Marketing() {
                 </div>
                 <div>
                   <label style={labelStyle}>From Name</label>
-                  <input value={form.from_name} onChange={e => setForm({ ...form, from_name: e.target.value })} style={inputStyle} placeholder="e.g. Dan from Planfor" />
+                  <input value={form.from_name} onChange={e => setForm({ ...form, from_name: e.target.value })} style={inputStyle} placeholder="e.g. Dan from Chap CRM" />
                 </div>
                 <div>
                   <label style={labelStyle}>Load from Template</label>
@@ -756,7 +756,7 @@ export default function Marketing() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h1 style={{ color: '#3E423D', fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>Marketing</h1>
           {canSend && subView === 'campaigns' && (
-            <button onClick={() => { setStep(1); setForm({ name: '', subject: '', body_html: '', from_name: 'Planfor', from_email: 'marketing@planfor.io', template_id: null }); setView('create'); }}
+            <button onClick={() => { setStep(1); setForm({ name: '', subject: '', body_html: '', from_name: 'Chap CRM', from_email: 'marketing@yourcompany.com', template_id: null }); setView('create'); }}
               style={{ background: '#8E9B8B', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>
               + New Campaign
             </button>

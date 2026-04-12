@@ -210,7 +210,7 @@ app.action('cancel_action', async ({ body, ack, say }) => {
 
 async function postAlert(message) {
   try {
-    const channel = process.env.SLACK_ALERTS_CHANNEL || '#all-planfor';
+    const channel = process.env.SLACK_ALERTS_CHANNEL || '#all-chap';
     await app.client.chat.postMessage({
       channel,
       text: message,

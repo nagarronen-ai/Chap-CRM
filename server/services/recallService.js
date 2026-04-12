@@ -9,7 +9,7 @@ const headers = {
 
 // ─── CREATE BOT (send to a meeting — no transcription, async later) ──────────
 
-async function createBot(meetingUrl, botName = 'Planfor Assistant') {
+async function createBot(meetingUrl, botName = 'Chap Assistant') {
   const response = await fetch(`${RECALL_BASE_URL}/bot`, {
     method: 'POST',
     headers,

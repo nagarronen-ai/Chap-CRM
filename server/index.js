@@ -100,7 +100,7 @@ const autoRecordCheck = async () => {
       for (const meeting of meetings) {
         if (!meeting.meet_link) continue;
         try {
-          const { botId } = await recallService.createBot(meeting.meet_link, 'Planfor Assistant');
+          const { botId } = await recallService.createBot(meeting.meet_link, 'Chap Assistant');
           await supabase
             .from('crm_meetings')
             .update({ recall_bot_id: botId, recording_status: 'sending_bot', updated_at: new Date().toISOString() })

@@ -194,8 +194,8 @@ router.post('/campaigns', auth, async (req, res) => {
     .insert([{
       name, subject, body_html, template_id: template_id || null,
       design_template_id: design_template_id || null,
-      from_name: from_name || 'Planfor',
-      from_email: from_email || 'marketing@planfor.io',
+      from_name: from_name || 'Chap CRM',
+      from_email: from_email || 'marketing@chap-crm.io',
       status: 'draft',
       created_by: req.user.id,
     }])
@@ -278,7 +278,7 @@ router.post('/campaigns/:id/send', auth, async (req, res) => {
 
   const messages = [];
   for (const r of recipients) {
-    const unsubscribeUrl = 'https://crm-api.planfor.io/api/marketing/unsubscribe/' + recipientTokens[r.email];
+    const unsubscribeUrl = 'https://api.chap-crm.io/api/marketing/unsubscribe/' + recipientTokens[r.email];
     const body = resolveBody(campaign.body_html, r).replace(/\{\{\{unsubscribe\}\}\}/g, unsubscribeUrl);
     const wrapped = campaign.design_template_id
     ? await wrapWithDesignTemplateById(body, campaign.design_template_id)
@@ -656,7 +656,7 @@ router.get('/unsubscribe/:token', async (req, res) => {
     res.send(`
       <html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#F5F3EF;">
         <h2 style="color:#3E423D;">You've been unsubscribed.</h2>
-        <p style="color:#717182;">You won't receive any more marketing emails from Planfor.</p>
+        <p style="color:#717182;">You won't receive any more marketing emails from Chap CRM.</p>
       </body></html>
     `);
   } catch (err) {

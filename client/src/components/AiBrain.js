@@ -231,7 +231,7 @@ export default function AiBrain() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div>
                 <p style={{ color: '#3E423D', fontSize: 14, fontWeight: 600, margin: 0 }}>🧠 AI Assistant</p>
-                <p style={{ color: '#717182', fontSize: 11, margin: 0 }}>Planfor CRM Brain</p>
+                <p style={{ color: '#717182', fontSize: 11, margin: 0 }}>Chap CRM CRM Brain</p>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button onClick={startNewConversation}
@@ -273,7 +273,7 @@ export default function AiBrain() {
                       {[
                         'What does my pipeline look like?',
                         'Any stale leads this week?',
-                        'Book a meeting with QualifAI tomorrow at 3pm',
+                        'Book a meeting with Acme Corp tomorrow at 3pm',
                         'Add a note to Plan4 Advisory',
                       ].map(suggestion => (
                         <button key={suggestion} onClick={() => setInput(suggestion)}

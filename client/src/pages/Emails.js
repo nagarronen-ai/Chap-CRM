@@ -25,7 +25,7 @@ const MERGE_TAGS = [
 const DEFAULT_TEMPLATE = `<div style="font-family: Arial, sans-serif; font-size: 15px; color: #222; line-height: 1.6; max-width: 600px;">
   <p>Hi {{first_name}},</p>
   <p>I hope this message finds you well!</p>
-  <p>I'm reaching out from Planfor — we help wedding vendors grow their business and connect with more couples.</p>
+  <p>I'm reaching out from Chap CRM — we help wedding vendors grow their business and connect with more couples.</p>
   <p>I'd love to learn more about {{company_name}} and explore how we might work together.</p>
   <p>Would you be open to a quick call this week?</p>
   <p>Best,<br>{{sender_name}}</p>
@@ -228,7 +228,7 @@ export default function Emails() {
       .replace(/{{last_name}}/g, 'Smith')
       .replace(/{{company_name}}/g, 'Sunset Venue')
       .replace(/{{sender_name}}/g, 'Dan Sitbon')
-      .replace(/{{sender_email}}/g, 'dan.s@planfor.io')
+      .replace(/{{sender_email}}/g, 'you@yourcompany.com')
       .replace(/{{city}}/g, 'Austin')
       .replace(/{{stage}}/g, 'New');
   };
@@ -378,7 +378,7 @@ export default function Emails() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
                   <div>
                     <label style={labelStyle}>Template Name</label>
-                    <input value={designForm.name} onChange={e => setDesignForm(prev => ({ ...prev, name: e.target.value }))} style={inputStyle} placeholder="e.g. Planfor Transactional" />
+                    <input value={designForm.name} onChange={e => setDesignForm(prev => ({ ...prev, name: e.target.value }))} style={inputStyle} placeholder="e.g. Chap CRM Transactional" />
                   </div>
                   <div>
                     <label style={labelStyle}>Type</label>
