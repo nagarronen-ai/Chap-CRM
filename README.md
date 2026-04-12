@@ -1,6 +1,6 @@
 # Planfor CRM
 
-Internal sales CRM built for the Planfor.io team to manage wedding vendor outreach, convert leads to clients, send emails via Gmail API or SendGrid, sync inbox conversations, run marketing campaigns, schedule meetings with Google Calendar, manage client relationships, track internal company finances, and interact with Chappie — an AI assistant powered by GPT-4o-mini — all in one place.
+Internal sales CRM built for the Planfor.io team to manage wedding vendor outreach, convert leads to clients, send emails via Gmail API or SendGrid, sync inbox conversations, run marketing campaigns, schedule meetings with Google Calendar, manage client relationships, track internal company finances, and interact with Chappie — an AI assistant powered by GPT-4o-mini with RAG memory, file uploads, and Slack integration.
 
 **Live:** [crm.planfor.io](https://crm.planfor.io) · **API:** [crm-api.planfor.io](https://crm-api.planfor.io)
 
@@ -35,14 +35,18 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 - Two-way email sync — automatically capture inbound/outbound emails matching CRM contacts
 - View a dedicated Email Inbox page with thread grouping and unread badges
 - Schedule meetings with Google Calendar integration (Google Meet auto-link, timezone conversion)
+- Record meetings via Recall.ai with AI-generated summaries and action items
 - Run bulk marketing campaigns with open/click tracking via SendGrid
 - Send branded emails using a design template system (Transactional / Campaign / Newsletter)
 - Run automated drip sequences for waitlist couples
 - Manage client vendor pages, documents, and finance
 - Upload documents and receipts to Supabase Storage
+- Parse invoices automatically using Claude Vision
+- Track recurring payments with due-date alerts
 - Track internal company expenses (servers, domains, tools, etc.)
-- Interact with Chappie, an AI agent that can read CRM data, send emails, book meetings, and more
-- Capture ideas on the go with My Thoughts — a personal whiteboard with Claude brainstorm chat
+- Interact with Chappie — an AI agent that reads CRM data, sends emails, books meetings, attaches files, and runs on Slack
+- Use Team Superbrain — daily AI-generated team insight from anonymous thoughts
+- Capture ideas with My Thoughts — a personal whiteboard with Claude brainstorm chat
 
 ---
 
@@ -56,10 +60,11 @@ Planfor CRM is a full-stack internal tool that allows the Planfor sales team to:
 | Email | Gmail API + SendGrid |
 | Calendar | Google Calendar API |
 | AI (Chappie) | OpenAI GPT-4o-mini (function-calling agent) |
-| AI (Thoughts) | Anthropic Claude (Haiku / Sonnet 4 / Opus 4) |
+| AI (Thoughts, Superbrain, Invoice) | Anthropic Claude (Haiku / Sonnet) |
 | Auth | JWT + bcrypt |
 | Storage | Supabase Storage |
 | Meeting Recording | Recall.ai |
+| Slack | Socket Mode Bot |
 | Waitlist | Vercel (comingsoon.planfor.io) |
 
 ---
@@ -136,6 +141,58 @@ fetchNewMessages()
         └─ Inserts into crm_synced_emails
 ```
 
+### Chappie Agent Loop
+```
+User message
+     │
+     ▼
+aiBrain.js — build prompt + tool list
+     │
+     ▼
+GPT-4o-mini (function calling)
+     │
+     ├─ Tool call? ──► executeTool() ──► DB / Gmail / Calendar
+     │                      │
+     │                      └──► Result injected back into loop
+     │
+     └─ Final response ──► strip markdown ──► return to user
+```
+
+### Document Upload Flow
+```
+User uploads file (UI or Chappie)
+        │
+        ▼
+POST /api/uploads/receipts  (multer → memoryStorage)
+        │
+        ▼
+Supabase Storage (receipts bucket)
+        │
+        ▼
+POST /api/documents/upload  OR  attach_document Chappie tool
+        │
+        ▼
+crm_documents (company_id + client_id both set for converted companies)
+        │
+        ▼
+crm_activity_log — "Document Added"
+```
+
+### Invoice Parser Flow
+```
+File uploaded (PDF or image)
+        │
+        ▼
+POST /api/finance/invoices/parse
+        │
+        ▼
+Claude Vision — extract title/amount/date/vendor/category/recurring
+        │
+        ├─ Valid invoice? ──► return JSON → pre-fill expense form
+        │
+        └─ Not invoice? ──► return 422 NOT_AN_INVOICE → skip parse
+```
+
 ---
 
 ## Features
@@ -145,9 +202,11 @@ fetchNewMessages()
 - Visual pipeline stepper per company
 - People management per company (multiple contacts)
 - Next action reminders
-- Activity timeline — notes, emails, meetings, stage changes
+- Activity timeline — notes, emails, meetings, stage changes, documents
+- Per-person activity filtering and notes
+- Documents filter in activity tab
 - Assigned-to with team user picker (admin only)
-- Convert to Client flow with contract setup
+- Convert to Client flow with contract setup + document transfer
 
 ### Email
 - Gmail API send (primary) with SendGrid fallback
@@ -165,8 +224,9 @@ fetchNewMessages()
 - Per-campaign design template selector in campaign builder
 - Drip steps can specify design template or fall back to Transactional default
 - Design templates editable in CRM without code deploy
-- Live preview in drip step editor — see full rendered email as you type
+- Live preview in drip step editor
 - Planfor branded templates: dark green header, logo, slogan, Instagram, privacy policy
+- Direct emails NEVER use the design template wrapper — only campaigns, drip, and waitlist
 
 ### Email Inbox
 - Two-way Gmail sync (incremental, runs every 3 minutes)
@@ -223,46 +283,82 @@ fetchNewMessages()
 - Markdown stripped from Claude responses
 
 ### Client Management
-- 6-tab client profile: Overview, Activity, Meetings, Documents, Emails, Vendor Page
+- Full client profiles with contract details, vendor page, finance tab
+- Stage management (Onboarding → Active → Paused → Churned)
+- 7-tab client profile: Overview, Activity, Meetings, Documents, Emails, People, Vendor Page, Finance
 - Unified emails tab (direct + campaign history)
-- Document management with file upload (Supabase Storage)
+- Document management — upload via UI or Chappie, supports all file types
+- Documents automatically copied from contact to client on conversion
 - Vendor marketplace page editor
 - Contract tracking (RevShare / Commission / Subscription)
 - Finance tab: per-client transactions
+- Per-person activity filters and note tagging in activity tab
+
+### Documents
+- Unified `crm_documents` table shared between contacts and clients
+- Upload via UI (contacts, clients) or via Chappie chat with paperclip button
+- `attach_document` Chappie tool — links both `company_id` and `client_id` for converted companies
+- Supports PDF, images, Word, Excel, CSV
+- View (images/PDF) or Download based on file type
+- Activity log entry on every upload
+- Documents filter in activity tab
 
 ### Finance Module
 - Internal expense tracker (admin + finance roles)
+- Invoice parser — upload PDF or image, Claude Vision extracts title/amount/date/vendor/category/recurring
+- Returns 422 with `NOT_AN_INVOICE` when file is not an invoice
+- Recurring payments — `last_paid_date` + `recurring_parent_id` on `crm_expenses`
+- Dashboard due-soon widget showing payments due within 7 days
+- Mark Paid flow: creates NEW expense row linked to parent via `recurring_parent_id`, updates `last_paid_date` on parent
 - Per-client transactions
 - Receipt upload to Supabase Storage
 
+### Intelligence
+- My Thoughts — private idea capture with Claude brainstorm chat per thought
+- Team Superbrain — daily anonymous insight generated from all team thoughts (Claude Haiku), runs every 24h
+- RAG memory — Chappie searches past emails, notes, meetings, thoughts via pgvector semantic similarity
+- Meeting AI summaries with action items and priority levels
+
 ### Dashboard
 - Pipeline velocity — avg days per stage, color-coded (green/amber/red)
-- Waitlist growth sparkline — last 14 days + 4 stats (total, consented, this week, today)
+- Waitlist growth sparkline — last 14 days + 4 stats
 - My Thoughts count this week
 - Campaign avg open rate
+- Recurring payments due-soon widget
 - Stale leads, recent activity, upcoming meetings, team stats
+
+### Admin
+- DB-driven RBAC — roles: admin, manager, viewer
+- Permission keys stored in `crm_permissions` table, editable without code deploy
+- Team management — invite users, assign roles
+- Admin password reset — generates 8-char hex temp password shown once
+- Users can change their own password from Settings
+- Timezone support per user
 
 ---
 
 ## AI Assistant — Chappie
 
-Chappie is a function-calling AI agent built into the CRM. It uses GPT-4o-mini and has access to 20+ tools covering the full CRM. Accessible via floating widget (bottom right) and conversation log at `/ai/log`.
+Chappie is a full agentic AI assistant embedded in the CRM. It uses GPT-4o-mini and has access to 25+ tools. Accessible via floating widget (bottom right), conversation log at `/ai/log`, and Slack DMs.
 
 ### Architecture
 - **Type:** Agentic loop (not RAG)
 - **Model:** GPT-4o-mini
 - **Max iterations:** 6 per request
 - **History:** Persistent per conversation, stored in `crm_ai_conversations`
-- **New Conversation:** "+ New Chat" button starts fresh with no memory of previous sessions
+- **New Conversation:** "+ New Chat" button starts fresh
 - **Timestamps:** Each message shows time sent
+- **Memory:** RAG search over emails, notes, meetings, thoughts via `search_memory` tool
+- **Slack:** Full functionality via Socket Mode DMs with Block Kit confirmation buttons
+- **File upload:** Paperclip button — files uploaded to Supabase Storage, attached via `attach_document` tool
 
 ### Tools
 
 **Read (instant):**
-`search_contacts` · `get_company_people` · `get_company_brief` · `get_client_status` · `get_pipeline_summary` · `get_stale_leads` · `get_my_meetings` · `get_finance_summary` · `get_marketing_history` · `get_campaign_stats` · `get_last_thread` · `get_email_thread` · `get_all_campaigns` · `get_waitlist_stats` · `get_waitlist_list` · `search_conversation_history`
+`search_contacts` · `get_company_people` · `get_company_brief` · `get_client_status` · `get_pipeline_summary` · `get_stale_leads` · `get_my_meetings` · `get_finance_summary` · `get_marketing_history` · `get_campaign_stats` · `get_last_thread` · `get_email_thread` · `get_all_campaigns` · `get_waitlist_stats` · `get_waitlist_list` · `search_conversation_history` · `search_memory` · `check_calendar_conflicts` · `get_pending_proposals`
 
 **Write instant:**
-`add_note` · `update_pipeline_stage` · `update_client_stage` · `update_next_action`
+`add_note` · `attach_document` · `update_pipeline_stage` · `update_client_stage` · `update_next_action`
 
 **Write with confirmation:**
 `send_email` · `send_bulk_email` · `book_meeting` · `cancel_meeting` · `reschedule_meeting` · `propose_meeting`
@@ -273,7 +369,21 @@ Chappie is a function-calling AI agent built into the CRM. It uses GPT-4o-mini a
 - Validates UUIDs before DB insert
 - Thread replies: `get_last_thread` → `send_email` with thread_id
 - No markdown in responses (stripped server-side)
+- File uploads: extracts URL from message → calls `attach_document` → NEVER uses `add_note` for files
+- Notes field in `attach_document`: only uses notes the USER explicitly provides — never Claude's analysis text
 - Slack: full Chappie functionality via DM with Block Kit confirmation buttons
+
+### Critical Architecture Notes for Developers
+- **Two AI files exist:** `server/services/aiBrain.js` (backend agent) and `client/src/components/AiBrain.js` (frontend widget) — always be explicit which one
+- Working history and saved history are kept separate in Chappie's architecture
+- Direct emails NEVER use the design template wrapper (`emailWrapper.js` is for campaign/drip/waitlist only)
+- `crm_synced_emails` uses `body_html` not `body_text`, and has NO `person_id` column
+- `crm_synced_emails` uses `email_date` not `received_at`
+- `convertClientTimeToUTC` uses `Intl` shortOffset only
+- AirPlay Receiver conflicts with port 5000 on macOS — avoid that port
+- Gmail reply threads get a new `thread_id`; `get_email_thread` falls back to `company_id` search when thread lookup yields no results
+- `person.company_id` from `crm_people` is the valid FK — NOT from companies array
+- Campaign unsubscribes route to `crm_people`; waitlist unsubscribes route to `waitlist_couples` — these are NEVER conflated
 
 ---
 
@@ -296,23 +406,28 @@ venueflow-crm/
 │   │   ├── thoughts.js         # My Thoughts CRUD + Claude chat
 │   │   ├── designTemplates.js  # Email design templates CRUD
 │   │   ├── drip.js             # Drip sequences, steps, enrollments, stats
-│   │   ├── finance.js          # Company expenses
+│   │   ├── finance.js          # Company expenses, invoice parser, recurring payments
+│   │   ├── documents.js        # Unified documents CRUD + file upload
 │   │   ├── uploads.js          # Supabase Storage upload/delete
-│   │   └── users.js            # Team mgmt, profile, signature, timezone
+│   │   ├── insights.js         # Team Superbrain — generate + fetch insights
+│   │   └── users.js            # Team mgmt, profile, signature, timezone, password reset
 │   ├── services/
 │   │   ├── aiBrain.js          # Chappie agentic loop + confirmation flow
-│   │   ├── aiTools.js          # 20+ tool definitions + executors
+│   │   ├── aiTools.js          # 25+ tool definitions + executors
 │   │   ├── aiSummary.js        # GPT meeting summary generator
+│   │   ├── teamBrain.js        # Team Superbrain — Claude Haiku insight generator
+│   │   ├── invoiceParser.js    # Claude Vision invoice extractor
+│   │   ├── ragSearch.js        # pgvector semantic search
 │   │   ├── gmailSync.js        # Smart selective sync engine
 │   │   ├── dripRunner.js       # Hourly drip sequence processor
 │   │   ├── emailWrapper.js     # Wraps email body with design template
 │   │   ├── slackBot.js         # Chappie on Slack via Socket Mode
-│   │   └── calendlySync.js     # Calendly polling sync
+│   │   └── calendlySync.js     # Calendly webhook sync
 │   ├── middleware/
 │   │   ├── auth.js             # JWT verification
-│   │   └── rbac.js             # Role-based access control
+│   │   └── permissions.js      # DB-driven RBAC checkPermission()
 │   ├── db.js                   # Supabase client
-│   └── index.js                # Express entry + sync intervals + drip runner
+│   └── index.js                # Express app, route mounting, cron jobs
 ├── client/
 │   └── src/
 │       ├── pages/
@@ -326,17 +441,18 @@ venueflow-crm/
 │       │   ├── Calendar.js
 │       │   ├── Marketing.js         # Campaigns + Drip + Waitlist + Unsubscribed
 │       │   ├── Thoughts.js          # My Thoughts personal whiteboard
-│       │   ├── Finance.js
+│       │   ├── Finance.js           # Expenses + recurring + invoice parser
 │       │   ├── AiLog.js
 │       │   ├── Settings.js
 │       │   ├── Import.js
 │       │   └── Team.js
 │       ├── components/
 │       │   ├── Sidebar.js
-│       │   ├── AiBrain.js           # Chappie floating widget
+│       │   ├── AiBrain.js           # Chappie floating widget + file upload
 │       │   ├── TiptapEditor.js
 │       │   ├── HtmlEditor.js        # CodeMirror HTML editor with line wrapping
-│       │   └── ScheduleMeetingModal.js
+│       │   ├── ScheduleMeetingModal.js
+│       │   └── LocationSelector.js
 │       └── App.js
 ├── .env
 └── README.md
@@ -354,10 +470,17 @@ venueflow-crm/
 | id | uuid | PK |
 | email, name | text | |
 | password | text | bcrypt |
-| role | text | admin / sales / marketing / csm / support / finance |
+| role | text | admin / manager / viewer |
 | timezone | text | IANA (e.g. Asia/Jerusalem) |
 | email_signature | text | HTML |
 | slack_user_id | text | For Chappie Slack integration |
+
+#### `crm_permissions`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| role | text | admin / manager / viewer |
+| permission | text | e.g. company:edit, pipeline:move, finance:general |
 
 #### `crm_companies`
 | Column | Type | Notes |
@@ -368,14 +491,16 @@ venueflow-crm/
 | city, state, country | text | |
 | origin | text | Upload / Cold / Hot / Instagram / Google / Referral |
 | assigned_to | uuid | FK → crm_users |
-| marketing_unsubscribed | boolean | |
+| next_action | text | |
+| last_activity_at | timestamptz | |
 
 #### `crm_people`
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | PK |
-| company_id | uuid | FK → crm_companies |
+| company_id | uuid | FK → crm_companies — this is the VALID FK to use, not from companies array |
 | first_name, last_name, title, email | text | |
+| work_phone, mobile_phone | text | |
 | marketing_unsubscribed | boolean | |
 | marketing_unsubscribed_at | timestamptz | |
 | unsubscribe_ip, unsubscribe_user_agent | text | Audit |
@@ -388,9 +513,40 @@ venueflow-crm/
 | converted_from | uuid | FK → crm_companies |
 | assigned_to | uuid | FK → crm_users |
 | business_name, contact_email | text | |
+| contact_first_name, contact_last_name | text | |
 | stage | text | Onboarding / Active / Paused / Churned |
 | contract_type | text | RevShare / Commission / Subscription |
 | commission_rate, contract_amount | numeric | |
+| contract_signed_date | date | |
+| city, state, country | text | |
+| category, business_type | text | |
+
+#### `crm_activity_log`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| company_id | uuid | FK → crm_companies (optional) |
+| client_id | uuid | FK → crm_clients (optional) |
+| person_id | uuid | FK → crm_people (optional) |
+| user_id | uuid | FK → crm_users |
+| action | text | Note Added / Email Sent / Meeting Completed / Document Added / Converted to Client / etc. |
+| details | text | |
+| created_at | timestamptz | |
+
+#### `crm_documents`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| title | text | |
+| file_url | text | Supabase signed URL |
+| type | text | Contract / Invoice / Proposal / NDA / Presentation / Other |
+| notes | text | Optional — never populated with Claude's analysis |
+| company_id | uuid | FK → crm_companies (optional) |
+| client_id | uuid | FK → crm_clients (optional) |
+| uploaded_by | uuid | FK → crm_users |
+| created_at | timestamptz | |
+
+> Both `company_id` and `client_id` are set when a document belongs to a converted company — ensures it appears on both the contact and client profile. Chappie's `attach_document` tool always resolves and sets both IDs.
 
 ### Email Tables
 
@@ -419,12 +575,25 @@ venueflow-crm/
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid | PK |
-| user_id, company_id, client_id, person_id | uuid | FKs |
-| subject, body_html | text | |
+| user_id, company_id, client_id | uuid | FKs — NO person_id column |
+| subject, body_html | text | Uses body_html NOT body_text |
 | send_method | text | gmail / sendgrid |
 | email_status | text | delivered / opened / clicked / bounced |
 | sendgrid_message_id, gmail_thread_id | text | |
 | opened_at, clicked_at, bounced_at | timestamptz | |
+
+#### `crm_synced_emails`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| company_id | uuid | FK → crm_companies |
+| gmail_message_id, gmail_thread_id | text | Dedup key |
+| from_email, from_name | text | |
+| subject | text | |
+| body_html | text | Uses body_html — NO body_text, NO person_id |
+| email_date | timestamptz | Uses email_date NOT received_at |
+| direction | text | inbound / outbound |
+| has_attachments | boolean | |
 
 ### Marketing Tables
 
@@ -447,7 +616,7 @@ venueflow-crm/
 | campaign_id | uuid | FK → crm_campaigns |
 | company_id, person_id | uuid | Optional FKs |
 | email | text | |
-| recipient_type | text | contact / waitlist |
+| recipient_type | text | contact / waitlist — drives unsubscribe routing |
 | status | text | pending / delivered / opened / clicked / bounced / unsubscribed |
 | unsubscribe_token | text | Unique per recipient, used in clean URL |
 | opened_at, clicked_at, bounced_at, unsubscribed_at | timestamptz | |
@@ -508,6 +677,11 @@ venueflow-crm/
 | consent_text | text | Exact consent language shown |
 | unsubscribed_at | timestamptz | |
 | unsubscribe_ip, unsubscribe_user_agent | text | Unsubscribe audit |
+| email_status | text | pending / delivered / opened / bounced |
+| email_delivered_at, email_opened_at, email_bounced_at | timestamptz | |
+| sendgrid_message_id | text | For confirmation email tracking |
+
+> Waitlist couples are entirely separate from vendor CRM data. Campaign unsubscribes → `crm_people`. Waitlist unsubscribes → `waitlist_couples`. These are NEVER conflated.
 
 ### AI Tables
 
@@ -519,6 +693,7 @@ venueflow-crm/
 | messages | jsonb | Clean text history (no tool messages) |
 | last_message | text | |
 | actions_taken | jsonb | Array of executed actions with timestamps |
+| updated_at | timestamptz | |
 
 #### `crm_thoughts`
 | Column | Type | Notes |
@@ -535,6 +710,25 @@ venueflow-crm/
 | thought_id | uuid | FK → crm_thoughts |
 | messages | jsonb | Full Claude conversation history |
 
+#### `crm_team_insights`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| insight | text | Claude-generated anonymous team insight |
+| thought_count | integer | Number of thoughts used |
+| user_count | integer | Number of users who contributed |
+| generated_at | timestamptz | |
+
+#### `crm_memory_embeddings`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| source | text | crm_synced_emails / crm_activity / crm_thoughts / crm_emails_sent / crm_meetings |
+| source_id | uuid | FK to source record |
+| text | text | Plain text content |
+| embedding | vector | pgvector embedding |
+| metadata | jsonb | company_id, client_id, person_id, date |
+
 ### Calendar & Meeting Tables
 
 #### `crm_meetings`
@@ -548,30 +742,113 @@ venueflow-crm/
 | status | text | scheduled / completed / cancelled |
 | start_time, end_time | timestamptz | UTC |
 | meet_link | text | |
+| notes | text | Manual meeting notes (markdown supported) |
 | ai_summary | text | GPT-generated |
 | ai_action_items | jsonb | [{task, owner, priority}] |
+| transcript | text | Full Recall.ai transcript |
+| transcript_segments | jsonb | [{speaker, text, startTime}] |
 | recall_bot_id | text | |
-| auto_record | boolean | |
+| recording_status | text | sending_bot / recording / processing / completed / failed |
+
+#### `crm_google_accounts`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK → crm_users |
+| email | text | Connected Gmail address |
+| account_type | text | personal |
+| is_active | boolean | |
+| access_token, refresh_token | text | Encrypted |
+
+#### `crm_meeting_proposals`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| company_id, client_id, person_id | uuid | Optional FKs |
+| proposed_start, proposed_end | timestamptz | |
+| gmail_thread_id | text | For reply tracking |
+| status | text | pending / accepted / declined |
+
+### Finance Tables
+
+#### `crm_expenses`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| title, vendor | text | |
+| amount | numeric | |
+| date | date | |
+| category | text | |
+| status | text | pending / paid / overdue |
+| recurring | boolean | |
+| recurring_interval | text | monthly / yearly / weekly / quarterly |
+| last_paid_date | date | Last time this recurring expense was paid — drives next_due calculation |
+| recurring_parent_id | uuid | FK → crm_expenses — links payment history rows to the recurring template row |
+| receipt_url | text | Supabase Storage URL |
+| paid_by | uuid | FK → crm_users |
+| notes | text | |
+
+#### `crm_client_finance`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| client_id | uuid | FK → crm_clients |
+| type | text | Commission / Settlement / Refund / Fee / Other |
+| amount | numeric | |
+| description | text | |
+| status | text | Pending / Completed / Failed |
+| date | date | |
+| created_by | uuid | FK → crm_users |
+
+#### `crm_client_vendor_page`
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid | PK |
+| client_id | uuid | FK → crm_clients |
+| display_name, tagline, about | text | |
+| venue_type | text | |
+| guest_capacity, price_tier | text | |
+| amenities, services, ceremony_types, diversity_tags | text[] | |
+| social_links | jsonb | {instagram, facebook, website, tiktok} |
+| published | boolean | |
+
+---
 
 ## Roles & Permissions
 
-| Permission | admin | sales | marketing | csm | support | finance |
-|---|---|---|---|---|---|---|
-| View pipeline | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Edit companies | ✅ | ✅ | — | — | — | — |
-| Move pipeline stage | ✅ | ✅ | — | — | — | — |
-| Delete companies | ✅ | — | — | — | — | — |
-| Send email | ✅ | ✅ | ✅ | ✅ | — | — |
-| View clients | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Edit clients | ✅ | — | — | ✅ | — | — |
-| Convert to client | ✅ | ✅ | — | — | — | — |
-| View finance | ✅ | — | — | — | — | ✅ |
-| Manage campaigns | ✅ | — | ✅ | — | — | — |
-| Manage drip sequences | ✅ | — | ✅ | — | — | — |
-| Manage team | ✅ | — | — | — | — | — |
-| View AI log (all users) | ✅ | — | — | — | — | — |
-| Use Chappie | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| My Thoughts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+Permissions are stored in `crm_permissions` table — no code deploy needed to change them.
+
+### Permission Keys
+| Permission Key | Description |
+|---|---|
+| `company:edit` | Edit company fields |
+| `company:delete` | Delete companies |
+| `company:assign` | Assign companies to team members |
+| `pipeline:move` | Move companies between pipeline stages |
+| `people:edit` | Edit contact people |
+| `people:delete` | Delete people |
+| `email:send` | Send emails from CRM |
+| `finance:general` | View and manage finance tab |
+| `client:edit` | Edit client records |
+
+### Role Matrix
+| Action | admin | manager | viewer |
+|---|---|---|---|
+| View pipeline | ✅ | ✅ | ✅ |
+| Edit companies | ✅ | ✅ | — |
+| Move pipeline stage | ✅ | ✅ | — |
+| Delete companies | ✅ | — | — |
+| Send email | ✅ | ✅ | ✅ |
+| View clients | ✅ | ✅ | ✅ |
+| Edit clients | ✅ | ✅ | — |
+| Convert to client | ✅ | ✅ | — |
+| View finance | ✅ | — | — |
+| Manage campaigns | ✅ | — | — |
+| Manage team | ✅ | — | — |
+| Reset passwords | ✅ | — | — |
+| Use Chappie | ✅ | ✅ | ✅ |
+| My Thoughts | ✅ | ✅ | ✅ |
+| Team Superbrain generate | ✅ | — | — |
 
 ---
 
@@ -604,7 +881,7 @@ API_BASE_URL=https://crm-api.planfor.io/api
 OPENAI_API_KEY=
 OPENAI_API_KEY_BRAIN=
 
-# Anthropic (My Thoughts Claude chat)
+# Anthropic (Thoughts, Superbrain, Invoice Parser)
 ANTHROPIC_API_KEY=
 
 # Recall.ai (meeting recording)
@@ -630,7 +907,7 @@ CALENDLY_WEBHOOK_SECRET=
 - SendGrid account with verified sender domain
 - Google Cloud project with Gmail API + Calendar API enabled
 - OAuth 2.0 consent screen configured with redirect URI
-- Anthropic API key (for My Thoughts Claude chat)
+- Anthropic API key (for Thoughts, Superbrain, Invoice Parser)
 
 ```bash
 git clone https://github.com/4st3r1x/venueflow-crm.git
@@ -699,6 +976,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | DELETE | `/api/emails/templates/:id` | Delete template |
 | POST | `/api/emails/send` | Send email (Gmail or SendGrid) |
 | GET | `/api/emails/sent/company/:id` | Sent emails for company |
+| GET | `/api/emails/gmail-status` | Gmail connection status |
 
 ### Design Templates
 | Method | Route | Description |
@@ -715,12 +993,19 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | GET | `/api/clients` | List all clients |
 | GET | `/api/clients/:id` | Get client details |
 | PUT | `/api/clients/:id` | Update client |
-| POST | `/api/clients/convert/:companyId` | Convert company to client |
+| POST | `/api/clients/convert/:companyId` | Convert company to client (copies documents) |
 | GET | `/api/clients/:id/activity` | Client activity log |
-| POST | `/api/clients/:id/note` | Add note |
-| GET/POST | `/api/clients/:id/documents` | Documents CRUD |
+| POST | `/api/clients/:id/note` | Add note (supports person_id) |
 | GET/PUT | `/api/clients/:id/vendor-page` | Vendor page |
 | GET/POST | `/api/clients/:id/finance` | Finance transactions |
+
+### Documents
+| Method | Route | Description |
+|---|---|---|
+| GET | `/api/documents` | List documents (filter by company_id and/or client_id) |
+| POST | `/api/documents/upload` | Upload file to Supabase + create crm_documents record |
+| PUT | `/api/documents/:id` | Update document metadata |
+| DELETE | `/api/documents/:id` | Delete document |
 
 ### Calendar
 | Method | Route | Description |
@@ -734,6 +1019,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | GET | `/api/calendar/upcoming` | Upcoming meetings |
 | POST | `/api/calendar/meetings/:id/record` | Send Recall.ai bot |
 | POST | `/api/calendar/meetings/:id/process-transcript` | Summarize transcript |
+| POST | `/api/calendar/meetings/:id/regenerate-summary` | Regenerate AI summary |
 
 ### Gmail & Sync
 | Method | Route | Description |
@@ -744,6 +1030,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | DELETE | `/api/google/accounts/:id` | Disconnect account |
 | GET | `/api/sync/emails/inbox` | Inbox threads |
 | GET | `/api/sync/emails/unread-count` | Unread badge count |
+| GET | `/api/sync/emails/client/:id` | Synced emails for client |
 | POST | `/api/sync/trigger` | Manual sync trigger |
 
 ### AI (Chappie)
@@ -756,14 +1043,16 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | GET | `/api/ai/agents` | List all agents (admin) |
 | DELETE | `/api/ai/history/:id` | Delete conversation |
 
-### My Thoughts
+### Intelligence
 | Method | Route | Description |
 |---|---|---|
-| GET | `/api/thoughts` | Get my thoughts (private) |
+| GET | `/api/insights/latest` | Latest Team Superbrain insight |
+| POST | `/api/insights/generate` | Generate new insight (admin only) |
+| GET | `/api/thoughts` | Get my thoughts (private per user) |
 | POST | `/api/thoughts` | Create thought |
 | PUT | `/api/thoughts/:id` | Update thought |
 | DELETE | `/api/thoughts/:id` | Delete thought |
-| GET | `/api/thoughts/:id/chat` | Get Claude conversation |
+| GET | `/api/thoughts/:id/chat` | Get Claude conversation for thought |
 | POST | `/api/thoughts/:id/chat` | Send message to Claude |
 
 ### Marketing
@@ -782,8 +1071,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | GET | `/api/marketing/unsubscribe/:token` | One-click unsubscribe |
 | POST | `/api/marketing/resubscribe/:personId` | Resubscribe person |
 | POST | `/api/marketing/resubscribe-bulk` | Bulk resubscribe |
-| GET | `/api/marketing/waitlist` | Waitlist subscribers |
-| DELETE | `/api/marketing/waitlist/:id` | Delete subscriber |
+| GET | `/api/marketing/company/:id` | Campaign history for company |
 
 ### Drip Sequences
 | Method | Route | Description |
@@ -803,7 +1091,7 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | Method | Route | Description |
 |---|---|---|
 | POST | `/api/waitlist/subscribe` | Public signup endpoint |
-| GET | `/api/waitlist/unsubscribe` | Unsubscribe via email param |
+| GET | `/api/waitlist/unsubscribe` | Unsubscribe via token |
 
 ### Users
 | Method | Route | Description |
@@ -811,8 +1099,10 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | GET | `/api/users` | List all users (admin) |
 | POST | `/api/users/invite` | Create user (admin) |
 | PUT | `/api/users/:id/role` | Change role (admin) |
+| PUT | `/api/users/:id/reset-password` | Admin reset password — returns temp password |
 | DELETE | `/api/users/:id` | Delete user (admin) |
 | GET | `/api/users/me` | Current user profile |
+| PUT | `/api/users/me/password` | Change own password (requires current password) |
 | PUT | `/api/users/me/timezone` | Update timezone |
 | PUT | `/api/users/me/signature` | Update email signature |
 
@@ -824,221 +1114,156 @@ npx wrangler pages deploy build --project-name=planfor-crm
 | PUT | `/api/finance/expenses/:id` | Update expense |
 | DELETE | `/api/finance/expenses/:id` | Delete expense |
 | GET | `/api/finance/expenses/summary` | Finance summary |
+| GET | `/api/finance/expenses/recurring` | Recurring expenses with next_due, days_until, due_soon |
+| POST | `/api/finance/invoices/parse` | Parse invoice with Claude Vision (422 if not invoice) |
 
 > All routes require `Authorization: Bearer <token>` header except public webhook and waitlist endpoints.
 
-> ⚠️ **Route order matters:** In `users.js`, `/me` routes must come BEFORE `/:id` routes.
+> ⚠️ **Route order matters:** In `users.js`, `/me` routes must come BEFORE `/:id` routes. Same pattern applies to any route file mixing static and parameterized paths (e.g. `/expenses/recurring` before `/expenses/:id`).
+
+---
 
 ## Changelog
 
-### v1.9.0 — Email Design System + Drip Sequences
-- **Email Design System** — 3 design template types: Transactional (600px), Campaign (600px), Newsletter (700px). Each has header/footer/wrapper HTML with `{{content}}` placeholder. Editable in CRM without code deploy
-- **Planfor branded templates** — dark green header (#3E423D), logo, "Your Wedding, Your Way" slogan, Instagram link, privacy policy footer, human copy ("Sent with care by the Planfor team")
-- **`{{unsubscribe_url}}` injection** — placeholder replaced server-side before send for both campaigns and waitlist emails
-- **Per-campaign design template selector** — campaign builder Step 1 lets you choose which design template wraps the email
-- **Design template preview** — 👁 Preview button on each template card shows full rendered preview with placeholder content
-- **`crm_email_design_templates` table** — id, name, type, width, header_html, footer_html, wrapper_html, active
-- **`server/services/emailWrapper.js`** — `wrapWithDesignTemplate(body, type)` and `wrapWithDesignTemplateById(body, id)` — used by campaigns, waitlist, and drip
-- **Drip Sequence builder** — create sequences with multiple email steps, each with delay (days), subject, body, design template, on/off toggle
-- **Live preview panel** — split-panel drip step editor: HTML editor on left, full rendered email preview on right, updates as you type
-- **Hourly drip runner** — `server/services/dripRunner.js` runs every hour, checks enrollments, sends due steps via SendGrid
-- **Auto-enroll on signup** — new waitlist signups auto-enrolled in all active sequences immediately
-- **Drip tracking** — `sendgrid_message_id` captured per send, webhook routes drip events to `crm_drip_sends` (opened_at, clicked_at, bounced_at)
-- **Per-step stats** — step cards show Sent / Opened (%) / Clicked / Bounced counts
-- **Waitlist as campaign audience** — campaign builder Source dropdown includes "Waitlist Couples Only" — pulls from `waitlist_couples` where consent is true and not unsubscribed
-- **Smart unsubscribe routing** — `recipient_type` column on `crm_campaign_recipients` determines which table to update: vendor contacts → `crm_people`, waitlist couples → `waitlist_couples`
-- **New Supabase tables** — `crm_drip_sequences`, `crm_drip_steps`, `crm_drip_enrollments`, `crm_drip_sends`
-- **New Supabase columns** — `crm_campaigns.design_template_id`, `crm_campaign_recipients.recipient_type`, `crm_campaign_recipients.unsubscribe_token`, `crm_drip_sends.sendgrid_message_id`, `crm_drip_sends.email`, `crm_drip_sends.opened_at`, `crm_drip_sends.clicked_at`, `crm_drip_sends.bounced_at`, `crm_drip_enrollments.first_name`
+### v2.3.0 ✅ — Documents System + Chappie File Upload + Activity Filters
+- **`crm_documents` table** — unified documents for both contacts and clients. Both `company_id` and `client_id` set when attaching to converted companies
+- **Documents tab on contacts and clients** — upload, view, edit, delete. View/Download based on file type
+- **Chappie file upload** — paperclip button in widget, file uploaded to Supabase Storage, `attach_document` tool attaches to CRM record
+- **`attach_document` Chappie tool** — in `aiTools.js`. Resolves both `company_id` and `client_id` for converted companies. Never uses `add_note` for files
+- **Document notes policy** — Chappie only uses notes the user explicitly provides, never Claude's file analysis text
+- **Documents automatically copied** from contact to client on conversion in `clients.js` convert route
+- **Activity log** on every document upload (UI route in `documents.js` and Chappie tool in `aiTools.js`)
+- **Documents filter** in activity tab on both contacts and clients
+- **Per-person activity filters** on both CompanyProfile and ClientProfile activity tabs
+- **Add Note with person selector** in ClientProfile activity tab
+- **Activity card text truncation** — long text capped at 200 chars with `wordBreak: break-word, overflowWrap: anywhere`
+- **Overview layout fixes** — `minWidth: 0`, `overflow: hidden` on grid columns to prevent horizontal scroll
 
-### v1.8.0 — Dashboard Enhancement
-- **Waitlist growth widget** — sparkline chart (last 14 days) + 4 stats: Total, Consented, This Week, Today
-- **Pipeline velocity widget** — avg days per stage, color-coded: green (<7d), amber (7-14d), red (>14d)
-- **My Thoughts widget** — thoughts captured this week with link to /thoughts
-- **Campaign performance widget** — avg open rate across all sent campaigns + total campaigns count
-- All 4 new widgets added as analytics row above existing bottom grid
+### v2.2.0 ✅ — Team Superbrain + Invoice Parser + Recurring Payments + Password Management
+- **Team Superbrain** — `crm_team_insights` table, `server/services/teamBrain.js`, Claude Haiku generates anonymous insight from all team thoughts (last 7 days). Runs 5min after startup then every 24h. Dashboard dark gradient widget with admin-only "✨ Generate Now" button
+- **Invoice Parser** — `server/services/invoiceParser.js` uses Claude Vision. `POST /api/finance/invoices/parse` via multer memoryStorage. Returns 422 `NOT_AN_INVOICE` when file isn't an invoice (err.notAnInvoice flag). Finance.js: "📄 Upload Invoice" button pre-fills expense form
+- **Recurring Payments** — `last_paid_date` and `recurring_parent_id` columns on `crm_expenses`. `GET /api/finance/expenses/recurring` calculates `next_due` from `last_paid_date`, `days_until`, `due_soon` (≤7 days). Mark Paid creates NEW expense row with `recurring_parent_id` + updates `last_paid_date` on parent. `while (nextDue < todayStart)` not `<=` — payments due today show correctly after being paid
+- **Dashboard recurring widget** — only shows when items due within 7 days, Mark Paid button with optional invoice upload + amount confirmation
+- **`recurring_interval` selector** — monthly / yearly / weekly / quarterly, shown when recurring=true
+- **Password management** — `PUT /api/users/me/password` (change own, requires current password), `PUT /api/users/:id/reset-password` (admin generates 8-char hex temp password, shown once in modal)
 
-### v1.7.0 — My Thoughts + Chappie Conversations
-- **My Thoughts page** — personal whiteboard at `/thoughts`, private per user. Each thought is a card with a dedicated Claude brainstorm chat
-- **Claude brainstorm chat** — model selector: Haiku (cheap/fast), Sonnet 4 (balanced), Opus 4 (deep thinking). Markdown stripped server-side
-- **Slack thought logging** — prefix `thought:` or `idea:` in Chappie DM logs to My Thoughts automatically
-- **New Conversation button** — "+ New Chat" in Chappie widget starts a fresh conversation with no memory of previous sessions
-- **Message timestamps** — each Chappie message shows time sent
-- **`conversationId` threading** — Chappie widget passes conversation ID to keep messages in correct thread
-- **`POST /api/ai/new-conversation`** — creates fresh conversation record
-- **`crm_thoughts` table** — id, user_id, content, created_at, updated_at
-- **`crm_thought_conversations` table** — id, thought_id, messages (jsonb)
-- **`ANTHROPIC_API_KEY`** env var added for direct Claude API calls
+### v2.1.0 ✅ — Permissions System (DB-driven RBAC)
+- **`crm_permissions` table** — permission keys per role stored in DB, editable without code deploy
+- **`checkPermission()` middleware** — `server/middleware/permissions.js` wraps all sensitive routes
+- **Admin UI** — Team page lets admin manage roles and view permission matrix
+- **Role-aware frontend** — buttons, tabs, actions hidden via `useRole()` hook and `can(permission)` function
 
-### v1.6.4 — Email Deliverability + Unsubscribe System
-- **Token-based unsubscribe** — unique token per recipient stored in `crm_campaign_recipients.unsubscribe_token`. Clean URL `/api/marketing/unsubscribe/:token` — no query params, SendGrid click tracking safe
-- **List-Unsubscribe headers** — `List-Unsubscribe` + `List-Unsubscribe-Post` on all campaign emails — Gmail/Outlook show one-click unsubscribe button next to sender name
-- **`clicktrack="off"` on unsubscribe link** — body links still tracked, unsubscribe footer link exempt
-- **Campaign send switched from sgMail to fetch** — prevents SendGrid library from stripping href attributes
-- **Waitlist confirmation uses CRM template** — "Waitlist Confirmation" template fetched dynamically from `crm_email_templates`
-- **Waitlist first_name + last_name** — split name fields on landing page and in `waitlist_couples`
-- **Unsubscribe audit log** — IP, user agent, timestamp, campaign ID logged for both campaigns and waitlist
-- **Export CSV** — full audit export for unsubscribed contacts and waitlist
-- **New Supabase columns** — `crm_people`: unsubscribe_ip, unsubscribe_user_agent, unsubscribe_campaign_id. `waitlist_couples`: unsubscribe_ip, unsubscribe_user_agent, unsubscribed_at, first_name, last_name
+### v2.0.0 ✅ — RAG Memory + Chappie Slack Bot + Meeting Recording
+- **RAG search** — `crm_memory_embeddings` table (pgvector). `server/services/ragSearch.js`. `search_memory` tool searches emails, notes, meetings, thoughts by semantic similarity
+- **Slack bot** — `server/services/slackBot.js` via Socket Mode. Full Chappie in DMs. Block Kit confirmations. `#all-planfor` alerts. `thought:` / `idea:` prefix logs to My Thoughts
+- **Recall.ai** — meeting recording for Google Meet + Zoom. Transcript processing. AI summary + action items. `recording_status` polling
+- **Calendly sync** — `server/services/calendlySync.js`. Inbound bookings auto-create CRM meetings, link Google Calendar, match invitee to contacts/clients
+- **Gmail reply detection** — GPT-4o-mini classifies reply intent, auto-books on confirmed acceptance
+- **`get_pending_proposals`** tool, `crm_meeting_proposals` table
+- **`check_calendar_conflicts`** tool using Google Calendar API
 
-### v1.6.3 — Campaign Analytics + AI Log + GTM v1.0
-- **Campaign hot leads** — filter tabs (All/Opened/Clicked/Delivered/Bounced/Unsubscribed), checkboxes, "New Campaign from Selected" button
-- **Email preview collapse** — collapsed by default in campaign detail, click to expand
-- **Chappie tools** — `get_all_campaigns`, `get_waitlist_stats`, `get_waitlist_list`, `search_conversation_history`
-- **Markdown strip** — all Chappie responses stripped of markdown server-side
-- **AI Log redesign** — fixed height split panel, daily grouping (Today/Yesterday/date), independent scroll
-- **Waitlist full stack** — landing page at `comingsoon.planfor.io` (Vercel), backend `POST /api/waitlist/subscribe`, CRM Waitlist tab with stats/search/export/delete
-- **Calendar color coding** — Client (teal), Contact (green), Calendly unmatched (orange), Internal (purple), Google only (yellow)
-- **Slack self-link** — Settings page lets each user paste their Slack Member ID
+### v1.9.0 ✅ — Email Design System + Drip Sequences
+- **Email Design System** — 3 types: Transactional (600px), Campaign (600px), Newsletter (700px). header/footer/wrapper_html with `{{content}}` placeholder. Editable without code deploy
+- **Planfor branded templates** — dark green header (#3E423D), logo, slogan, Instagram, privacy policy footer
+- **`{{unsubscribe_url}}` injection** — replaced server-side for campaigns and waitlist emails
+- **`server/services/emailWrapper.js`** — `wrapWithDesignTemplate(body, type)` and `wrapWithDesignTemplateById(body, id)`. Direct emails NEVER use this wrapper
+- **Drip Sequence builder** — multi-step sequences with delay (days), subject, body, design template, on/off toggle per step
+- **Live preview panel** — split-panel drip step editor: HTML editor left, full rendered preview right
+- **Hourly drip runner** — `dripRunner.js`, checks enrollments, sends due steps via SendGrid
+- **Auto-enroll on signup** — new waitlist signups auto-enrolled in all active sequences
+- **Drip tracking** — `sendgrid_message_id` per send, webhook routes to `crm_drip_sends`
+- **New tables** — `crm_drip_sequences`, `crm_drip_steps`, `crm_drip_enrollments`, `crm_drip_sends`, `crm_email_design_templates`
+- **`recipient_type`** on `crm_campaign_recipients` routes unsubscribes to correct table
 
-### v1.6.2 — Calendly Integration + Calendar UX
-- **Calendly polling** — syncs every 5 minutes, creates CRM meetings, links Google Calendar event, matches invitee to contacts/clients
-- **Auto-record** — Recall.ai bot sent 2 min before meeting start via autoRecordCheck
-- **Calendar color coding + legend** — meetings colored by relationship type with hover legend
-- **Gmail scope** — upgraded to `gmail.modify`
+### v1.8.0 ✅ — Dashboard Enhancement
+- Waitlist growth sparkline (last 14 days) + 4 stats
+- Pipeline velocity widget — avg days per stage, color-coded green/amber/red
+- My Thoughts weekly count widget
+- Campaign avg open rate widget
 
-### v1.6.1 — Chappie Smart Scheduling + Slack Bot
-- **Thread replies** — `get_last_thread` + `thread_id` pass-through to `/api/emails/send`
-- **Email reading** — `get_email_thread` reads body_html; falls back to company_id search when thread_id yields no results
-- **CC support** — send_email passes CC array through Gmail API RFC 2822 headers
-- **Bulk email** — `send_bulk_email` tool sends to all contacts at a company
-- **`client_id` auto-lookup** — email executor resolves `client_id` from `company_id` via `converted_from`
-- **Phase 2** — `check_calendar_conflicts` tool, UTC offset via `Intl.DateTimeFormat shortOffset`
-- **Phase 3** — `propose_meeting` tool, `crm_meeting_proposals` table, `get_pending_proposals`
-- **Phase 4** — Gmail sync detects replies, GPT-4o-mini classifies intent, auto-books on confirmed
-- **Phase 5** — Chappie on Slack: Socket Mode, Block Kit confirmation buttons, `#all-planfor` alerts
-- **Calendar fix** — local date math fixes day-shift bug for UTC+3
-- **`convertClientTimeToUTC` fix** — rewrote using `Intl.DateTimeFormat shortOffset`
+### v1.7.0 ✅ — My Thoughts + Chappie Conversations
+- My Thoughts page `/thoughts` — private per user, Claude brainstorm chat per thought
+- Model selector: Haiku / Sonnet 4 / Opus 4
+- "+ New Chat" button starts fresh Chappie conversation
+- Message timestamps in Chappie
+- `crm_thoughts` and `crm_thought_conversations` tables
+- `ANTHROPIC_API_KEY` env var
 
-### v1.6.0 — AI Brain (Chappie)
-- Floating chat widget on all authenticated pages
+### v1.6.4 ✅ — Email Deliverability + Unsubscribe System
+- Token-based unsubscribe per recipient, clean URL, SendGrid click tracking safe
+- List-Unsubscribe headers on all marketing emails
+- Smart unsubscribe routing via `recipient_type`
+- Unsubscribe audit log — IP, user agent, timestamp, campaign ID
+- Export CSV with full audit columns
+
+### v1.6.3 ✅ — Campaign Analytics + AI Log + GTM v1.0
+- Campaign hot leads: filter tabs, checkboxes, "New Campaign from Selected"
+- AI Log redesign: fixed height split panel, daily grouping, independent scroll
+- Chappie tools: `get_all_campaigns`, `get_waitlist_stats`, `get_waitlist_list`, `search_conversation_history`
+- Waitlist full stack: comingsoon.planfor.io landing page, backend, CRM tab
+
+### v1.6.2 ✅ — Calendly Integration + Calendar UX
+- Calendly polling every 5 min, CRM meeting creation, Google Calendar linking
+- Auto-record: Recall.ai bot sent 2 min before meeting start
+- Calendar color coding by relationship type with hover legend
+
+### v1.6.1 ✅ — Chappie Smart Scheduling + Slack Bot
+- Thread replies, email reading, CC support, bulk email
+- Conflict detection, proposal tracking, reply intent + auto-book on confirm
+- Slack Bot: Socket Mode, Block Kit, `#all-planfor` alerts
+- `convertClientTimeToUTC` using `Intl.DateTimeFormat shortOffset`
+
+### v1.6.0 ✅ — AI Brain (Chappie)
+- Floating chat widget on all pages
 - Function-calling agentic loop, MAX_ITERATIONS=6
 - 20+ tools: read, write-instant, write-with-confirmation
-- Confirmation card UI — yellow card with Confirm/Cancel
-- Persistent conversation history in `crm_ai_conversations`
-- UUID validation — rejects fabricated IDs before DB insert
-- Conversation log at `/ai/log` — admin sees all, users see own
+- Confirmation card UI with Confirm/Cancel buttons
+- Persistent history in `crm_ai_conversations`
+- UUID validation before DB insert
+- Conversation log at `/ai/log`
 
-### v1.5.3 — Production Stability & Polish
+### v1.5.x ✅ — Production Stability + Email Inbox + Meetings
 - Custom domain `crm-api.planfor.io`
-- Reschedule meeting flow in CompanyProfile, ClientProfile, Calendar popup
-- Activity filter buttons (All / Meetings / Emails / Notes)
-- Inline edit meeting notes with Markdown rendering
-- Google Meet + Zoom bot selector on meeting cards
+- Email Inbox with Gmail sync, thread grouping, Quick Reply
+- Reschedule meeting flow, activity filter buttons
+- Inline meeting notes with Markdown rendering
+- Google Meet + Zoom bot selector
 
-### v1.5.2 — Email Inbox
-- Email Inbox with Gmail sync, thread grouping, unread badge
-- Quick Reply with Gmail threading
-- "View Client / View Contact" quick-links per thread
-
-### v1.4.0 — Gmail + Calendar + Meetings
-- Gmail API integration (OAuth, send, incremental sync)
-- Google Calendar (create, cancel, reschedule)
-- Meeting recording via Recall.ai
+### v1.4.0 ✅ — Gmail + Calendar + Meetings
+- Gmail API OAuth, send, incremental sync
+- Google Calendar create/cancel/reschedule
+- Recall.ai meeting recording
 - AI meeting summaries via GPT-4o-mini
 - Timezone detection from US state
 
-### v1.3.0 — Marketing
+### v1.3.0 ✅ — Marketing
 - Campaigns with SendGrid bulk send
 - Open/click/bounce tracking via webhooks
 - Campaign builder with Tiptap visual + HTML editor
 
-### v1.2.0 — Client Management
+### v1.2.0 ✅ — Client Management
 - Convert company to client flow
-- ClientProfile with 6 tabs
+- ClientProfile multi-tab layout
 - Client finance module
 - Document management with Supabase Storage
 
-### v1.1.0 — Email & Templates
+### v1.1.0 ✅ — Email & Templates
 - Email templates with merge tags
-- Direct email send via SendGrid
-- Open/click tracking
-- Activity timeline per company
+- Direct email via SendGrid
+- Open/click tracking + activity timeline
 
-### v1.0.0 — Foundation
+### v1.0.0 ✅ — Foundation
 - Pipeline management with stage stepper
 - Company + people CRUD
 - CSV import from Apollo
-- Role-based access control (6 roles)
 - JWT authentication
-
-## Roadmap
-
-### Completed
-
-**v1.9.0 ✅ — Email Design System + Drip Sequences**
-- Email design template system (Transactional, Campaign, Newsletter)
-- Planfor branded templates with logo, slogan, Instagram, privacy policy
-- Per-campaign design template selector
-- Drip sequence builder with step editor and live preview
-- Hourly drip runner with auto-enroll on waitlist signup
-- Drip tracking: sent/opened/clicked/bounced per step
-- Waitlist couples as campaign audience
-- Smart unsubscribe routing by recipient type
-
-**v1.8.0 ✅ — Dashboard Enhancement**
-- Waitlist growth sparkline + stats
-- Pipeline velocity per stage
-- My Thoughts weekly count
-- Campaign avg open rate widget
-
-**v1.7.0 ✅ — My Thoughts + Chappie Conversations**
-- My Thoughts personal whiteboard with Claude brainstorm chat
-- Model selector: Haiku, Sonnet 4, Opus 4
-- Slack thought logging via thought:/idea: prefix
-- New Conversation button in Chappie widget
-- Message timestamps in Chappie
-
-**v1.6.4 ✅ — Email Deliverability + Unsubscribe System**
-- Token-based unsubscribe for campaigns
-- List-Unsubscribe headers on all marketing emails
-- Unsubscribe audit log with IP, user agent, campaign ID
-- CSV export for unsubscribed contacts and waitlist
-- Waitlist confirmation wired to CRM template
-- Waitlist first_name + last_name
-
-**v1.6.3 ✅ — Campaign Analytics + AI Log + GTM v1.0**
-- Campaign hot leads, filter tabs, follow-up campaign launcher
-- AI Log redesign: split panel, daily grouping, independent scroll
-- Chappie tools: get_all_campaigns, get_waitlist_stats, get_waitlist_list, search_conversation_history
-- Waitlist full stack: landing page + backend + CRM management
-
-**v1.6.2 ✅ — Calendly Integration + Calendar UX**
-- Calendly polling, Google Calendar event linking, CRM record creation
-- Auto-record via autoRecordCheck (2 min before meeting start)
-- Calendar color coding by relationship type + hover legend
-
-**v1.6.1 ✅ — Chappie Smart Scheduling + Slack Bot**
-- Thread replies, email reading, CC support, bulk email
-- Conflict detection, proposal tracking, reply intent + auto-book
-- Slack Bot: Socket Mode, Block Kit confirmations, #all-planfor alerts
-
-**GTM v1.0 ✅ — Waitlist & Pre-Launch Email Capture**
-- Landing page at comingsoon.planfor.io (Vercel)
-- waitlist_couples table with full audit trail
-- SendGrid confirmation email with tracking
-- CRM Waitlist tab: stats, table, search, export CSV
-- CAN-SPAM + GDPR compliant
 
 ---
 
-### Planned
+## Roadmap
 
-**v1.9.1 — Waitlist Email Validation**
-- Track delivery/bounce status on waitlist confirmation emails
-- Add email_status column to waitlist_couples
-- Route SendGrid webhook events to update waitlist records
-- Show ✅ Delivered / 📬 Opened / ❌ Bounced badges in Waitlist tab
-- Bounce = likely fake email — flag for review
-
-**v2.0 — Newsletter + RAG**
-- Weekly newsletter flow: write content in CRM, AI writing assistant, image upload
-- Claude RAG — Chappie ingests CRM history, emails, notes into vector store
-- Proactive insights: "QualifAI hasn't replied in 14 days, here's a suggested follow-up"
-- Multi-user context awareness
-- Planned before open source release + LinkedIn post
-
-**Open Source Release**
-- Codebase cleanup and full documentation
-- Remove all internal credentials and seed data
-- LinkedIn announcement post
-- Target: after v2.0 ships
+- **v2.4** — Onboarding wizard (first login: company name, logo, primary color), demo mode with seed data
+- **v2.5** — Newsletter builder with AI writing assistant
+- **Open Source Release** — remove Planfor branding, seed script with fake data, full setup docs, LinkedIn post
+- **Couples data layer** — expand beyond `waitlist_couples` as GTM matures
+- **v2.1 Learning Brain** — proactive Chappie insights once sufficient data volume exists
