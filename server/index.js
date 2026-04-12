@@ -33,6 +33,7 @@ app.use('/api/ai', require('./routes/ai'));
 app.use('/api/waitlist', require('./routes/waitlist'));
 app.use('/api/design-templates', require('./routes/designTemplates'));
 app.use('/api/drip', require('./routes/drip'));
+app.use('/api/roles', require('./routes/roles'));
 
 
 
