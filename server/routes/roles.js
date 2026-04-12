@@ -102,17 +102,28 @@ router.put('/:id', auth, adminOnly, async (req, res) => {
 // ─── UPDATE PERMISSIONS FOR A ROLE ───────────────────────────────────────────
 
 router.put('/:id/permissions', auth, adminOnly, async (req, res) => {
-  const { permissions } = req.body;
-  // permissions = [{ module, action, enabled }]
+    const { permissions } = req.body;
+    console.log('Saving permissions for role_id:', req.params.id, 'count:', permissions?.length);
+    console.log('Sample:', JSON.stringify(permissions?.slice(0, 2)));
 
-  for (const p of permissions) {
-    await supabase
-      .from('crm_permissions')
-      .update({ enabled: p.enabled })
-      .eq('role_id', req.params.id)
-      .eq('module', p.module)
-      .eq('action', p.action);
-  }
+    if (!permissions || !Array.isArray(permissions)) {
+      return res.status(400).json({ error: 'permissions array required' });
+    }
+  
+    for (const p of permissions) {
+        const { error } = await supabase
+          .from('crm_permissions')
+          .upsert({
+            role_id: req.params.id,
+            module: p.module,
+            action: p.action,
+            enabled: p.enabled,
+          }, { onConflict: 'role_id,module,action' });
+        if (error) console.error('Permission upsert error:', p.module, p.action, error.message);
+      }
+
+  const { clearPermissionCache } = require('../middleware/rbac');
+  clearPermissionCache();
 
   const { data } = await supabase
     .from('crm_roles')
