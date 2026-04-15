@@ -1,0 +1,31 @@
+{
+  "name": "chap-crm-server",
+  "version": "1.0.0",
+  "description": "Chap CRM backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.9",
+    "@googleapis/calendar": "^9.0.0",
+    "@sendgrid/eventwebhook": "^8.0.0",
+    "@sendgrid/mail": "^8.1.6",
+    "@slack/bolt": "^3.22.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.15.0",
+    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "googleapis": "^140.0.1",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^6.9.0",
+    "openai": "^4.104.0",
+    "uuid": "^9.0.1"
+  }
+}

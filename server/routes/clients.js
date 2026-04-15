@@ -75,7 +75,7 @@ router.delete('/:id', auth, checkPermission('company:delete'), async (req, res) 
 // Convert a company (contact) into a client
 router.post('/convert/:companyId', auth, checkPermission('company:edit'), async (req, res) => {
   const { companyId } = req.params;
-  const { contract_type, commission_rate, contract_start_date, contract_end_date, notes } = req.body;
+  const { contract_type, commission_rate, contract_amount, contract_signed_date, notes } = req.body;
 
   // Get the company
   const { data: company, error: companyErr } = await supabase
@@ -101,7 +101,7 @@ router.post('/convert/:companyId', auth, checkPermission('company:edit'), async 
       contact_email: primaryContact?.email || '',
       contact_phone: primaryContact?.work_phone || primaryContact?.mobile_phone || '',
       website: company.website,
-      category: company.category || 'Venue & Spaces',
+      category: company.category || '',
       business_type: company.business_type,
       address: company.company_address,
       city: company.city,
@@ -110,8 +110,8 @@ router.post('/convert/:companyId', auth, checkPermission('company:edit'), async 
       stage: 'Onboarding',
       contract_type: contract_type || 'RevShare',
       commission_rate: commission_rate || 5.0,
-      contract_start_date: contract_start_date || null,
-      contract_end_date: contract_end_date || null,
+      contract_amount: contract_amount || null,
+      contract_signed_date: contract_signed_date || null,
       notes: notes || '',
       created_by: req.user.id,
     }])
@@ -120,12 +120,7 @@ router.post('/convert/:companyId', auth, checkPermission('company:edit'), async 
 
   if (clientErr) return res.status(500).json({ error: clientErr.message });
 
-  // Create placeholder vendor page
-  await supabase.from('crm_client_vendor_page').insert([{
-    client_id: client.id,
-    display_name: company.company_name,
-    venue_type: company.business_type,
-  }]);
+  // (vendor page creation removed — not applicable for all business types)
 
   // Update company stage to "Converted"
   await supabase

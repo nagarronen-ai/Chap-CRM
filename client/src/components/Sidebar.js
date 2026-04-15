@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useRole } from '../hooks/useRole';
+import { useApp } from '../context/AppContext';
 
 const APP_VERSION = 'v2.3.0';
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
@@ -11,12 +12,12 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { can, role } = useRole();
+  const { palette: p, settings } = useApp();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const [unreadCount, setUnreadCount] = useState(0);
   const [collapsed, setCollapsed] = useState(() => {
     const initial = {};
-    const activeGroups = ['main', 'crm', 'communication', 'growth', 'intelligence', 'finance', 'admin'];
-    activeGroups.forEach(key => { initial[key] = true; }); // all collapsed by default
+    ['main', 'crm', 'communication', 'growth', 'intelligence', 'finance', 'admin'].forEach(key => { initial[key] = true; });
     return initial;
   });
 
@@ -35,8 +36,8 @@ export default function Sidebar() {
   }, []);
 
   const ROLE_COLORS = {
-    admin: '#8E9B8B', sales: '#94B0BC', marketing: '#B4A5D6',
-    csm: '#D4A574', support: '#717182', finance: '#4CAF50',
+    admin: p.primary, sales: '#94B0BC', marketing: '#B4A5D6',
+    csm: p.accent, support: p.textSecondary, finance: '#4CAF50',
   };
   const ROLE_LABELS = {
     admin: 'Admin', sales: 'Sales', marketing: 'Marketing',
@@ -45,23 +46,18 @@ export default function Sidebar() {
 
   const groups = [
     {
-      key: 'main',
-      label: 'Main',
-      items: [
-        { path: '/dashboard', label: 'Dashboard', icon: '📊', show: true },
-      ],
+      key: 'main', label: 'Main',
+      items: [{ path: '/dashboard', label: 'Dashboard', icon: '📊', show: true }],
     },
     {
-      key: 'crm',
-      label: 'CRM',
+      key: 'crm', label: 'CRM',
       items: [
         { path: '/contacts', label: 'Contacts', icon: '🏢', show: true },
         { path: '/clients', label: 'Clients', icon: '🤝', show: true },
       ],
     },
     {
-      key: 'communication',
-      label: 'Communication',
+      key: 'communication', label: 'Communication',
       items: [
         { path: '/emails', label: 'Email Templates', icon: '✉️', show: can('email:templates') },
         { path: '/inbox', label: 'Email Inbox', icon: '📬', show: true, badge: unreadCount },
@@ -69,31 +65,25 @@ export default function Sidebar() {
       ],
     },
     {
-      key: 'growth',
-      label: 'Growth',
+      key: 'growth', label: 'Growth',
       items: [
         { path: '/marketing', label: 'Marketing', icon: '📣', show: can('marketing:view') },
         { path: '/import', label: 'Import CSV', icon: '📥', show: can('import:run') },
       ],
     },
     {
-      key: 'intelligence',
-      label: 'Intelligence',
+      key: 'intelligence', label: 'Intelligence',
       items: [
         { path: '/thoughts', label: 'My Thoughts', icon: '💭', show: true },
         { path: '/ai/log', label: 'AI Assistant', icon: '🧠', show: true },
       ],
     },
     {
-      key: 'finance',
-      label: 'Finance',
-      items: [
-        { path: '/finance', label: 'Finance', icon: '💰', show: can('finance:general') },
-      ],
+      key: 'finance', label: 'Finance',
+      items: [{ path: '/finance', label: 'Finance', icon: '💰', show: can('finance:general') }],
     },
     {
-      key: 'admin',
-      label: 'Admin',
+      key: 'admin', label: 'Admin',
       items: [
         { path: '/team', label: 'Team', icon: '👥', show: can('users:manage') },
         { path: '/settings', label: 'Settings', icon: '⚙️', show: true },
@@ -110,30 +100,37 @@ export default function Sidebar() {
     });
   }, [location.pathname]);
 
-  const toggleGroup = (key) => {
-    setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
+  const toggleGroup = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
   const isGroupActive = (items) => items.some(i => location.pathname === i.path);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('appSettings');
     navigate('/login');
   };
 
   return (
     <div style={{
-      width: 220, height: '100vh', background: '#FFFFFF',
-      borderRight: '1px solid rgba(62,66,61,0.1)',
+      width: 220, height: '100vh', background: p.sidebar,
+      borderRight: `1px solid ${p.sidebarActive}`,
       display: 'flex', flexDirection: 'column', padding: '20px 12px',
       fontFamily: "'Inter', sans-serif", position: 'fixed', top: 0, left: 0,
       boxSizing: 'border-box', overflowY: 'auto',
+      transition: 'background 0.4s ease',
     }}>
       {/* Logo */}
       <div style={{ marginBottom: 24, paddingLeft: 12 }}>
-        <p style={{ color: '#8E9B8B', fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 2px' }}>Chap CRM</p>
-        <p style={{ color: '#3E423D', fontSize: 18, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>CRM</p>
+        {settings.logo_url ? (
+          <img src={settings.logo_url} alt="Logo" style={{ height: 32, maxWidth: 160, objectFit: 'contain', marginBottom: 2 }} />
+        ) : (
+          <>
+            <p style={{ color: p.primary, fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 2px', opacity: 0.8 }}>
+              {settings.company_name || 'Chap CRM'}
+            </p>
+            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: 18, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>CRM</p>
+          </>
+        )}
       </div>
 
       {/* Nav groups */}
@@ -146,21 +143,19 @@ export default function Sidebar() {
 
           return (
             <div key={group.key} style={{ marginBottom: 4 }}>
-              {/* Group header */}
               <div onClick={() => toggleGroup(group.key)} style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
-                color: hasActive ? '#3E423D' : '#717182',
+                color: hasActive ? 'rgba(255,255,255,0.9)' : p.sidebarText,
                 fontWeight: 600, fontSize: 11,
                 textTransform: 'uppercase', letterSpacing: 0.8,
-                background: hasActive && !isOpen ? '#F5F3EF' : 'transparent',
-                userSelect: 'none',
+                background: hasActive && !isOpen ? p.sidebarActive : 'transparent',
+                userSelect: 'none', transition: 'all 0.15s',
               }}>
                 <span>{group.label}</span>
                 <span style={{ fontSize: 9, opacity: 0.6, transition: 'transform 0.2s', display: 'inline-block', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
               </div>
 
-              {/* Group items */}
               {isOpen && (
                 <div style={{ marginTop: 2, marginBottom: 4 }}>
                   {visibleItems.map(item => {
@@ -170,20 +165,20 @@ export default function Sidebar() {
                         display: 'flex', alignItems: 'center', gap: 8,
                         padding: '7px 12px 7px 20px', borderRadius: 6, marginBottom: 1,
                         cursor: 'pointer',
-                        background: active ? '#F5F3EF' : 'transparent',
-                        color: active ? '#3E423D' : '#5A6059',
+                        background: active ? p.sidebarActive : 'transparent',
+                        color: active ? 'rgba(255,255,255,0.95)' : p.sidebarText,
                         fontWeight: active ? 600 : 400,
-                        fontSize: 12,
-                        transition: 'all 0.15s',
-                      }}>
+                        fontSize: 12, transition: 'all 0.15s',
+                      }}
+                        onMouseEnter={e => { if (!active) e.currentTarget.style.background = p.sidebarActive; }}
+                        onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                      >
                         <span style={{ fontSize: 13 }}>{item.icon}</span>
                         <span style={{ flex: 1 }}>{item.label}</span>
                         {item.badge > 0 && (
-                          <span style={{
-                            background: '#D4183D', color: '#fff',
-                            fontSize: 9, fontWeight: 700, borderRadius: 10,
-                            padding: '1px 6px', minWidth: 16, textAlign: 'center',
-                          }}>{item.badge > 99 ? '99+' : item.badge}</span>
+                          <span style={{ background: '#D4183D', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: 10, padding: '1px 6px', minWidth: 16, textAlign: 'center' }}>
+                            {item.badge > 99 ? '99+' : item.badge}
+                          </span>
                         )}
                       </div>
                     );
@@ -196,19 +191,19 @@ export default function Sidebar() {
       </nav>
 
       {/* User info */}
-      <div style={{ borderTop: '1px solid rgba(62,66,61,0.08)', paddingTop: 12, marginTop: 8 }}>
+      <div style={{ borderTop: `1px solid ${p.sidebarActive}`, paddingTop: 12, marginTop: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', marginBottom: 4 }}>
           <div style={{
-            width: 28, height: 28, borderRadius: '50%', background: '#8E9B8B',
+            width: 28, height: 28, borderRadius: '50%', background: p.primary,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontSize: 11, fontWeight: 600, flexShrink: 0,
           }}>
             {user.name?.charAt(0) || 'U'}
           </div>
           <div style={{ overflow: 'hidden' }}>
-            <p style={{ color: '#3E423D', fontSize: 12, fontWeight: 500, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name}</p>
+            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: 500, margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name}</p>
             <span style={{
-              display: 'inline-block', background: ROLE_COLORS[role] || '#717182',
+              display: 'inline-block', background: ROLE_COLORS[role] || p.primary,
               color: '#fff', fontSize: 9, fontWeight: 600, borderRadius: 4,
               padding: '1px 5px', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 1,
             }}>
@@ -218,12 +213,16 @@ export default function Sidebar() {
         </div>
         <div onClick={handleLogout} style={{
           padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
-          color: '#D4183D', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
-        }}>
+          color: 'rgba(255,100,100,0.8)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
+          transition: 'all 0.15s',
+        }}
+          onMouseEnter={e => e.currentTarget.style.color = '#FF6B6B'}
+          onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,100,100,0.8)'}
+        >
           <span>↩</span> Sign out
         </div>
-        <div style={{ background: '#F5F3EF', borderRadius: 5, padding: '3px 8px', textAlign: 'center', margin: '6px 12px 0' }}>
-          <p style={{ color: '#717182', fontSize: 10, margin: 0, fontWeight: 500 }}>{APP_VERSION}</p>
+        <div style={{ background: p.sidebarActive, borderRadius: 5, padding: '3px 8px', textAlign: 'center', margin: '6px 12px 0' }}>
+          <p style={{ color: p.sidebarText, fontSize: 10, margin: 0, fontWeight: 500 }}>{APP_VERSION}</p>
         </div>
       </div>
     </div>

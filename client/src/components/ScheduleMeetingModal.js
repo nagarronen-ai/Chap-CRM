@@ -1,10 +1,10 @@
 // client/src/components/ScheduleMeetingModal.js
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useApp } from '../context/AppContext';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
-// US State → IANA timezone
 const STATE_TIMEZONES = {
   'AL': 'America/Chicago', 'AK': 'America/Anchorage', 'AZ': 'America/Phoenix', 'AR': 'America/Chicago',
   'CA': 'America/Los_Angeles', 'CO': 'America/Denver', 'CT': 'America/New_York', 'DE': 'America/New_York',
@@ -56,34 +56,13 @@ function convertClientTimeToUTC(dateStr, hour, min, clientTimezone) {
   return new Date(localDate.getTime() + offset * 60000);
 }
 
-/**
- * ScheduleMeetingModal
- * 
- * Props:
- * - show: boolean
- * - onClose: () => void
- * - onCreated: () => void (callback after meeting created)
- * - companyId: string (optional)
- * - clientId: string (optional)
- * - companyName: string
- * - state: string (US state for timezone detection)
- * - people: [{ id, first_name, last_name, email }]
- * - contactEmail: string (for clients — primary contact email)
- * - contactName: string (for clients — primary contact name)
- */
 export default function ScheduleMeetingModal({ show, onClose, onCreated, companyId, clientId, companyName, state, people = [], contactEmail, contactName }) {
+  const { palette: p } = useApp();
   const [form, setForm] = useState({
-    title: '',
-    description: '',
-    meeting_type: 'google_meet',
+    title: '', description: '', meeting_type: 'google_meet',
     date: new Date().toISOString().split('T')[0],
-    start_hour: '10',
-    start_min: '00',
-    end_hour: '11',
-    end_min: '00',
-    person_id: '',
-    attendee_emails: '',
-    auto_record: false,
+    start_hour: '10', start_min: '00', end_hour: '11', end_min: '00',
+    person_id: '', attendee_emails: '', auto_record: false,
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -91,17 +70,13 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
   const clientTimezone = state ? (STATE_TIMEZONES[state] || STATE_TIMEZONES[state.trim()] || null) : null;
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
-  // Auto-fill description with company context
+  const inputStyle = { width: '100%', background: p.inputBg, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '9px 12px', color: p.text, fontSize: 13, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' };
+  const labelStyle = { color: p.textSecondary, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 };
+
   useEffect(() => {
     if (show && companyName) {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      setForm(prev => ({
-        ...prev,
-        title: `Meeting with ${companyName}`,
-        description: `Meeting with ${companyName}${state ? ` (${state})` : ''}\nOrganized by: ${user.name || ''}\n\n`,
-        person_id: '',
-        attendee_emails: '',
-      }));
+      setForm(prev => ({ ...prev, title: `Meeting with ${companyName}`, description: `Meeting with ${companyName}${state ? ` (${state})` : ''}\nOrganized by: ${user.name || ''}\n\n`, person_id: '', attendee_emails: '' }));
       setSuccess(false);
     }
   }, [show, companyName, state]);
@@ -109,141 +84,79 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
   const handleCreate = async () => {
     if (!form.title || !form.date) return;
     setSaving(true);
-
     let start_time, end_time;
     if (clientTimezone) {
-      const startUTC = convertClientTimeToUTC(form.date, parseInt(form.start_hour), parseInt(form.start_min), clientTimezone);
-      const endUTC = convertClientTimeToUTC(form.date, parseInt(form.end_hour), parseInt(form.end_min), clientTimezone);
-      start_time = startUTC.toISOString();
-      end_time = endUTC.toISOString();
+      start_time = convertClientTimeToUTC(form.date, parseInt(form.start_hour), parseInt(form.start_min), clientTimezone).toISOString();
+      end_time = convertClientTimeToUTC(form.date, parseInt(form.end_hour), parseInt(form.end_min), clientTimezone).toISOString();
     } else {
       start_time = new Date(`${form.date}T${String(form.start_hour).padStart(2, '0')}:${form.start_min.padStart(2, '0')}:00`).toISOString();
       end_time = new Date(`${form.date}T${String(form.end_hour).padStart(2, '0')}:${form.end_min.padStart(2, '0')}:00`).toISOString();
     }
-
-    // Build attendee list
-    const attendee_emails = form.attendee_emails
-      ? form.attendee_emails.split(',').map(e => e.trim()).filter(Boolean)
-      : [];
-
-    // Add selected person's email
+    const attendee_emails = form.attendee_emails ? form.attendee_emails.split(',').map(e => e.trim()).filter(Boolean) : [];
     if (form.person_id && people.length > 0) {
-      const person = people.find(p => p.id === form.person_id);
-      if (person?.email && !attendee_emails.includes(person.email)) {
-        attendee_emails.push(person.email);
-      }
+      const person = people.find(pp => pp.id === form.person_id);
+      if (person?.email && !attendee_emails.includes(person.email)) attendee_emails.push(person.email);
     }
-
-    // Add client primary email if no person selected
-    if (clientId && contactEmail && !form.person_id && !attendee_emails.includes(contactEmail)) {
-      attendee_emails.push(contactEmail);
-    }
-
+    if (clientId && contactEmail && !form.person_id && !attendee_emails.includes(contactEmail)) attendee_emails.push(contactEmail);
     try {
-      await axios.post(`${API}/calendar/meetings`, {
-        title: form.title,
-        description: form.description,
-        meeting_type: form.meeting_type,
-        start_time,
-        end_time,
-        company_id: companyId || null,
-        client_id: clientId || null,
-        person_id: form.person_id || null,
-        attendee_emails,
-        is_internal: false,
-        auto_record: form.auto_record || false,
-      }, { headers: getHeaders() });
-
+      await axios.post(`${API}/calendar/meetings`, { title: form.title, description: form.description, meeting_type: form.meeting_type, start_time, end_time, company_id: companyId || null, client_id: clientId || null, person_id: form.person_id || null, attendee_emails, is_internal: false, auto_record: form.auto_record || false }, { headers: getHeaders() });
       setSuccess(true);
-      setTimeout(() => {
-        onClose();
-        setSuccess(false);
-        if (onCreated) onCreated();
-      }, 2000);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to create meeting: ' + (err.response?.data?.error || err.message));
-    }
+      setTimeout(() => { onClose(); setSuccess(false); if (onCreated) onCreated(); }, 2000);
+    } catch (err) { alert('Failed to create meeting: ' + (err.response?.data?.error || err.message)); }
     setSaving(false);
   };
 
   if (!show) return null;
 
-  const inputStyle = { width: '100%', background: '#F3F3F5', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '9px 12px', color: '#3E423D', fontSize: 13, boxSizing: 'border-box', outline: 'none', fontFamily: 'Inter, sans-serif' };
-  const labelStyle = { color: '#717182', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 5 };
+  const hourOptions = Array.from({ length: 24 }, (_, i) => <option key={i} value={String(i)}>{i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}</option>);
+  const minOptions = ['00', '15', '30', '45'].map(m => <option key={m} value={m}>:{m}</option>);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(62,66,61,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 540, boxShadow: '0 20px 60px rgba(62,66,61,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: p.cardBg, borderRadius: 16, padding: 32, width: 540, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto', border: `1px solid ${p.cardBorder}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
-            <h2 style={{ color: '#3E423D', fontSize: 20, fontStyle: 'italic', fontFamily: "'Playfair Display', Georgia, serif", margin: '0 0 4px' }}>Schedule Meeting</h2>
-            <p style={{ color: '#717182', fontSize: 13, margin: 0 }}>with <strong>{companyName}</strong>{state ? ` · ${state}` : ''}</p>
+            <h2 style={{ color: p.text, fontSize: 20, fontStyle: 'italic', fontFamily: "'Playfair Display', Georgia, serif", margin: '0 0 4px' }}>Schedule Meeting</h2>
+            <p style={{ color: p.textSecondary, fontSize: 13, margin: 0 }}>with <strong>{companyName}</strong>{state ? ` · ${state}` : ''}</p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#717182' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: p.textSecondary }}>✕</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Title */}
           <div>
             <label style={labelStyle}>Title *</label>
             <input value={form.title} onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))} style={inputStyle} placeholder="e.g. Venue walkthrough..." />
           </div>
 
-          {/* Type */}
           <div>
             <label style={labelStyle}>Meeting Type</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              {[
-                { key: 'google_meet', label: '📹 Google Meet' },
-                { key: 'phone', label: '📞 Phone Call' },
-              ].map(t => (
+              {[{ key: 'google_meet', label: '📹 Google Meet' }, { key: 'phone', label: '📞 Phone Call' }].map(t => (
                 <button key={t.key} onClick={() => setForm(prev => ({ ...prev, meeting_type: t.key }))}
-                  style={{
-                    flex: 1, background: form.meeting_type === t.key ? '#3E423D' : '#fff',
-                    color: form.meeting_type === t.key ? '#fff' : '#5A6059',
-                    border: '1px solid rgba(62,66,61,0.15)', borderRadius: 8,
-                    padding: '10px', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: 500,
-                  }}>
+                  style={{ flex: 1, background: form.meeting_type === t.key ? p.text : p.cardBg, color: form.meeting_type === t.key ? '#fff' : p.textSecondary, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '10px', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif', fontWeight: 500 }}>
                   {t.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Date */}
           <div>
             <label style={labelStyle}>Date *</label>
             <input type="date" value={form.date} onChange={e => setForm(prev => ({ ...prev, date: e.target.value }))} style={inputStyle} />
           </div>
 
-          {/* Time */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Start Time {clientTimezone ? `(${state} time)` : ''}</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <select value={form.start_hour} onChange={e => setForm(prev => ({ ...prev, start_hour: e.target.value }))} style={{ ...inputStyle, flex: 1 }}>
-                  {Array.from({ length: 24 }, (_, i) => <option key={i} value={String(i)}>{i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}</option>)}
-                </select>
-                <select value={form.start_min} onChange={e => setForm(prev => ({ ...prev, start_min: e.target.value }))} style={{ ...inputStyle, width: 70 }}>
-                  {['00', '15', '30', '45'].map(m => <option key={m} value={m}>:{m}</option>)}
-                </select>
+            {[{ label: 'Start Time', hField: 'start_hour', mField: 'start_min' }, { label: 'End Time', hField: 'end_hour', mField: 'end_min' }].map(({ label, hField, mField }) => (
+              <div key={label}>
+                <label style={labelStyle}>{label} {clientTimezone ? `(${state} time)` : ''}</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <select value={form[hField]} onChange={e => setForm(prev => ({ ...prev, [hField]: e.target.value }))} style={{ ...inputStyle, flex: 1 }}>{hourOptions}</select>
+                  <select value={form[mField]} onChange={e => setForm(prev => ({ ...prev, [mField]: e.target.value }))} style={{ ...inputStyle, width: 70 }}>{minOptions}</select>
+                </div>
               </div>
-            </div>
-            <div>
-              <label style={labelStyle}>End Time {clientTimezone ? `(${state} time)` : ''}</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <select value={form.end_hour} onChange={e => setForm(prev => ({ ...prev, end_hour: e.target.value }))} style={{ ...inputStyle, flex: 1 }}>
-                  {Array.from({ length: 24 }, (_, i) => <option key={i} value={String(i)}>{i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}</option>)}
-                </select>
-                <select value={form.end_min} onChange={e => setForm(prev => ({ ...prev, end_min: e.target.value }))} style={{ ...inputStyle, width: 70 }}>
-                  {['00', '15', '30', '45'].map(m => <option key={m} value={m}>:{m}</option>)}
-                </select>
-              </div>
-            </div>
+            ))}
           </div>
 
-          {/* Timezone conversion preview */}
           {clientTimezone && (
             <div style={{ background: '#FFF3CD', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
               <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>🌍</span>
@@ -251,51 +164,40 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
                 <strong>Timezone conversion:</strong><br />
                 Client time ({state}): {parseInt(form.start_hour) === 0 ? '12' : parseInt(form.start_hour) > 12 ? parseInt(form.start_hour) - 12 : form.start_hour}:{form.start_min} {parseInt(form.start_hour) >= 12 ? 'PM' : 'AM'} — {clientTimezone}<br />
                 Your time: {(() => {
-                  try {
-                    const converted = convertClientTimeToUTC(form.date, parseInt(form.start_hour), parseInt(form.start_min), clientTimezone);
-                    return formatInTimezone(converted, getMyTimezone());
-                  } catch { return '—'; }
+                  try { return formatInTimezone(convertClientTimeToUTC(form.date, parseInt(form.start_hour), parseInt(form.start_min), clientTimezone), getMyTimezone()); }
+                  catch { return '—'; }
                 })()} — {getMyTimezone()}
               </div>
             </div>
           )}
 
-          {/* Invite Person */}
           {people.length > 0 && (
             <div>
               <label style={labelStyle}>Invite Contact Person</label>
               <select value={form.person_id} onChange={e => setForm(prev => ({ ...prev, person_id: e.target.value }))} style={inputStyle}>
                 <option value="">Select who to invite...</option>
-                {people.filter(p => p.email).map(p => (
-                  <option key={p.id} value={p.id}>👤 {p.first_name} {p.last_name} — {p.email}</option>
-                ))}
+                {people.filter(pp => pp.email).map(pp => <option key={pp.id} value={pp.id}>👤 {pp.first_name} {pp.last_name} — {pp.email}</option>)}
               </select>
             </div>
           )}
 
-          {/* Client primary contact (when no people list) */}
           {people.length === 0 && contactEmail && (
-            <div style={{ background: '#F5F3EF', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ background: p.inputBg, borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 14 }}>👤</span>
-              <span style={{ color: '#3E423D', fontSize: 13 }}>
-                Invite will be sent to: <strong>{contactName || contactEmail}</strong> ({contactEmail})
-              </span>
+              <span style={{ color: p.text, fontSize: 13 }}>Invite will be sent to: <strong>{contactName || contactEmail}</strong> ({contactEmail})</span>
             </div>
           )}
 
-          {/* Additional attendees */}
           <div>
             <label style={labelStyle}>Additional Attendees (comma-separated emails)</label>
             <input value={form.attendee_emails} onChange={e => setForm(prev => ({ ...prev, attendee_emails: e.target.value }))} style={inputStyle} placeholder="e.g. colleague@company.com" />
           </div>
 
-          {/* Description */}
           <div>
             <label style={labelStyle}>Description (auto-filled, editable)</label>
             <textarea value={form.description} onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))} rows={4} style={{ ...inputStyle, resize: 'vertical' }} />
           </div>
 
-          {/* Google Meet info */}
           {form.meeting_type === 'google_meet' && (
             <div style={{ background: '#EBF4FF', borderRadius: 8, padding: '10px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -310,7 +212,6 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
           )}
         </div>
 
-        {/* Actions */}
         <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
           {success ? (
             <button style={{ flex: 1, background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, fontWeight: 600 }}>
@@ -318,12 +219,11 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
             </button>
           ) : (
             <button onClick={handleCreate} disabled={!form.title || !form.date || saving}
-              style={{ flex: 1, background: form.title && form.date && !saving ? '#8E9B8B' : '#D5CEC0', color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, cursor: form.title && form.date && !saving ? 'pointer' : 'default', fontWeight: 600 }}>
+              style={{ flex: 1, background: form.title && form.date && !saving ? p.primary : p.textMuted, color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, cursor: form.title && form.date && !saving ? 'pointer' : 'default', fontWeight: 600 }}>
               {saving ? '⏳ Creating...' : 'Create & Send Invite'}
             </button>
           )}
-          <button onClick={onClose}
-            style={{ flex: 1, background: '#F5F3EF', color: '#3E423D', border: '1px solid rgba(62,66,61,0.1)', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={onClose} style={{ flex: 1, background: p.inputBg, color: p.text, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>
             Cancel
           </button>
         </div>

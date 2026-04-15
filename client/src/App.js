@@ -16,9 +16,19 @@ import CalendarPage from './pages/Calendar';
 import AiBrain from './components/AiBrain';
 import AiLog from './pages/AiLog';
 import Thoughts from './pages/Thoughts';
+import Onboarding from './pages/Onboarding';
+import { AppProvider } from './context/AppContext';
 
 const PrivateRoute = ({ children }) => {
-  return localStorage.getItem('token') ? children : <Navigate to="/login" />;
+  if (!localStorage.getItem('token')) return <Navigate to="/login" />;
+  
+  // Check if onboarding is completed
+  const settings = JSON.parse(localStorage.getItem('appSettings') || '{}');
+  if (!settings.onboarding_completed && window.location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" />;
+  }
+  
+  return children;
 };
 
 function AuthenticatedApp() {
@@ -40,6 +50,7 @@ function AuthenticatedApp() {
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/ai/log" element={<AiLog />} />
         <Route path="/thoughts" element={<Thoughts />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route path="*" element={<Navigate to="/dashboard" />} />
       </Routes>
       <AiBrain />
@@ -49,6 +60,7 @@ function AuthenticatedApp() {
 
 export default function App() {
   return (
+    <AppProvider>
     <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -58,6 +70,7 @@ export default function App() {
           </PrivateRoute>
         } />
       </Routes>
-    </Router>
+      </Router>
+    </AppProvider>
   );
 }

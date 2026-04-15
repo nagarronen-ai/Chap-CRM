@@ -1,7 +1,8 @@
 // server/index.js
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+console.log('OPENAI KEY:', process.env.OPENAI_API_KEY?.slice(0, 10));
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use('/api/drip', require('./routes/drip'));
 app.use('/api/roles', require('./routes/roles'));
 app.use('/api/insights', require('./routes/insights'));
 app.use('/api/documents', require('./routes/documents'));
+app.use('/api/settings', require('./routes/settings'));
 
 
 
@@ -176,7 +178,9 @@ setInterval(runTeamBrain, 24 * 60 * 60 * 1000); // then every 24 hours
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 
-  // Start Slack bot after server is up
-  const { startSlackBot } = require('./services/slackBot');
-  startSlackBot();
+  // Start Slack bot after server is up (optional — only if credentials are configured)
+  if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_BOT_TOKEN !== 'your-slack-bot-token') {
+    const { startSlackBot } = require('./services/slackBot');
+    startSlackBot();
+  }
 });
