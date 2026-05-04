@@ -16,11 +16,11 @@
 -- ─── USERS ───────────────────────────────────────────────────
 -- Password hash = bcrypt of 'ChapCRM2024!'
 INSERT INTO crm_users (id, email, name, password, role, timezone) VALUES
-  ('11111111-0000-0000-0000-000000000001', 'admin@chapcrm.io',   'Alex Morgan',  '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin',     'America/New_York'),
-  ('11111111-0000-0000-0000-000000000002', 'sales1@chapcrm.io',  'Jordan Lee',   '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'sales',     'America/Chicago'),
-  ('11111111-0000-0000-0000-000000000003', 'sales2@chapcrm.io',  'Taylor Kim',   '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'sales',     'America/Los_Angeles'),
-  ('11111111-0000-0000-0000-000000000004', 'mktg1@chapcrm.io',   'Casey Rivera', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'marketing', 'America/New_York'),
-  ('11111111-0000-0000-0000-000000000005', 'finance@chapcrm.io', 'Morgan Patel', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'finance',   'America/New_York')
+  ('11111111-0000-0000-0000-000000000001', 'admin@chapcrm.io',   'Alex Morgan',  '$2b$10$8.aSEXA2lD178L0ywMrY4OJDX/aplOiyF4sN7ArQ9H/XshdhjrqnW', 'admin',     'America/New_York'),
+  ('11111111-0000-0000-0000-000000000002', 'sales1@chapcrm.io',  'Jordan Lee',   '$2b$10$8.aSEXA2lD178L0ywMrY4OJDX/aplOiyF4sN7ArQ9H/XshdhjrqnW', 'sales',     'America/Chicago'),
+  ('11111111-0000-0000-0000-000000000003', 'sales2@chapcrm.io',  'Taylor Kim',   '$2b$10$8.aSEXA2lD178L0ywMrY4OJDX/aplOiyF4sN7ArQ9H/XshdhjrqnW', 'sales',     'America/Los_Angeles'),
+  ('11111111-0000-0000-0000-000000000004', 'mktg1@chapcrm.io',   'Casey Rivera', '$2b$10$8.aSEXA2lD178L0ywMrY4OJDX/aplOiyF4sN7ArQ9H/XshdhjrqnW', 'marketing', 'America/New_York'),
+  ('11111111-0000-0000-0000-000000000005', 'finance@chapcrm.io', 'Morgan Patel', '$2b$10$8.aSEXA2lD178L0ywMrY4OJDX/aplOiyF4sN7ArQ9H/XshdhjrqnW', 'finance',   'America/New_York')
 ON CONFLICT (email) DO NOTHING;
 
 -- ─── SETTINGS ────────────────────────────────────────────────
