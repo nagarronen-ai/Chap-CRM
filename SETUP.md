@@ -151,6 +151,23 @@ $$;
 -- Reload schema cache
 NOTIFY pgrst, 'reload schema';
 
+-- Add roles table and system roles
+CREATE TABLE IF NOT EXISTS crm_roles (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        text NOT NULL UNIQUE,
+  description text,
+  is_system   boolean DEFAULT false,
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now()
+);
+ALTER TABLE crm_permissions ADD COLUMN IF NOT EXISTS role_id uuid REFERENCES crm_roles(id) ON DELETE CASCADE;
+ALTER TABLE crm_permissions ADD COLUMN IF NOT EXISTS module text;
+ALTER TABLE crm_permissions ADD COLUMN IF NOT EXISTS action text;
+ALTER TABLE crm_permissions ADD COLUMN IF NOT EXISTS enabled boolean DEFAULT false;
+ALTER TABLE crm_permissions ALTER COLUMN role DROP NOT NULL;
+ALTER TABLE crm_permissions ALTER COLUMN permission DROP NOT NULL;
+ALTER TABLE crm_permissions ADD CONSTRAINT crm_permissions_role_id_module_action_key UNIQUE(role_id, module, action);
+
 ```
 
 ---

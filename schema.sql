@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS crm_permissions (
   action     text,
   enabled    boolean DEFAULT false,
   UNIQUE(role, permission),
-  UNIQUE(role_id, module, action)
+  CONSTRAINT crm_permissions_role_id_module_action_key UNIQUE(role_id, module, action)
 );
 
 -- ─── SETTINGS ────────────────────────────────────────────────
@@ -553,3 +553,113 @@ AS $$
   ORDER BY similarity DESC
   LIMIT match_count;
 $$;
+
+-- ─── SYSTEM ROLES ────────────────────────────────────────────
+INSERT INTO crm_roles (name, description, is_system) VALUES
+  ('admin',     'Full access to everything', true),
+  ('sales',     'Pipeline, contacts, emails and calendar', true),
+  ('marketing', 'Campaigns, marketing and contacts view', true),
+  ('finance',   'Finance and client view only', true),
+  ('csm',       'Client success — clients, meetings and notes', true),
+  ('support',   'Contact view and notes only', true),
+  ('viewer',    'Read-only access across the CRM', true)
+ON CONFLICT (name) DO NOTHING;
+
+-- ─── SYSTEM ROLE PERMISSIONS ─────────────────────────────────
+INSERT INTO crm_permissions (role_id, module, action, enabled)
+SELECT r.id, p.module, p.action, p.enabled
+FROM crm_roles r
+CROSS JOIN (VALUES
+  ('admin', 'pipeline',     'view',             true),
+  ('admin', 'pipeline',     'create',           true),
+  ('admin', 'pipeline',     'edit',             true),
+  ('admin', 'pipeline',     'delete',           true),
+  ('admin', 'pipeline',     'change_stage',     true),
+  ('admin', 'contacts',     'view',             true),
+  ('admin', 'contacts',     'create',           true),
+  ('admin', 'contacts',     'edit',             true),
+  ('admin', 'contacts',     'delete',           true),
+  ('admin', 'clients',      'view',             true),
+  ('admin', 'clients',      'create',           true),
+  ('admin', 'clients',      'edit',             true),
+  ('admin', 'clients',      'delete',           true),
+  ('admin', 'emails',       'view',             true),
+  ('admin', 'emails',       'send',             true),
+  ('admin', 'emails',       'delete',           true),
+  ('admin', 'emails',       'manage_templates', true),
+  ('admin', 'inbox',        'view',             true),
+  ('admin', 'calendar',     'view',             true),
+  ('admin', 'calendar',     'create',           true),
+  ('admin', 'calendar',     'edit',             true),
+  ('admin', 'calendar',     'delete',           true),
+  ('admin', 'marketing',    'view',             true),
+  ('admin', 'marketing',    'create',           true),
+  ('admin', 'marketing',    'send_campaign',    true),
+  ('admin', 'marketing',    'manage_drip',      true),
+  ('admin', 'marketing',    'view_waitlist',    true),
+  ('admin', 'marketing',    'export',           true),
+  ('admin', 'finance',      'view',             true),
+  ('admin', 'finance',      'create',           true),
+  ('admin', 'finance',      'edit',             true),
+  ('admin', 'finance',      'delete',           true),
+  ('admin', 'ai_assistant', 'view',             true),
+  ('admin', 'ai_assistant', 'use',              true),
+  ('admin', 'thoughts',     'view',             true),
+  ('admin', 'thoughts',     'use',              true),
+  ('admin', 'team',         'view',             true),
+  ('admin', 'team',         'invite',           true),
+  ('admin', 'team',         'edit_roles',       true),
+  ('admin', 'team',         'delete_users',     true),
+  ('admin', 'settings',     'view',             true),
+  ('admin', 'settings',     'edit',             true),
+  ('admin', 'import',       'use',              true),
+  ('sales', 'pipeline',     'view',             true),
+  ('sales', 'pipeline',     'edit',             true),
+  ('sales', 'pipeline',     'change_stage',     true),
+  ('sales', 'contacts',     'view',             true),
+  ('sales', 'contacts',     'create',           true),
+  ('sales', 'contacts',     'edit',             true),
+  ('sales', 'emails',       'view',             true),
+  ('sales', 'emails',       'send',             true),
+  ('sales', 'inbox',        'view',             true),
+  ('sales', 'calendar',     'view',             true),
+  ('sales', 'calendar',     'create',           true),
+  ('sales', 'clients',      'view',             true),
+  ('sales', 'ai_assistant', 'view',             true),
+  ('sales', 'ai_assistant', 'use',              true),
+  ('sales', 'thoughts',     'view',             true),
+  ('sales', 'thoughts',     'use',              true),
+  ('sales', 'import',       'use',              true),
+  ('marketing', 'pipeline',     'view',         true),
+  ('marketing', 'contacts',     'view',         true),
+  ('marketing', 'emails',       'view',         true),
+  ('marketing', 'marketing',    'view',         true),
+  ('marketing', 'marketing',    'create',       true),
+  ('marketing', 'marketing',    'send_campaign',true),
+  ('marketing', 'marketing',    'manage_drip',  true),
+  ('marketing', 'marketing',    'view_waitlist',true),
+  ('marketing', 'ai_assistant', 'view',         true),
+  ('marketing', 'ai_assistant', 'use',          true),
+  ('finance',   'finance',      'view',         true),
+  ('finance',   'finance',      'create',       true),
+  ('finance',   'finance',      'edit',         true),
+  ('finance',   'clients',      'view',         true),
+  ('finance',   'contacts',     'view',         true),
+  ('csm',       'contacts',     'view',         true),
+  ('csm',       'clients',      'view',         true),
+  ('csm',       'clients',      'edit',         true),
+  ('csm',       'calendar',     'view',         true),
+  ('csm',       'calendar',     'create',       true),
+  ('csm',       'emails',       'view',         true),
+  ('csm',       'emails',       'send',         true),
+  ('csm',       'ai_assistant', 'view',         true),
+  ('csm',       'ai_assistant', 'use',          true),
+  ('support',   'contacts',     'view',         true),
+  ('support',   'clients',      'view',         true),
+  ('support',   'emails',       'view',         true),
+  ('viewer',    'pipeline',     'view',         true),
+  ('viewer',    'contacts',     'view',         true),
+  ('viewer',    'clients',      'view',         true)
+) AS p(role_name, module, action, enabled)
+WHERE r.name = p.role_name
+ON CONFLICT (role_id, module, action) DO NOTHING;
