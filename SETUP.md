@@ -6,7 +6,7 @@ This guide covers everything you need to set up the Supabase database for Chap C
 
 ## 1. Create a Supabase project
 
-1. Go to [supabase.com](https://supabase.com) and create a new project
+1. Go to [supabase.com](http://supabase.com) and create a new project
 2. Choose a region close to your users
 3. Save your database password — you'll need it for the connection string
 
@@ -20,6 +20,7 @@ In the Supabase **SQL Editor**, run:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
+
 ```
 
 If you skip this step, the schema will fail when it tries to create the embeddings table.
@@ -35,7 +36,7 @@ In the Supabase **SQL Editor**:
 3. Paste into the SQL Editor
 4. Click **Run**
 
-This creates all tables, indexes, and relationships. It is safe to run multiple times — all statements use `CREATE TABLE IF NOT EXISTS`.
+This creates all tables, indexes, relationships, and the RAG search function. It is safe to run multiple times — all statements use `CREATE TABLE IF NOT EXISTS`.
 
 ---
 
@@ -52,12 +53,14 @@ In the Supabase **SQL Editor**:
 
 **Default login after seeding:**
 
-| Email | Password | Role |
-|---|---|---|
-| admin@chapcrm.io | ChapCRM2024! | Admin |
-| sales1@chapcrm.io | ChapCRM2024! | Sales |
-| mktg1@chapcrm.io | ChapCRM2024! | Marketing |
-| finance@chapcrm.io | ChapCRM2024! | Finance |
+
+| Email                                           | Password     | Role      |
+| ----------------------------------------------- | ------------ | --------- |
+| [admin@chapcrm.io](mailto:admin@chapcrm.io)     | ChapCRM2024! | Admin     |
+| [sales1@chapcrm.io](mailto:sales1@chapcrm.io)   | ChapCRM2024! | Sales     |
+| [mktg1@chapcrm.io](mailto:mktg1@chapcrm.io)     | ChapCRM2024! | Marketing |
+| [finance@chapcrm.io](mailto:finance@chapcrm.io) | ChapCRM2024! | Finance   |
+
 
 **Change all passwords after first login.**
 
@@ -71,9 +74,10 @@ VALUES (
   'admin',
   '$2b$10$...'  -- bcrypt hash of your password
 );
+
 ```
 
-Generate a bcrypt hash at [bcrypt.online](https://bcrypt.online) or with `bcrypt.hashSync('yourpassword', 10)` in Node.js.
+Generate a bcrypt hash at [bcrypt.online](http://bcrypt.online) or with `bcrypt.hashSync('yourpassword', 10)` in Node.js.
 
 ---
 
@@ -82,8 +86,10 @@ Generate a bcrypt hash at [bcrypt.online](https://bcrypt.online) or with `bcrypt
 In Supabase: **Settings → Database → Connection string → URI**
 
 It looks like:
+
 ```
 postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
+
 ```
 
 Add this as `DATABASE_URL` in your `.env` file.
@@ -95,12 +101,61 @@ Add this as `DATABASE_URL` in your `.env` file.
 In Supabase: **Settings → API**
 
 You need:
+
 - **URL** → `SUPABASE_URL`
 - **service_role key** → `SUPABASE_SERVICE_ROLE_KEY` (keep this secret — it bypasses RLS)
 
 ---
 
-## 7. Security note on RLS
+## 7. Migration for existing installs
+
+If you already have Chap CRM deployed and are updating to the latest version, run these in your Supabase **SQL Editor**:
+
+```sql
+-- Add missing columns
+ALTER TABLE crm_users ADD COLUMN IF NOT EXISTS last_login timestamptz;
+ALTER TABLE crm_people ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES crm_users(id) ON DELETE SET NULL;
+ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES crm_users(id) ON DELETE SET NULL;
+
+-- Fix embeddings table
+ALTER TABLE crm_embeddings ADD COLUMN IF NOT EXISTS chunk_text text;
+ALTER TABLE crm_embeddings ADD COLUMN IF NOT EXISTS metadata jsonb;
+ALTER TABLE crm_embeddings ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_unique ON crm_embeddings(source_table, source_id);
+
+-- Add RAG search function
+CREATE OR REPLACE FUNCTION match_embeddings(
+  query_embedding vector(1536),
+  match_threshold float,
+  match_count int
+)
+RETURNS TABLE (
+  id uuid,
+  source_table text,
+  source_id uuid,
+  chunk_text text,
+  metadata jsonb,
+  similarity float
+)
+LANGUAGE sql STABLE
+AS $$
+  SELECT
+    id, source_table, source_id, chunk_text, metadata,
+    1 - (embedding <=> query_embedding) AS similarity
+  FROM crm_embeddings
+  WHERE 1 - (embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
+
+-- Reload schema cache
+NOTIFY pgrst, 'reload schema';
+
+```
+
+---
+
+## 8. Security note on RLS
 
 All tables ship with Row Level Security (RLS) **disabled**. This is intentional.
 
@@ -110,7 +165,7 @@ If you build additional integrations that connect to Supabase directly (mobile a
 
 ---
 
-## 8. Verify the setup
+## 9. Verify the setup
 
 After running the schema, confirm the tables exist:
 
@@ -119,6 +174,7 @@ SELECT table_name
 FROM information_schema.tables
 WHERE table_schema = 'public'
 ORDER BY table_name;
+
 ```
 
 You should see around 25-30 tables all prefixed with `crm_`.
@@ -127,14 +183,12 @@ You should see around 25-30 tables all prefixed with `crm_`.
 
 ## Troubleshooting
 
-**"Could not find the table in the schema cache"**
-The vector extension is not enabled. Run `CREATE EXTENSION IF NOT EXISTS vector;` and restart your backend.
+**"Could not find the table in the schema cache"** The vector extension is not enabled. Run `CREATE EXTENSION IF NOT EXISTS vector;` and restart your backend.
 
-**"operator does not exist: uuid ~~ unknown"**
-You're trying to use `LIKE` on a UUID column. Cast it: `id::text LIKE 'prefix%'`
+**"operator does not exist: uuid ~~ unknown"** You're trying to use LIKE on a UUID column. Cast it: `id::text LIKE 'prefix%'`
 
-**"foreign key constraint violation" when deleting data**
-Delete in reverse dependency order. Safe order for full wipe:
+**"foreign key constraint violation" when deleting data** Delete in reverse dependency order. Safe order for full wipe:
+
 ```sql
 DELETE FROM crm_drip_sends;
 DELETE FROM crm_drip_enrollments;
@@ -149,7 +203,7 @@ DELETE FROM crm_clients;
 DELETE FROM crm_people;
 DELETE FROM crm_companies;
 DELETE FROM crm_users;
+
 ```
 
-**Password not working after seeding**
-The seed uses a bcrypt hash. If you changed the hash manually, regenerate it properly. The default password for all seed users is `ChapCRM2024!`.
+**Password not working after seeding** The seed uses a bcrypt hash. If you changed the hash manually, regenerate it properly. The default password for all seed users is `ChapCRM2024!`

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS crm_settings (
   team_size            text,
   primary_color        text DEFAULT '#8E9B8B',
   logo_url             text,
+  palette              text DEFAULT 'sage',
   onboarding_completed boolean DEFAULT false,
   created_at           timestamptz DEFAULT now(),
   updated_at           timestamptz DEFAULT now()
