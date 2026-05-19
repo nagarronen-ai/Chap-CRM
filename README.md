@@ -249,3 +249,13 @@ MIT — use it, fork it, build on it.
 ---
 
 *Built with the belief that powerful software should be accessible to everyone, not just companies with six-figure SaaS budgets.*
+
+---
+
+## Security note
+
+All Supabase tables ship with Row Level Security (RLS) **disabled** by default. This is intentional — Chap CRM is designed as a backend-only architecture where all database access goes through the Express API using the Supabase service role key. No client ever touches the database directly.
+
+If you expose your Supabase project publicly or build additional integrations that bypass the API, you should enable RLS on all tables and define appropriate policies. For standard self-hosted deployments following this guide, the default setup is safe.
+
+See `SETUP.md` for the full database setup checklist.

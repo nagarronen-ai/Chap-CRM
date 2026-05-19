@@ -17,7 +17,7 @@ async function embedText(text) {
 // ─── UPSERT EMBEDDING ─────────────────────────────────────────────────────────
 
 async function upsertEmbedding(sourceTable, sourceId, chunkText, metadata = {}) {
-  if (!chunkText || chunkText.trim().length < 20) return;
+  if (!chunkText || chunkText.trim().length < 5) return;
 
   const embedding = await embedText(chunkText);
 

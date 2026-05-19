@@ -91,7 +91,7 @@ export default function TiptapEditor({ content, onChange, onFocus, placeholder, 
         <EditorContent editor={editor} />
       </div>
       <style>{`
-        .tiptap { outline: none; min-height: ${minHeight}px; padding: 16px; font-size: 14px; line-height: 1.7; color: ${p.text}; font-family: 'Inter', sans-serif; background: ${p.cardBg}; }
+        .tiptap { outline: none; min-height: ${minHeight}px; padding: 16px; font-size: 14px; line-height: 1.7; color: ${p.text}; font-family: 'Inter', 'Arial Hebrew', sans-serif; background: ${p.cardBg}; unicode-bidi: plaintext; }
         .tiptap p { margin: 0 0 8px 0; }
         .tiptap ul, .tiptap ol { padding-left: 24px; margin: 8px 0; }
         .tiptap li { margin: 2px 0; }

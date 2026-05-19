@@ -30,6 +30,7 @@ export default function Import() {
   const [importResult, setImportResult] = useState(null);
   const [origin, setOrigin] = useState('Upload');
   const [stage, setStage] = useState('New');
+  const [showHelp, setShowHelp] = useState(false);
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
   const headers = { Authorization: `Bearer ${token}` };
@@ -61,16 +62,40 @@ export default function Import() {
     return result;
   };
 
-  const handleFile = (e) => {
+  const detectAndDecodeFile = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const bytes = new Uint8Array(evt.target.result);
+        if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+          resolve(new TextDecoder('utf-8').decode(bytes.slice(3)));
+          return;
+        }
+        const utf8Text = new TextDecoder('utf-8').decode(bytes);
+        const hasValidHebrew = /[\u05D0-\u05EA]/.test(utf8Text);
+        const hasGarbled = /[\uFFFD]/.test(utf8Text);
+        if (hasValidHebrew && !hasGarbled) {
+          resolve(utf8Text);
+          return;
+        }
+        try {
+          const win1255Text = new TextDecoder('windows-1255').decode(bytes);
+          resolve(win1255Text);
+        } catch {
+          resolve(utf8Text);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const handleFile = async (e) => {
     const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = parseCSV(evt.target.result);
-      setRows(data);
-      const sel = {}; data.forEach((_, i) => sel[i] = true); setSelected(sel);
-      setStep(2);
-    };
-    reader.readAsText(file);
+    const text = await detectAndDecodeFile(file);
+    const data = parseCSV(text);
+    setRows(data);
+    const sel = {}; data.forEach((_, i) => sel[i] = true); setSelected(sel);
+    setStep(2);
   };
 
   const groupRows = () => {
@@ -123,7 +148,88 @@ export default function Import() {
       <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
 
         <p style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 4px' }}>Data</p>
-        <h1 style={{ color: p.text, fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 32px' }}>Import CSV</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
+  <h1 style={{ color: p.text, fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>Import CSV</h1>
+  <button onClick={() => setShowHelp(true)} style={{ background: p.inputBg, border: `1px solid ${p.inputBorder}`, borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', color: p.textSecondary, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
+</div>
+
+{showHelp && (
+  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div style={{ background: p.cardBg, borderRadius: 16, padding: 36, maxWidth: 600, width: '100%', maxHeight: '85vh', overflowY: 'auto', border: `1px solid ${p.cardBorder}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <h2 style={{ color: p.text, fontSize: 20, fontWeight: 600, margin: 0 }}>📥 How to Import Contacts</h2>
+        <button onClick={() => setShowHelp(false)} style={{ background: 'none', border: 'none', color: p.textSecondary, fontSize: 20, cursor: 'pointer' }}>✕</button>
+      </div>
+
+      {/* Step 1 */}
+      <div style={{ marginBottom: 24 }}>
+        <p style={{ color: p.text, fontWeight: 600, fontSize: 14, margin: '0 0 8px' }}>Step 1 — Prepare your CSV file</p>
+        <p style={{ color: p.textSecondary, fontSize: 13, lineHeight: 1.6, margin: '0 0 10px' }}>Your file must be saved as <strong style={{ color: p.text }}>.csv format</strong>. Here's how to export from each source:</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            { source: '📊 Excel', tip: 'File → Save As → choose "CSV UTF-8 (Comma delimited)" — important: choose UTF-8 not regular CSV for Hebrew support' },
+            { source: '🌐 Google Sheets', tip: 'File → Download → Comma Separated Values (.csv) — Google Sheets always exports UTF-8, Hebrew works automatically' },
+            { source: '🚀 Apollo.io', tip: 'Select contacts → Export → CSV. Apollo column names are auto-mapped by the importer' },
+            { source: '🔄 HubSpot', tip: 'Contacts → Export → select fields → download CSV' },
+            { source: '📱 Pipedrive', tip: 'Contacts → ··· → Export data → CSV' },
+            { source: '📞 Phone / WhatsApp', tip: 'Export contacts from your phone as vCard (.vcf), then use a free online converter to turn it into CSV' },
+          ].map(({ source, tip }) => (
+            <div key={source} style={{ background: p.inputBg, borderRadius: 8, padding: '10px 14px' }}>
+              <p style={{ color: p.text, fontSize: 13, fontWeight: 600, margin: '0 0 4px' }}>{source}</p>
+              <p style={{ color: p.textSecondary, fontSize: 12, margin: 0, lineHeight: 1.5 }}>{tip}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Step 2 */}
+      <div style={{ marginBottom: 24 }}>
+        <p style={{ color: p.text, fontWeight: 600, fontSize: 14, margin: '0 0 8px' }}>Step 2 — Required columns</p>
+        <p style={{ color: p.textSecondary, fontSize: 13, lineHeight: 1.6, margin: '0 0 10px' }}>Your CSV needs at least one of these columns. Column names must match exactly (case sensitive):</p>
+        <div style={{ background: p.inputBg, borderRadius: 8, padding: '12px 16px' }}>
+          {[
+            ['Company Name', 'The company this contact belongs to'],
+            ['First Name', 'Contact first name'],
+            ['Last Name', 'Contact last name'],
+            ['Email', 'Contact email address'],
+            ['Work Direct Phone', 'Work phone number'],
+            ['Mobile Phone', 'Mobile number'],
+            ['Title', 'Job title'],
+            ['Company City', 'City'],
+            ['Company Country', 'Country'],
+          ].map(([col, desc]) => (
+            <div key={col} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: `1px solid ${p.cardBorder}` }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 12, color: p.primary, minWidth: 160 }}>{col}</span>
+              <span style={{ fontSize: 12, color: p.textSecondary }}>{desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Hebrew note */}
+      <div style={{ marginBottom: 24, background: 'rgba(126,242,160,0.08)', border: '1px solid rgba(126,242,160,0.2)', borderRadius: 8, padding: '12px 16px' }}>
+        <p style={{ color: p.text, fontWeight: 600, fontSize: 13, margin: '0 0 6px' }}>🇮🇱 Hebrew files</p>
+        <p style={{ color: p.textSecondary, fontSize: 12, lineHeight: 1.6, margin: 0 }}>Hebrew is fully supported. When saving from Excel, always choose <strong style={{ color: p.text }}>"CSV UTF-8"</strong> (not regular CSV). Google Sheets exports work automatically. The importer auto-detects the encoding.</p>
+      </div>
+
+      {/* Example */}
+      <div style={{ marginBottom: 24 }}>
+        <p style={{ color: p.text, fontWeight: 600, fontSize: 14, margin: '0 0 8px' }}>Example CSV structure</p>
+        <div style={{ background: p.inputBg, borderRadius: 8, padding: '12px 16px', overflowX: 'auto' }}>
+          <pre style={{ fontFamily: 'monospace', fontSize: 11, color: p.textSecondary, margin: 0, lineHeight: 1.8 }}>{`Company Name,First Name,Last Name,Email,Title,Mobile Phone
+Acme Ltd,David,Cohen,david@acme.com,CEO,050-1234567
+Acme Ltd,Sarah,Levi,sarah@acme.com,CTO,050-7654321
+Bloom Events,יוסי,כהן,yosi@bloom.com,מנהל,052-9876543`}</pre>
+        </div>
+        <p style={{ color: p.textSecondary, fontSize: 11, margin: '8px 0 0' }}>💡 Multiple people from the same company are grouped automatically — no duplicates created.</p>
+      </div>
+
+      <button onClick={() => setShowHelp(false)} style={{ width: '100%', background: p.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+        Got it, let's import →
+      </button>
+    </div>
+  </div>
+)}
 
         {/* Progress Steps */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 36, alignItems: 'center' }}>
@@ -160,7 +266,7 @@ export default function Import() {
             <label style={{ display: 'block', background: p.inputBg, border: `2px dashed ${p.inputBorder}`, borderRadius: 12, padding: 40, textAlign: 'center', cursor: 'pointer' }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📥</div>
               <p style={{ color: p.text, fontSize: 15, fontWeight: 500, margin: '0 0 4px' }}>Click to upload CSV</p>
-              <p style={{ color: p.textSecondary, fontSize: 13, margin: 0 }}>Apollo.io export format supported</p>
+              <p style={{ color: p.textSecondary, fontSize: 13, margin: 0 }}>Apollo.io export · UTF-8 · Windows-1255 (Hebrew ✓)</p>
               <input type="file" accept=".csv" onChange={handleFile} style={{ display: 'none' }} />
             </label>
           </div>
