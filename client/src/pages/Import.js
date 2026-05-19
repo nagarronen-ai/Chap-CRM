@@ -30,7 +30,6 @@ export default function Import() {
   const [importResult, setImportResult] = useState(null);
   const [origin, setOrigin] = useState('Upload');
   const [stage, setStage] = useState('New');
-  const [showHelp, setShowHelp] = useState(false);
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
   const headers = { Authorization: `Bearer ${token}` };
@@ -74,16 +73,11 @@ export default function Import() {
         const utf8Text = new TextDecoder('utf-8').decode(bytes);
         const hasValidHebrew = /[\u05D0-\u05EA]/.test(utf8Text);
         const hasGarbled = /[\uFFFD]/.test(utf8Text);
-        if (hasValidHebrew && !hasGarbled) {
-          resolve(utf8Text);
-          return;
-        }
+        if (hasValidHebrew && !hasGarbled) { resolve(utf8Text); return; }
         try {
           const win1255Text = new TextDecoder('windows-1255').decode(bytes);
           resolve(win1255Text);
-        } catch {
-          resolve(utf8Text);
-        }
+        } catch { resolve(utf8Text); }
       };
       reader.readAsArrayBuffer(file);
     });
@@ -142,94 +136,29 @@ export default function Import() {
     setImporting(false); setStep(4);
   };
 
+  const downloadSample = () => {
+    const rows = [
+      'Company Name,First Name,Last Name,Email,Title,Mobile Phone,Company City,Company Country',
+      'Acme Ltd,David,Cohen,david@acme.com,CEO,050-1234567,Tel Aviv,Israel',
+      'Acme Ltd,Sarah,Levi,sarah@acme.com,CTO,050-7654321,Tel Aviv,Israel',
+      '\u05D1\u05DC\u05D5\u05DD \u05D0\u05D9\u05E8\u05D5\u05E2\u05D9\u05DD,\u05D9\u05D5\u05E1\u05D9,\u05DB\u05D4\u05DF,yosi@bloom.co.il,\u05DE\u05E0\u05D4\u05DC,052-9876543,\u05D7\u05D9\u05E4\u05D4,\u05D9\u05E9\u05E8\u05D0\u05DC',
+      '\u05D1\u05DC\u05D5\u05DD \u05D0\u05D9\u05E8\u05D5\u05E2\u05D9\u05DD,\u05DE\u05D9\u05DB\u05DC,\u05DC\u05D5\u05D9,michal@bloom.co.il,\u05E8\u05DB\u05D6\u05EA,052-1112233,\u05D7\u05D9\u05E4\u05D4,\u05D9\u05E9\u05E8\u05D0\u05DC',
+      'Global Tech,John,Smith,john@globaltech.com,VP Sales,+1-555-0101,New York,United States',
+    ].join('\n');
+    const blob = new Blob(['\uFEFF' + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'chap-crm-example.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div style={{ display: 'flex', fontFamily: 'Inter, sans-serif', background: p.background, minHeight: '100vh', transition: 'background 0.4s' }}>
       <Sidebar />
       <div style={{ marginLeft: 220, flex: 1, padding: 40 }}>
 
         <p style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 4px' }}>Data</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
-  <h1 style={{ color: p.text, fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>Import CSV</h1>
-  <button onClick={() => setShowHelp(true)} style={{ background: p.inputBg, border: `1px solid ${p.inputBorder}`, borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', color: p.textSecondary, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
-</div>
-
-{showHelp && (
-  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-    <div style={{ background: p.cardBg, borderRadius: 16, padding: 36, maxWidth: 600, width: '100%', maxHeight: '85vh', overflowY: 'auto', border: `1px solid ${p.cardBorder}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ color: p.text, fontSize: 20, fontWeight: 600, margin: 0 }}>📥 How to Import Contacts</h2>
-        <button onClick={() => setShowHelp(false)} style={{ background: 'none', border: 'none', color: p.textSecondary, fontSize: 20, cursor: 'pointer' }}>✕</button>
-      </div>
-
-      {/* Step 1 */}
-      <div style={{ marginBottom: 24 }}>
-        <p style={{ color: p.text, fontWeight: 600, fontSize: 14, margin: '0 0 8px' }}>Step 1 — Prepare your CSV file</p>
-        <p style={{ color: p.textSecondary, fontSize: 13, lineHeight: 1.6, margin: '0 0 10px' }}>Your file must be saved as <strong style={{ color: p.text }}>.csv format</strong>. Here's how to export from each source:</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[
-            { source: '📊 Excel', tip: 'File → Save As → choose "CSV UTF-8 (Comma delimited)" — important: choose UTF-8 not regular CSV for Hebrew support' },
-            { source: '🌐 Google Sheets', tip: 'File → Download → Comma Separated Values (.csv) — Google Sheets always exports UTF-8, Hebrew works automatically' },
-            { source: '🚀 Apollo.io', tip: 'Select contacts → Export → CSV. Apollo column names are auto-mapped by the importer' },
-            { source: '🔄 HubSpot', tip: 'Contacts → Export → select fields → download CSV' },
-            { source: '📱 Pipedrive', tip: 'Contacts → ··· → Export data → CSV' },
-            { source: '📞 Phone / WhatsApp', tip: 'Export contacts from your phone as vCard (.vcf), then use a free online converter to turn it into CSV' },
-          ].map(({ source, tip }) => (
-            <div key={source} style={{ background: p.inputBg, borderRadius: 8, padding: '10px 14px' }}>
-              <p style={{ color: p.text, fontSize: 13, fontWeight: 600, margin: '0 0 4px' }}>{source}</p>
-              <p style={{ color: p.textSecondary, fontSize: 12, margin: 0, lineHeight: 1.5 }}>{tip}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Step 2 */}
-      <div style={{ marginBottom: 24 }}>
-        <p style={{ color: p.text, fontWeight: 600, fontSize: 14, margin: '0 0 8px' }}>Step 2 — Required columns</p>
-        <p style={{ color: p.textSecondary, fontSize: 13, lineHeight: 1.6, margin: '0 0 10px' }}>Your CSV needs at least one of these columns. Column names must match exactly (case sensitive):</p>
-        <div style={{ background: p.inputBg, borderRadius: 8, padding: '12px 16px' }}>
-          {[
-            ['Company Name', 'The company this contact belongs to'],
-            ['First Name', 'Contact first name'],
-            ['Last Name', 'Contact last name'],
-            ['Email', 'Contact email address'],
-            ['Work Direct Phone', 'Work phone number'],
-            ['Mobile Phone', 'Mobile number'],
-            ['Title', 'Job title'],
-            ['Company City', 'City'],
-            ['Company Country', 'Country'],
-          ].map(([col, desc]) => (
-            <div key={col} style={{ display: 'flex', gap: 12, padding: '5px 0', borderBottom: `1px solid ${p.cardBorder}` }}>
-              <span style={{ fontFamily: 'monospace', fontSize: 12, color: p.primary, minWidth: 160 }}>{col}</span>
-              <span style={{ fontSize: 12, color: p.textSecondary }}>{desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Hebrew note */}
-      <div style={{ marginBottom: 24, background: 'rgba(126,242,160,0.08)', border: '1px solid rgba(126,242,160,0.2)', borderRadius: 8, padding: '12px 16px' }}>
-        <p style={{ color: p.text, fontWeight: 600, fontSize: 13, margin: '0 0 6px' }}>🇮🇱 Hebrew files</p>
-        <p style={{ color: p.textSecondary, fontSize: 12, lineHeight: 1.6, margin: 0 }}>Hebrew is fully supported. When saving from Excel, always choose <strong style={{ color: p.text }}>"CSV UTF-8"</strong> (not regular CSV). Google Sheets exports work automatically. The importer auto-detects the encoding.</p>
-      </div>
-
-      {/* Example */}
-      <div style={{ marginBottom: 24 }}>
-        <p style={{ color: p.text, fontWeight: 600, fontSize: 14, margin: '0 0 8px' }}>Example CSV structure</p>
-        <div style={{ background: p.inputBg, borderRadius: 8, padding: '12px 16px', overflowX: 'auto' }}>
-          <pre style={{ fontFamily: 'monospace', fontSize: 11, color: p.textSecondary, margin: 0, lineHeight: 1.8 }}>{`Company Name,First Name,Last Name,Email,Title,Mobile Phone
-Acme Ltd,David,Cohen,david@acme.com,CEO,050-1234567
-Acme Ltd,Sarah,Levi,sarah@acme.com,CTO,050-7654321
-Bloom Events,יוסי,כהן,yosi@bloom.com,מנהל,052-9876543`}</pre>
-        </div>
-        <p style={{ color: p.textSecondary, fontSize: 11, margin: '8px 0 0' }}>💡 Multiple people from the same company are grouped automatically — no duplicates created.</p>
-      </div>
-
-      <button onClick={() => setShowHelp(false)} style={{ width: '100%', background: p.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-        Got it, let's import →
-      </button>
-    </div>
-  </div>
-)}
+        <h1 style={{ color: p.text, fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 32px' }}>Import CSV</h1>
 
         {/* Progress Steps */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 36, alignItems: 'center' }}>
@@ -244,31 +173,112 @@ Bloom Events,יוסי,כהן,yosi@bloom.com,מנהל,052-9876543`}</pre>
           ))}
         </div>
 
-        {/* STEP 1 - Upload */}
+        {/* STEP 1 */}
         {step === 1 && (
-          <div style={{ background: p.cardBg, borderRadius: 12, padding: 40, border: `1px solid ${p.cardBorder}`, maxWidth: 560 }}>
-            <h2 style={{ color: p.text, fontSize: 20, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 8px' }}>Upload your Apollo CSV</h2>
-            <p style={{ color: p.textSecondary, fontSize: 14, margin: '0 0 28px' }}>Upload a CSV exported from Apollo.io. We'll map all fields automatically.</p>
-            <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
-              <div>
-                <label style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Default Stage</label>
-                <select value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, width: 180 }}>
-                  {['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
+          <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
+
+            {/* Upload card */}
+            <div style={{ background: p.cardBg, borderRadius: 12, padding: 40, border: `1px solid ${p.cardBorder}`, flex: '0 0 480px' }}>
+              <h2 style={{ color: p.text, fontSize: 20, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 8px' }}>Upload your CSV</h2>
+              <p style={{ color: p.textSecondary, fontSize: 14, margin: '0 0 28px' }}>Upload a CSV from any source. We'll map all fields automatically.</p>
+              <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+                <div>
+                  <label style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Default Stage</label>
+                  <select value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, width: 180 }}>
+                    {['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'].map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Origin</label>
+                  <select value={origin} onChange={e => setOrigin(e.target.value)} style={{ ...inputStyle, width: 160 }}>
+                    {['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'].map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div>
-                <label style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Origin</label>
-                <select value={origin} onChange={e => setOrigin(e.target.value)} style={{ ...inputStyle, width: 160 }}>
-                  {['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'].map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
+              <label style={{ display: 'block', background: p.inputBg, border: `2px dashed ${p.inputBorder}`, borderRadius: 12, padding: 40, textAlign: 'center', cursor: 'pointer' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📥</div>
+                <p style={{ color: p.text, fontSize: 15, fontWeight: 500, margin: '0 0 4px' }}>Click to upload CSV</p>
+                <p style={{ color: p.textSecondary, fontSize: 13, margin: 0 }}>Excel · Google Sheets · Apollo.io · HubSpot · Pipedrive (Hebrew ✓)</p>
+                <input type="file" accept=".csv" onChange={handleFile} style={{ display: 'none' }} />
+              </label>
+            </div>
+
+            {/* Guide panel */}
+            <div style={{ flex: 1, background: p.cardBg, border: `1px solid ${p.cardBorder}`, borderRadius: 12, padding: 28, maxHeight: '80vh', overflowY: 'auto' }}>
+              <p style={{ color: p.text, fontWeight: 600, fontSize: 15, margin: '0 0 20px' }}>📋 How to prepare your CSV</p>
+
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ color: p.text, fontWeight: 600, fontSize: 13, margin: '0 0 8px' }}>Step 1 — Prepare your CSV file</p>
+                <p style={{ color: p.textSecondary, fontSize: 12, margin: '0 0 10px', lineHeight: 1.5 }}>Your file must be saved as <strong style={{ color: p.text }}>.csv format</strong>. Here's how to export from each source:</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[
+                    { icon: '📊', name: 'Excel', tip: 'File → Save As → choose "CSV UTF-8 (Comma delimited)" — important: choose UTF-8 not regular CSV for Hebrew support' },
+                    { icon: '🌐', name: 'Google Sheets', tip: 'File → Download → Comma Separated Values (.csv) — Google Sheets always exports UTF-8, Hebrew works automatically' },
+                    { icon: '🚀', name: 'Apollo.io', tip: 'Select contacts → Export → CSV. Apollo column names are auto-mapped by the importer' },
+                    { icon: '🔄', name: 'HubSpot', tip: 'Contacts → Export → select fields → download CSV' },
+                    { icon: '📱', name: 'Pipedrive', tip: 'Contacts → ··· → Export data → CSV' },
+                    { icon: '📞', name: 'Phone / WhatsApp', tip: 'Export contacts from your phone as vCard (.vcf), then use a free online converter to turn it into CSV' },
+                  ].map(({ icon, name, tip }) => (
+                    <div key={name} style={{ background: p.inputBg, borderRadius: 8, padding: '8px 12px' }}>
+                      <p style={{ color: p.text, fontSize: 12, fontWeight: 600, margin: '0 0 2px' }}>{icon} {name}</p>
+                      <p style={{ color: p.textSecondary, fontSize: 11, margin: 0, lineHeight: 1.5 }}>{tip}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ color: p.text, fontWeight: 600, fontSize: 13, margin: '0 0 8px' }}>Step 2 — Required columns</p>
+                <p style={{ color: p.textSecondary, fontSize: 12, margin: '0 0 8px', lineHeight: 1.5 }}>Column names must match exactly (case sensitive):</p>
+                <div style={{ background: p.inputBg, borderRadius: 8, padding: '10px 14px' }}>
+                  {[
+                    ['Company Name', 'The company this contact belongs to'],
+                    ['First Name', 'Contact first name'],
+                    ['Last Name', 'Contact last name'],
+                    ['Email', 'Contact email address'],
+                    ['Work Direct Phone', 'Work phone number'],
+                    ['Mobile Phone', 'Mobile number'],
+                    ['Title', 'Job title'],
+                    ['Company City', 'City'],
+                    ['Company Country', 'Country'],
+                  ].map(([col, desc]) => (
+                    <div key={col} style={{ display: 'flex', gap: 10, padding: '4px 0', borderBottom: `1px solid ${p.cardBorder}` }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: p.primary, minWidth: 150, flexShrink: 0 }}>{col}</span>
+                      <span style={{ fontSize: 11, color: p.textSecondary }}>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20, background: 'rgba(99,190,139,0.08)', border: '1px solid rgba(99,190,139,0.25)', borderRadius: 8, padding: '12px 14px' }}>
+                <p style={{ color: p.text, fontWeight: 600, fontSize: 12, margin: '0 0 4px' }}>🇮🇱 Hebrew files</p>
+                <p style={{ color: p.textSecondary, fontSize: 11, lineHeight: 1.6, margin: 0 }}>Hebrew is fully supported. When saving from Excel, always choose <strong style={{ color: p.text }}>"CSV UTF-8"</strong> — not regular CSV. Google Sheets exports work automatically. The importer auto-detects the encoding.</p>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ color: p.text, fontWeight: 600, fontSize: 13, margin: '0 0 8px' }}>Example CSV structure</p>
+                <div style={{ background: p.inputBg, borderRadius: 8, padding: '10px 14px', overflowX: 'auto' }}>
+                  <pre style={{ fontFamily: 'monospace', fontSize: 10, color: p.textSecondary, margin: 0, lineHeight: 1.8 }}>{`Company Name,First Name,Last Name,Email,Title
+Acme Ltd,David,Cohen,david@acme.com,CEO
+Acme Ltd,Sarah,Levi,sarah@acme.com,CTO
+\u05D1\u05DC\u05D5\u05DD \u05D0\u05D9\u05E8\u05D5\u05E2\u05D9\u05DD,\u05D9\u05D5\u05E1\u05D9,\u05DB\u05D4\u05DF,yosi@bloom.co.il,\u05DE\u05E0\u05D4\u05DC`}</pre>
+                </div>
+                <p style={{ color: p.textSecondary, fontSize: 11, margin: '6px 0 0' }}>💡 Multiple people from the same company are grouped automatically — no duplicates created.</p>
+              </div>
+
+              <div style={{ borderTop: `1px solid ${p.cardBorder}`, paddingTop: 16 }}>
+                <p style={{ color: p.text, fontWeight: 600, fontSize: 13, margin: '0 0 6px' }}>📥 Download example CSV</p>
+                <p style={{ color: p.textSecondary, fontSize: 11, margin: '0 0 10px' }}>Includes Hebrew + English rows ready to upload.</p>
+                <button onClick={downloadSample} style={{ width: '100%', background: p.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  ⬇ Download sample CSV
+                </button>
               </div>
             </div>
-            <label style={{ display: 'block', background: p.inputBg, border: `2px dashed ${p.inputBorder}`, borderRadius: 12, padding: 40, textAlign: 'center', cursor: 'pointer' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📥</div>
-              <p style={{ color: p.text, fontSize: 15, fontWeight: 500, margin: '0 0 4px' }}>Click to upload CSV</p>
-              <p style={{ color: p.textSecondary, fontSize: 13, margin: 0 }}>Apollo.io export · UTF-8 · Windows-1255 (Hebrew ✓)</p>
-              <input type="file" accept=".csv" onChange={handleFile} style={{ display: 'none' }} />
-            </label>
+
           </div>
         )}
 
@@ -322,8 +332,7 @@ Bloom Events,יוסי,כהן,yosi@bloom.com,מנהל,052-9876543`}</pre>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <p style={{ color: p.textSecondary, fontSize: 13, margin: 0 }}>{grouped.length} companies · {grouped.reduce((acc, g) => acc + g.people.length, 0)} people total</p>
-              <button onClick={proceedToImport} disabled={importing}
-                style={{ background: importing ? p.textMuted : p.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 13, cursor: importing ? 'not-allowed' : 'pointer' }}>
+              <button onClick={proceedToImport} disabled={importing} style={{ background: importing ? p.textMuted : p.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 13, cursor: importing ? 'not-allowed' : 'pointer' }}>
                 {importing ? '⏳ Importing...' : `Import ${grouped.length} Companies →`}
               </button>
             </div>
@@ -371,13 +380,13 @@ Bloom Events,יוסי,כהן,yosi@bloom.com,מנהל,052-9876543`}</pre>
               <button onClick={() => navigate('/contacts')} style={{ flex: 1, background: p.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>
                 View Companies →
               </button>
-              <button onClick={() => { setStep(1); setRows([]); setGrouped([]); setImportResult(null); }}
-                style={{ flex: 1, background: p.inputBg, color: p.text, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>
+              <button onClick={() => { setStep(1); setRows([]); setGrouped([]); setImportResult(null); }} style={{ flex: 1, background: p.inputBg, color: p.text, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>
                 Import Another
               </button>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
