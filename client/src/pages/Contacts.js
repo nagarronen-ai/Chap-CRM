@@ -6,6 +6,7 @@ import { useRole } from '../hooks/useRole';
 import { useApp } from '../context/AppContext';
 import { B2B_CATEGORIES, B2C_CATEGORIES } from './CompanyProfile';
 import { COUNTRIES as ALL_COUNTRIES } from '../components/LocationSelector';
+import CategoryComboBox from '../components/CategoryComboBox';
 
 const STAGES = ['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'];
 const ORIGINS = ['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'];
@@ -266,10 +267,7 @@ export default function Contacts() {
                   <div><label style={labelStyle}>Website</label><input value={form.website} onChange={e => setForm({...form, website: e.target.value})} style={inputStyle} /></div>
                   <div>
                     <label style={labelStyle}>Category</label>
-                    <select value={form.category} onChange={e => setForm({...form, category: e.target.value, business_type: ''})} style={inputStyle}>
-                      <option value="">Select category...</option>
-                      {Object.keys(CATEGORIES).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                    <CategoryComboBox value={form.category} onChange={val => setForm({...form, category: val, business_type: ''})} />
                   </div>
                   <div>
                     <label style={labelStyle}>Type</label>

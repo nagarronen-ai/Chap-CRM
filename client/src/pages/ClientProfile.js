@@ -9,6 +9,7 @@ import ScheduleMeetingModal from '../components/ScheduleMeetingModal';
 import LocationSelector from '../components/LocationSelector';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import CategoryComboBox from '../components/CategoryComboBox';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
@@ -579,15 +580,19 @@ export default function ClientProfile() {
                 <div key={title} style={{ marginBottom: 20 }}>
                   <h3 style={{ color: p.text, fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>{title}</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: cols, gap: '6px 16px' }}>
-                    {fields.map(({ field, label }) => (
-                      <div key={field}>
-                        <label style={labelStyle}>{label}</label>
-                        {editField === field ? (
-                          <input type={field === 'contract_signed_date' ? 'date' : 'text'} value={client[field] || ''} onChange={e => setClient(prev => ({ ...prev, [field]: e.target.value }))}
-                            onBlur={e => updateField(field, e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField(field, e.target.value)}
-                            autoFocus style={inputStyle} />
-                        ) : (
-                          <p onClick={() => isAdmin && setEditField(field)}
+                  {fields.map(({ field, label }) => (
+  <div key={field}>
+    <label style={labelStyle}>{label}</label>
+    {editField === field ? (
+      field === 'category' ? (
+        <CategoryComboBox value={client[field] || ''} onChange={v => { setClient(prev => ({ ...prev, [field]: v })); updateField(field, v); }} />
+      ) : (
+        <input type={field === 'contract_signed_date' ? 'date' : 'text'} value={client[field] || ''} onChange={e => setClient(prev => ({ ...prev, [field]: e.target.value }))}
+          onBlur={e => updateField(field, e.target.value)} onKeyDown={e => e.key === 'Enter' && updateField(field, e.target.value)}
+          autoFocus style={inputStyle} />
+      )
+    ) : (
+      <p onClick={() => isAdmin && setEditField(field)}
                             style={{ color: client[field] ? p.text : p.textMuted, fontSize: 13, fontWeight: client[field] ? 500 : 400, margin: 0, padding: '9px 10px', background: p.inputBg, borderRadius: 6, cursor: isAdmin ? 'pointer' : 'default' }}>
                             {client[field] || '—'}
                           </p>

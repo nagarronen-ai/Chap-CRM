@@ -9,6 +9,7 @@ import ScheduleMeetingModal from '../components/ScheduleMeetingModal';
 import LocationSelector from '../components/LocationSelector';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import CategoryComboBox from '../components/CategoryComboBox';
 
 const STAGES = ['New', 'Contacted', 'No Reply', 'Follow-up', 'Meeting Scheduled', 'Proposal Offered', 'Agreement Sent', 'Closed Won', 'Closed Lost', 'Not Interested'];
 const ORIGINS = ['Upload', 'Cold', 'Hot', 'Instagram', 'Google', 'Referral'];
@@ -592,7 +593,10 @@ export default function CompanyProfile() {
               </div>
               <h3 style={{ color: p.text, fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Business</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', marginBottom: 20 }}>
-                <InlineField label="Category" value={company.category} onSave={v => updateField('category', v)} options={Object.keys(CATEGORIES)} p={p} />
+                <div style={{ marginBottom: 8 }}>
+  <label style={{ color: p.textSecondary, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', display: 'block', marginBottom: 2 }}>Category</label>
+  <CategoryComboBox value={company.category || ''} onChange={v => updateField('category', v)} />
+</div>
                 <InlineField label="Type" value={company.business_type} onSave={v => updateField('business_type', v)} options={company.category ? CATEGORIES[company.category] : []} p={p} />
               </div>
               <h3 style={{ color: p.text, fontSize: 15, fontWeight: 600, margin: '0 0 12px' }}>Marketing</h3>
