@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS crm_users (
   timezone          text DEFAULT 'America/New_York',
   email_signature   text,
   slack_user_id     text,
+  last_login        timestamptz,
   created_at        timestamptz DEFAULT now()
 );
 
@@ -63,6 +64,7 @@ CREATE TABLE IF NOT EXISTS crm_companies (
   next_action      text,
   last_activity_at timestamptz DEFAULT now(),
   updated_at       timestamptz DEFAULT now(),
+  user_id          uuid REFERENCES crm_users(id) ON DELETE SET NULL,
   created_at       timestamptz DEFAULT now()
 );
 
@@ -81,6 +83,7 @@ CREATE TABLE IF NOT EXISTS crm_people (
   unsubscribe_ip            text,
   unsubscribe_user_agent    text,
   unsubscribe_campaign_id   text,
+  user_id                   uuid REFERENCES crm_users(id) ON DELETE SET NULL,
   created_at                timestamptz DEFAULT now()
 );
 
