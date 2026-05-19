@@ -7,15 +7,13 @@ import { useApp } from '../context/AppContext';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
-const ROLES = ['admin', 'sales', 'marketing', 'csm', 'support', 'finance'];
-const ROLE_COLORS = {
+const DEFAULT_ROLE_COLORS = {
   admin: '#8E9B8B', sales: '#94B0BC', marketing: '#B4A5D6',
-  csm: '#D4A574', support: '#717182', finance: '#4CAF50',
+  csm: '#D4A574', support: '#717182', finance: '#4CAF50', viewer: '#CBCED4',
 };
-const ROLE_LABELS = {
-  admin: 'Admin', sales: 'Sales', marketing: 'Marketing',
-  csm: 'CSM', support: 'Support', finance: 'Finance',
-};
+
+const getRoleColor = (roleName) => DEFAULT_ROLE_COLORS[roleName] || '#94B0BC';
+const getRoleLabel = (roleName) => roleName ? roleName.charAt(0).toUpperCase() + roleName.slice(1) : '';
 
 export default function Team() {
   const { palette: p } = useApp();
@@ -27,12 +25,20 @@ export default function Team() {
   const [inviteSuccess, setInviteSuccess] = useState(null);
   const [saving, setSaving] = useState(false);
   const [resetResult, setResetResult] = useState(null);
+  const [allRoles, setAllRoles] = useState([]);
   const navigate = useNavigate();
   const token = localStorage.getItem('token');
   const headers = { Authorization: `Bearer ${token}` };
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => { fetchUsers(); fetchRoles(); }, []);
+
+  const fetchRoles = async () => {
+    try {
+      const res = await axios.get(`${API}/roles`, { headers });
+      setAllRoles(res.data.map(r => r.name));
+    } catch (err) { console.error('Failed to fetch roles:', err); }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -118,7 +124,7 @@ export default function Team() {
                 <tr key={user.id} style={{ borderTop: `1px solid ${p.cardBorder}` }}>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: ROLE_COLORS[user.role] || p.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: getRoleColor(user.role), display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
                         {user.full_name?.charAt(0)}
                       </div>
                       <span style={{ color: p.text, fontSize: 14, fontWeight: 500 }}>{user.full_name}</span>
@@ -130,13 +136,13 @@ export default function Team() {
                   <td style={{ padding: '14px 16px', color: p.textSecondary, fontSize: 14 }}>{user.email}</td>
                   <td style={{ padding: '14px 16px' }}>
                     {user.id === currentUser.id ? (
-                      <span style={{ background: ROLE_COLORS[user.role], color: '#fff', fontSize: 11, fontWeight: 600, borderRadius: 6, padding: '3px 10px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        {ROLE_LABELS[user.role]}
-                      </span>
+                      <span style={{ background: getRoleColor(user.role), color: '#fff', fontSize: 11, fontWeight: 600, borderRadius: 6, padding: '3px 10px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {getRoleLabel(user.role)}
+                    </span>
                     ) : (
                       <select value={user.role} onChange={e => handleRoleChange(user.id, e.target.value)}
-                        style={{ background: ROLE_COLORS[user.role], color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                        {ROLES.map(r => <option key={r} value={r} style={{ background: '#fff', color: '#3E423D' }}>{ROLE_LABELS[r]}</option>)}
+                         style={{ background: getRoleColor(user.role), color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        {allRoles.map(r => <option key={r} value={r} style={{ background: '#fff', color: '#3E423D' }}>{getRoleLabel(r)}</option>)}
                       </select>
                     )}
                   </td>
@@ -219,8 +225,8 @@ export default function Team() {
                   <div style={{ marginBottom: 24 }}>
                     <label style={{ color: p.textSecondary, fontSize: 12, fontWeight: 500, display: 'block', marginBottom: 6 }}>Role</label>
                     <select value={inviteForm.role} onChange={e => setInviteForm(prev => ({ ...prev, role: e.target.value }))} style={inputStyle}>
-                      {ROLES.filter(r => r !== 'admin').map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-                    </select>
+  {allRoles.filter(r => r !== 'admin').map(r => <option key={r} value={r}>{getRoleLabel(r)}</option>)}
+</select>
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button onClick={() => setShowInvite(false)} style={{ flex: 1, background: p.inputBg, color: p.text, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: 12, fontSize: 14, cursor: 'pointer' }}>Cancel</button>

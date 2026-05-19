@@ -21,12 +21,27 @@ CREATE TABLE IF NOT EXISTS crm_users (
   created_at        timestamptz DEFAULT now()
 );
 
+-- ─── ROLES ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS crm_roles (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        text NOT NULL UNIQUE,
+  description text,
+  is_system   boolean DEFAULT false,
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now()
+);
+
 -- ─── PERMISSIONS ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS crm_permissions (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  role       text NOT NULL,
-  permission text NOT NULL,
-  UNIQUE(role, permission)
+  role       text,
+  permission text,
+  role_id    uuid REFERENCES crm_roles(id) ON DELETE CASCADE,
+  module     text,
+  action     text,
+  enabled    boolean DEFAULT false,
+  UNIQUE(role, permission),
+  UNIQUE(role_id, module, action)
 );
 
 -- ─── SETTINGS ────────────────────────────────────────────────
