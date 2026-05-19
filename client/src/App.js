@@ -20,7 +20,8 @@ import Onboarding from './pages/Onboarding';
 import { AppProvider } from './context/AppContext';
 
 const PrivateRoute = ({ children }) => {
-  if (!localStorage.getItem('token')) return <Navigate to="/login" />;
+  const token = localStorage.getItem('token');
+  if (!token) return <Navigate to="/login" />;
   
   // Check if onboarding is completed
   const settings = JSON.parse(localStorage.getItem('appSettings') || '{}');

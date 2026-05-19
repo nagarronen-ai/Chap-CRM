@@ -37,6 +37,11 @@ export default function Onboarding() {
   });
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
+  // Redirect to login if no token
+  if (!localStorage.getItem('token')) {
+    window.location.href = '/login';
+    return null;
+  }
   const updateForm = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
 
   const activePaletteKey = hoveredPalette || form.palette;
