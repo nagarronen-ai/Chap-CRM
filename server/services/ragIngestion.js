@@ -2,7 +2,7 @@
 const supabase = require('../db');
 const OpenAI = require('openai');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY_BRAIN || process.env.OPENAI_API_KEY });
 
 // ─── EMBED A SINGLE TEXT CHUNK ────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ async function ingestNotes() {
         if (!row.details) continue;
         await upsertEmbedding('crm_activity_log', row.id, `Note: ${row.details}`, {
         company_id: row.company_id,
-        date: row.created_at,
+        date: row.sent_at,
       });
     }
     console.log(`✅ RAG: ingested ${data?.length || 0} notes`);
@@ -108,7 +108,7 @@ async function ingestThoughts() {
 async function ingestSentEmails() {
   const { data, error } = await supabase
     .from('crm_emails_sent')
-    .select('id, subject, body_html, status, company_id, created_at')
+    .select('id, subject, body_html, status, company_id, sent_at')
     .eq('status', 'sent')
     .order('created_at', { ascending: false })
     .limit(500);
@@ -124,10 +124,37 @@ async function ingestSentEmails() {
     await upsertEmbedding('crm_emails_sent', row.id, text, {
       subject: row.subject,
       company_id: row.company_id,
-      date: row.created_at,
+      date: row.sent_at,
     });
   }
   console.log(`✅ RAG: ingested ${data?.length || 0} sent emails`);
+}
+
+async function ingestPeople() {
+  const { data, error } = await supabase
+    .from('crm_people')
+    .select('id, first_name, last_name, email, title, work_phone, mobile_phone, company_id, crm_companies(company_name)')
+    .order('created_at', { ascending: false })
+    .limit(1000);
+
+  if (error) return console.error('RAG ingest people error:', error.message);
+
+  for (const row of data || []) {
+    const text = [
+      row.first_name || row.last_name ? `Contact: ${row.first_name || ''} ${row.last_name || ''}`.trim() : '',
+      row.crm_companies?.company_name ? `Company: ${row.crm_companies.company_name}` : '',
+      row.title ? `Title: ${row.title}` : '',
+      row.email ? `Email: ${row.email}` : '',
+      row.work_phone ? `Phone: ${row.work_phone}` : '',
+      row.mobile_phone ? `Mobile: ${row.mobile_phone}` : '',
+    ].filter(Boolean).join('\n');
+
+    await upsertEmbedding('crm_people', row.id, text, {
+      company_id: row.company_id,
+      email: row.email,
+    });
+  }
+  console.log(`✅ RAG: ingested ${data?.length || 0} people`);
 }
 
 async function ingestMeetings() {
@@ -165,6 +192,7 @@ async function runFullIngestion() {
     await ingestThoughts();
     await ingestSentEmails();
     await ingestMeetings();
+    await ingestPeople();
     console.log('🧠 RAG: ingestion complete');
   } catch (err) {
     console.error('🧠 RAG ingestion error:', err.message);
