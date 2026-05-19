@@ -442,9 +442,13 @@ CREATE TABLE IF NOT EXISTS crm_embeddings (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   source_table text NOT NULL,
   source_id    uuid NOT NULL,
-  content      text NOT NULL,
+  content      text,
+  chunk_text   text,
+  metadata     jsonb,
   embedding    vector(1536),
-  created_at   timestamptz DEFAULT now()
+  updated_at   timestamptz DEFAULT now(),
+  created_at   timestamptz DEFAULT now(),
+  UNIQUE(source_table, source_id)
 );
 
 -- ─── MEMORY EMBEDDINGS (Chappie RAG) ─────────────────────────
@@ -508,3 +512,28 @@ ON CONFLICT (role, permission) DO NOTHING;
 INSERT INTO crm_settings (company_name, onboarding_completed)
 VALUES ('My Company', false)
 ON CONFLICT DO NOTHING;
+
+-- ─── MATCH EMBEDDINGS FUNCTION (RAG Search) ──────────────────
+CREATE OR REPLACE FUNCTION match_embeddings(
+  query_embedding vector(1536),
+  match_threshold float,
+  match_count int
+)
+RETURNS TABLE (
+  id uuid,
+  source_table text,
+  source_id uuid,
+  chunk_text text,
+  metadata jsonb,
+  similarity float
+)
+LANGUAGE sql STABLE
+AS $$
+  SELECT
+    id, source_table, source_id, chunk_text, metadata,
+    1 - (embedding <=> query_embedding) AS similarity
+  FROM crm_embeddings
+  WHERE 1 - (embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
