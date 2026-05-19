@@ -20,6 +20,17 @@ router.get('/companies', auth, async (req, res) => {
 });
 
 router.post('/companies', auth, async (req, res) => {
+  // Check for duplicate company name
+  if (req.body.company_name) {
+    const { data: existing } = await supabase
+      .from('crm_companies')
+      .select('id, company_name')
+      .ilike('company_name', req.body.company_name.trim())
+      .single();
+    if (existing) {
+      return res.status(409).json({ error: 'duplicate', existing });
+    }
+  }
   const { data, error } = await supabase
     .from('crm_companies')
     .insert([{ ...req.body, user_id: req.user.id }])

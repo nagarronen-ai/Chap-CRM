@@ -106,7 +106,7 @@ export default function Import() {
 
   const proceedToImport = async () => {
     setImporting(true);
-    let created = 0, skipped = 0;
+    let created = 0, skipped = 0, duplicates = 0, peopleAdded = 0;
     for (const group of grouped) {
       const decision = conflictDecisions[group.name];
       if (decision === 'skip') { skipped++; continue; }
@@ -120,7 +120,20 @@ export default function Import() {
       try {
         let companyId;
         if (decision === 'add') { companyId = decision.existingId; }
-        else { const res = await axios.post(`${API}/contacts/companies`, companyPayload, { headers }); companyId = res.data.id; created++; }
+        else {
+          try {
+            const res = await axios.post(`${API}/contacts/companies`, companyPayload, { headers });
+            companyId = res.data.id; created++;
+          } catch (err) {
+            if (err.response?.status === 409) {
+              // Company already exists — use existing company and still import people
+              companyId = err.response.data.existing.id;
+              duplicates++;
+            } else {
+              throw err;
+            }
+          }
+        }
         for (const row of group.people) {
           const personPayload = {};
           ['First Name','Last Name','Title','Email','Work Direct Phone','Mobile Phone','Person Linkedin Url','Apollo Contact Id'].forEach(col => {
@@ -128,11 +141,12 @@ export default function Import() {
           });
           if (personPayload.first_name || personPayload.email) {
             await axios.post(`${API}/contacts/companies/${companyId}/people`, personPayload, { headers });
+            peopleAdded++;
           }
         }
       } catch (err) { console.error('Import error:', err); skipped++; }
     }
-    setImportResult({ created, skipped });
+    setImportResult({ created, skipped, duplicates, peopleAdded });
     setImporting(false); setStep(4);
   };
 
@@ -366,14 +380,22 @@ Acme Ltd,Sarah,Levi,sarah@acme.com,CTO
           <div style={{ background: p.cardBg, borderRadius: 12, padding: 48, border: `1px solid ${p.cardBorder}`, maxWidth: 480, textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
             <h2 style={{ color: p.text, fontSize: 26, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 24px' }}>Import Complete!</h2>
-            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginBottom: 32 }}>
-              <div style={{ background: p.inputBg, borderRadius: 10, padding: '16px 24px' }}>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 32, flexWrap: 'wrap' }}>
+              <div style={{ background: p.inputBg, borderRadius: 10, padding: '16px 24px', textAlign: 'center' }}>
                 <p style={{ color: p.primary, fontSize: 28, fontWeight: 700, margin: '0 0 4px' }}>{importResult.created}</p>
                 <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>Companies Created</p>
               </div>
-              <div style={{ background: p.inputBg, borderRadius: 10, padding: '16px 24px' }}>
+              <div style={{ background: p.inputBg, borderRadius: 10, padding: '16px 24px', textAlign: 'center' }}>
+                <p style={{ color: '#4CAF50', fontSize: 28, fontWeight: 700, margin: '0 0 4px' }}>{importResult.peopleAdded}</p>
+                <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>Contacts Added</p>
+              </div>
+              <div style={{ background: p.inputBg, borderRadius: 10, padding: '16px 24px', textAlign: 'center' }}>
+                <p style={{ color: '#D4A574', fontSize: 28, fontWeight: 700, margin: '0 0 4px' }}>{importResult.duplicates}</p>
+                <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>Duplicates Skipped</p>
+              </div>
+              <div style={{ background: p.inputBg, borderRadius: 10, padding: '16px 24px', textAlign: 'center' }}>
                 <p style={{ color: p.textSecondary, fontSize: 28, fontWeight: 700, margin: '0 0 4px' }}>{importResult.skipped}</p>
-                <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>Skipped</p>
+                <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>Errors</p>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
