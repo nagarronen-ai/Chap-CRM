@@ -140,8 +140,13 @@ export default function Import() {
             const dbCol = FIELD_MAP[col]; if (row[col]) personPayload[dbCol] = row[col];
           });
           if (personPayload.first_name || personPayload.email) {
-            await axios.post(`${API}/contacts/companies/${companyId}/people`, personPayload, { headers });
-            peopleAdded++;
+            try {
+              await axios.post(`${API}/contacts/companies/${companyId}/people`, personPayload, { headers });
+              peopleAdded++;
+            } catch (err) {
+              if (err.response?.status !== 409) throw err;
+              // person already exists — skip silently
+            }
           }
         }
       } catch (err) { console.error('Import error:', err); skipped++; }

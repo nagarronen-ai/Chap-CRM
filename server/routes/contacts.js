@@ -119,6 +119,18 @@ router.put('/companies/:id/stage', auth, checkPermission('pipeline:move'), async
 // ─── PEOPLE ──────────────────────────────────────────────────────────────────
 
 router.post('/companies/:id/people', auth, checkPermission('people:edit'), async (req, res) => {
+  // Check for duplicate person by email
+  if (req.body.email) {
+    const { data: existing } = await supabase
+      .from('crm_people')
+      .select('id')
+      .eq('email', req.body.email.toLowerCase().trim())
+      .eq('company_id', req.params.id)
+      .single();
+    if (existing) {
+      return res.status(409).json({ error: 'duplicate', existing });
+    }
+  }
   const { data, error } = await supabase
     .from('crm_people')
     .insert([{ ...req.body, company_id: req.params.id, user_id: req.user.id }])
