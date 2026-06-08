@@ -4,8 +4,12 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const supabase = require('../db');
+const auth = require('../middleware/auth');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'chap_secret';
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -39,8 +43,10 @@ router.post('/login', async (req, res) => {
   });
 });
 
-router.post('/register', async (req, res) => {
-  const { email, password, name, role = 'admin' } = req.body;
+router.post('/register', auth, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+  const { email, password, name, role = 'viewer' } = req.body;
   if (!email || !password || !name) return res.status(400).json({ error: 'All fields required' });
 
   const hash = await bcrypt.hash(password, 10);
@@ -52,12 +58,7 @@ router.post('/register', async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  const token = jwt.sign(
-    { id: data.id, email: data.email, role: data.role },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-  res.json({ token, user: { id: data.id, email: data.email, name: data.name, role: data.role } });
+  res.json({ user: { id: data.id, email: data.email, name: data.name, role: data.role } });
 });
 
 module.exports = router;

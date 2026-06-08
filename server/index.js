@@ -2,12 +2,20 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
-console.log('OPENAI KEY:', process.env.OPENAI_API_KEY?.slice(0, 10));
 
 const app = express();
 
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:3000',
+].filter(Boolean);
+
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
