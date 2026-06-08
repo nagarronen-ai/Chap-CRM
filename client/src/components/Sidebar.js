@@ -121,16 +121,11 @@ export default function Sidebar() {
     }}>
       {/* Logo */}
       <div style={{ marginBottom: 24, paddingLeft: 12 }}>
-        {settings.logo_url ? (
-          <img src={settings.logo_url} alt="Logo" style={{ height: 32, maxWidth: 160, objectFit: 'contain', marginBottom: 2 }} />
-        ) : (
-          <>
-            <p style={{ color: p.primary, fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 2px', opacity: 0.8 }}>
-              {settings.company_name || 'Chap CRM'}
-            </p>
-            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: 18, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>CRM</p>
-          </>
-        )}
+        <img
+          src={settings.logo_url || '/logo.png'}
+          alt={settings.company_name || 'QPoint'}
+          style={{ height: 32, maxWidth: 160, objectFit: 'contain', marginBottom: 2 }}
+        />
       </div>
 
       {/* Nav groups */}

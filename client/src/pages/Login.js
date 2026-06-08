@@ -58,18 +58,11 @@ export default function Login() {
       }}>
         {/* Logo / branding */}
         <div style={{ marginBottom: 32 }}>
-          {cached.logo_url ? (
-            <img src={cached.logo_url} alt="Logo" style={{ height: 40, maxWidth: 180, objectFit: 'contain', marginBottom: 12, display: 'block' }} />
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: p.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff', fontFamily: 'Georgia, serif' }}>
-                {cached.company_name?.charAt(0) || 'C'}
-              </div>
-              <span style={{ color: p.text, fontSize: 16, fontWeight: 700, letterSpacing: -0.5 }}>
-                {cached.company_name || 'Chap CRM'}
-              </span>
-            </div>
-          )}
+          <img
+            src={cached.logo_url || '/logo.png'}
+            alt={cached.company_name || 'QPoint'}
+            style={{ height: 40, maxWidth: 180, objectFit: 'contain', marginBottom: 12, display: 'block' }}
+          />
           <h1 style={{ color: p.text, fontSize: 26, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>
             Welcome back
           </h1>
@@ -103,7 +96,7 @@ export default function Login() {
         </form>
 
         <p style={{ color: p.textMuted, fontSize: 11, textAlign: 'center', marginTop: 24, marginBottom: 0 }}>
-          Powered by <strong style={{ color: p.primary }}>Chap CRM</strong>
+          Powered by <strong style={{ color: p.primary }}>QPoint</strong>
         </p>
       </div>
     </div>

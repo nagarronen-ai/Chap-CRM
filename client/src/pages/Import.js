@@ -167,7 +167,7 @@ export default function Import() {
     const blob = new Blob(['\uFEFF' + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'chap-crm-example.csv'; a.click();
+    a.href = url; a.download = 'qpoint-example.csv'; a.click();
     URL.revokeObjectURL(url);
   };
 

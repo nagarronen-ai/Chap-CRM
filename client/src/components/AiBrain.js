@@ -133,7 +133,7 @@ export default function AiBrain() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div>
                 <p style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: 0 }}>🧠 AI Assistant</p>
-                <p style={{ color: p.textSecondary, fontSize: 11, margin: 0 }}>Chap CRM Brain</p>
+                <p style={{ color: p.textSecondary, fontSize: 11, margin: 0 }}>QPoint Brain</p>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button onClick={startNewConversation} style={{ background: p.inputBg, border: 'none', borderRadius: 6, color: p.textSecondary, fontSize: 11, cursor: 'pointer', padding: '4px 10px' }}>+ New Chat</button>

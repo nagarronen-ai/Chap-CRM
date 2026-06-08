@@ -56,7 +56,7 @@ export default function Marketing() {
   const [sending, setSending] = useState(false);
 
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: '', subject: '', body_html: '', from_name: 'Chap CRM', from_email: 'marketing@yourcompany.com', template_id: null });
+  const [form, setForm] = useState({ name: '', subject: '', body_html: '', from_name: 'QPoint', from_email: 'marketing@yourcompany.com', template_id: null });
   const [filters, setFilters] = useState({ stage: '', origin: '', city: '', category: '', source: 'all' });
   const [recipients, setRecipients] = useState([]);
   const [selectedRecipients, setSelectedRecipients] = useState({});
@@ -351,7 +351,7 @@ export default function Marketing() {
             const launchCampaignFromLeads = () => {
               const leads = filteredRecipients.filter((_, i) => selectedLeads[i]);
               const prefilledRecipients = leads.map(r => ({ email: r.email, first_name: r.crm_people?.first_name || '', last_name: r.crm_people?.last_name || '', company_name: r.crm_companies?.company_name || '', company_id: r.company_id || null, person_id: r.person_id || null, source: 'Contact' }));
-              setStep(1); setForm({ name: `Follow-up — ${selectedCampaign.name}`, subject: '', body_html: '', from_name: 'Chap CRM', from_email: 'marketing@yourcompany.com', template_id: null });
+              setStep(1); setForm({ name: `Follow-up — ${selectedCampaign.name}`, subject: '', body_html: '', from_name: 'QPoint', from_email: 'marketing@yourcompany.com', template_id: null });
               setRecipients(prefilledRecipients);
               const sel = {}; prefilledRecipients.forEach((_, i) => { sel[i] = true; }); setSelectedRecipients(sel);
               setRecipientFilter('all'); setSelectedLeads({}); setView('create'); setStep(2);
@@ -598,7 +598,7 @@ export default function Marketing() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h1 style={{ color: p.text, fontSize: 30, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: 0 }}>Marketing</h1>
           {canSend && subView === 'campaigns' && (
-            <button onClick={() => { setStep(1); setForm({ name: '', subject: '', body_html: '', from_name: 'Chap CRM', from_email: 'marketing@yourcompany.com', template_id: null }); setView('create'); }}
+            <button onClick={() => { setStep(1); setForm({ name: '', subject: '', body_html: '', from_name: 'QPoint', from_email: 'marketing@yourcompany.com', template_id: null }); setView('create'); }}
               style={{ background: p.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: 'pointer' }}>
               + New Campaign
             </button>

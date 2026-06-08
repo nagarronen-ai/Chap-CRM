@@ -206,7 +206,7 @@ export default function ScheduleMeetingModal({ show, onClose, onCreated, company
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input type="checkbox" checked={form.auto_record || false} onChange={e => setForm(prev => ({ ...prev, auto_record: e.target.checked }))} style={{ accentColor: '#D4183D' }} />
-                <span style={{ color: '#1a6fad', fontSize: 12, fontWeight: 500 }}>🔴 Auto-record this meeting (Chap CRM Assistant will join and transcribe)</span>
+                <span style={{ color: '#1a6fad', fontSize: 12, fontWeight: 500 }}>🔴 Auto-record this meeting (QPoint Assistant will join and transcribe)</span>
               </label>
             </div>
           )}

@@ -112,13 +112,13 @@ export default function Onboarding() {
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            {logoPreview ? (
-              <img src={logoPreview} alt="Logo" style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'contain' }} />
-            ) : (
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: p.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff', fontFamily: 'Georgia, serif', transition: 'background 0.4s' }}>C</div>
-            )}
+            <img
+              src={logoPreview || '/logo.png'}
+              alt={form.company_name || 'QPoint'}
+              style={{ height: 36, maxWidth: 160, objectFit: 'contain', borderRadius: 10 }}
+            />
             <span style={{ fontSize: 20, fontWeight: 700, color: p.text, letterSpacing: -0.5, transition: 'color 0.4s' }}>
-              {form.company_name || 'Chap CRM'}
+              {form.company_name || 'QPoint'}
             </span>
           </div>
           <p style={{ color: p.textSecondary, fontSize: 13, margin: 0 }}>Let's set up your workspace</p>
@@ -156,7 +156,7 @@ export default function Onboarding() {
           {step === 1 && (
             <div>
               <h2 style={{ color: p.text, fontSize: 22, fontWeight: 700, margin: '0 0 6px', fontFamily: 'Georgia, serif' }}>Tell us about your company</h2>
-              <p style={{ color: p.textSecondary, fontSize: 14, margin: '0 0 28px' }}>This helps Chap personalize your CRM experience.</p>
+              <p style={{ color: p.textSecondary, fontSize: 14, margin: '0 0 28px' }}>This helps Chappie personalize your CRM experience.</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: p.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Company Name *</label>
@@ -333,7 +333,7 @@ export default function Onboarding() {
               <h2 style={{ color: p.text, fontSize: 24, fontWeight: 700, margin: '0 0 10px', fontFamily: 'Georgia, serif' }}>
                 You're all set{form.company_name ? `, ${form.company_name}` : ''}!
               </h2>
-              <p style={{ color: p.textSecondary, fontSize: 14, margin: '0 0 28px', lineHeight: 1.6 }}>Your Chap CRM is ready to go.</p>
+              <p style={{ color: p.textSecondary, fontSize: 14, margin: '0 0 28px', lineHeight: 1.6 }}>Your QPoint CRM is ready to go.</p>
               <div style={{ background: p.inputBg, borderRadius: 12, padding: 20, textAlign: 'left', marginBottom: 28 }}>
                 {[
                   { icon: '🏢', label: 'Company', value: form.company_name },
@@ -363,7 +363,7 @@ export default function Onboarding() {
             )}
             {step === 5 && (
               <button onClick={handleFinish} disabled={saving} style={{ flex: 2, background: saving ? p.textMuted : p.primary, color: '#fff', border: 'none', borderRadius: 10, padding: '13px', fontSize: 14, fontWeight: 600, cursor: saving ? 'default' : 'pointer', fontFamily: 'Inter, sans-serif' }}>
-                {saving ? '⏳ Setting up...' : '🚀 Launch Chap CRM'}
+                {saving ? '⏳ Setting up...' : '🚀 Launch QPoint CRM'}
               </button>
             )}
           </div>
