@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
@@ -161,6 +161,7 @@ export default function ClientProfile() {
 
   const [client, setClient] = useState(null);
   const [activity, setActivity] = useState([]);
+  const [teamUsers, setTeamUsers] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [vendorPage, setVendorPage] = useState({});
   const [finance, setFinance] = useState([]);
@@ -297,6 +298,26 @@ export default function ClientProfile() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchAll(); }, [id]);
 
+  useEffect(() => {
+    axios.get(`${API}/users/team-list`, { headers: getHeaders() })
+      .then(res => setTeamUsers(res.data))
+      .catch(() => {});
+  }, []);
+
+  const userNameById = useMemo(
+    () => Object.fromEntries(teamUsers.map(u => [u.id, u.name])),
+    [teamUsers]
+  );
+  const resolveUuids = (text) => {
+    if (!text) return text;
+    return text
+      .replace(/Assigned To/g, 'Owner')
+      .replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        (uuid) => userNameById[uuid] || uuid
+      );
+  };
+
   const fetchAll = async () => {
     try {
       const [clientRes, activityRes, docsRes, vpRes, finRes] = await Promise.all([
@@ -348,6 +369,19 @@ export default function ClientProfile() {
       await axios.put(`${API}/clients/${id}`, { [field]: value }, { headers: getHeaders() });
       setClient(prev => ({ ...prev, [field]: value }));
       setEditField(null);
+    } catch (err) { console.error(err); }
+  };
+
+  const updateOwner = async (newOwnerId) => {
+    try {
+      const res = await axios.put(
+        `${API}/clients/${id}/owner`,
+        { owner_id: newOwnerId || null },
+        { headers: getHeaders() }
+      );
+      setClient(res.data);
+      const a = await axios.get(`${API}/clients/${id}/activity`, { headers: getHeaders() });
+      setActivity(a.data);
     } catch (err) { console.error(err); }
   };
 
@@ -512,13 +546,26 @@ export default function ClientProfile() {
             { label: 'Contract', value: client.contract_type === 'Subscription' ? `${client.contract_type} · $${client.contract_amount || 0}/mo` : client.contract_type === 'RevShare' ? `${client.contract_type} · $${client.contract_amount || 0} + ${client.commission_rate}%` : `${client.contract_type} · ${client.commission_rate}%` },
             { label: 'Contact', value: `${client.contact_first_name} ${client.contact_last_name}` },
             { label: 'Location', value: `${client.city || ''}${client.state ? `, ${client.state}` : ''}` || '—' },
-            { label: 'Owner', value: client.crm_users?.name || '—' },
           ].map(({ label, value }) => (
             <div key={label} style={{ ...card, padding: 16 }}>
               <p style={{ color: p.textSecondary, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>{label}</p>
               <p style={{ color: p.text, fontSize: 14, fontWeight: 500, margin: 0 }}>{value}</p>
             </div>
           ))}
+          <div style={{ ...card, padding: 16 }}>
+            <p style={{ color: p.textSecondary, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>Owner</p>
+            {can('company:assign') ? (
+              <select
+                value={client.owner_id || ''}
+                onChange={e => updateOwner(e.target.value || null)}
+                style={{ background: p.inputBg, border: `1px solid ${p.inputBorder}`, borderRadius: 6, padding: '4px 8px', fontSize: 13, color: p.text, outline: 'none', width: '100%' }}>
+                <option value="">— Unassigned —</option>
+                {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+              </select>
+            ) : (
+              <p style={{ color: p.text, fontSize: 14, fontWeight: 500, margin: 0 }}>{client.crm_users?.name || '—'}</p>
+            )}
+          </div>
         </div>
 
         {/* Tabs */}
@@ -613,12 +660,15 @@ export default function ClientProfile() {
               </div>
               <div style={{ ...card, padding: 20 }}>
                 <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>Recent Notes</h3>
-                {activity.filter(a => a.action === 'Note Added').slice(0, 3).map(a => (
+                {activity.filter(a => a.action === 'Note Added').slice(0, 3).map(a => {
+                  const resolved = resolveUuids(a.details) || '';
+                  return (
                   <div key={a.id} style={{ padding: '8px 0', borderBottom: `1px solid ${p.cardBorder}` }}>
-                    <p style={{ color: p.text, fontSize: 12, margin: '0 0 2px', wordBreak: 'break-word' }}>{a.details?.length > 120 ? a.details.substring(0, 120) + '...' : a.details}</p>
+                    <p style={{ color: p.text, fontSize: 12, margin: '0 0 2px', wordBreak: 'break-word' }}>{resolved.length > 120 ? resolved.substring(0, 120) + '...' : resolved}</p>
                     <p style={{ color: p.textMuted, fontSize: 10, margin: 0 }}>{new Date(a.created_at).toLocaleDateString()}</p>
                   </div>
-                ))}
+                  );
+                })}
                 {activity.filter(a => a.action === 'Note Added').length === 0 && <p style={{ color: p.textMuted, fontSize: 12, margin: 0 }}>No notes yet</p>}
               </div>
             </div>
@@ -796,7 +846,7 @@ export default function ClientProfile() {
                           <span style={{ color: p.text, fontSize: 13, fontWeight: 500 }}>{item.crm_users?.name || '—'}</span>
                           <span style={{ background: p.inputBg, color: p.textSecondary, fontSize: 10, borderRadius: 20, padding: '1px 8px' }}>{item.action}</span>
                         </div>
-                        <p style={{ color: p.textSecondary, fontSize: 12, margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{item.details}</p>
+                        <p style={{ color: p.textSecondary, fontSize: 12, margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{resolveUuids(item.details)}</p>
                       </div>
                       <span style={{ color: p.textMuted, fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(item.created_at).toLocaleDateString()}</span>
                     </div>

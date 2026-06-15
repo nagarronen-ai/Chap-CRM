@@ -92,6 +92,18 @@ router.put('/me/signature', auth, async (req, res) => {
 
 // ─── Team management routes (/:id) ───────────────────────────────────────────
 
+// GET /api/users/team-list — minimal user list for owner-assignment dropdowns
+// Auth-only (no perm gate) so non-admin users with company:assign can populate
+// the dropdown. Returns only id/name/role — no email, last_login, etc.
+router.get('/team-list', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('crm_users')
+    .select('id, name, role')
+    .order('name', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 // GET all team members — admin only
 router.get('/', auth, checkPermission('users:manage'), async (req, res) => {
   const { data, error } = await supabase

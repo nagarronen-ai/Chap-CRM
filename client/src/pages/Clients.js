@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useApp } from '../context/AppContext';
+import { useRole } from '../hooks/useRole';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
@@ -21,15 +22,24 @@ const CONTRACT_COLORS = {
 
 export default function Clients() {
   const [clients, setClients] = useState([]);
+  const [teamUsers, setTeamUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
   const navigate = useNavigate();
   const { palette: p } = useApp();
+  const { can } = useRole();
+  const canAssign = can('company:assign');
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchClients(); }, []);
+
+  useEffect(() => {
+    axios.get(`${API}/users/team-list`, { headers: getHeaders() })
+      .then(res => setTeamUsers(res.data))
+      .catch(() => {});
+  }, []);
 
   const fetchClients = async () => {
     try {
@@ -37,6 +47,17 @@ export default function Clients() {
       setClients(res.data);
     } catch (err) { console.error(err); }
     setLoading(false);
+  };
+
+  const updateOwner = async (clientId, newOwnerId) => {
+    try {
+      const res = await axios.put(
+        `${API}/clients/${clientId}/owner`,
+        { owner_id: newOwnerId || null },
+        { headers: getHeaders() }
+      );
+      setClients(prev => prev.map(c => c.id === clientId ? res.data : c));
+    } catch (err) { console.error(err); }
   };
 
   const filtered = clients.filter(c => {
@@ -140,7 +161,18 @@ export default function Clients() {
                       </td>
                       <td style={{ padding: '14px 16px', fontSize: 13, color: p.primary, fontWeight: 600 }}>{c.commission_rate}%</td>
                       <td style={{ padding: '14px 16px', fontSize: 13, color: p.textSecondary }}>{c.city}{c.state ? `, ${c.state}` : ''}</td>
-                      <td style={{ padding: '14px 16px', fontSize: 12, color: p.textSecondary }}>{c.crm_users?.name || '—'}</td>
+                      <td style={{ padding: '14px 16px', fontSize: 12, color: p.textSecondary }} onClick={e => e.stopPropagation()}>
+                        {canAssign ? (
+                          <select
+                            value={c.owner_id || ''}
+                            onChange={e => updateOwner(c.id, e.target.value || null)}
+                            onClick={e => e.stopPropagation()}
+                            style={{ background: p.inputBg, border: `1px solid ${p.inputBorder}`, borderRadius: 6, padding: '3px 6px', fontSize: 12, color: p.text, outline: 'none', maxWidth: 140 }}>
+                            <option value="">— Unassigned —</option>
+                            {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                        ) : (c.crm_users?.name || '—')}
+                      </td>
                       <td style={{ padding: '14px 16px', fontSize: 12, color: p.textMuted }}>{new Date(c.created_at).toLocaleDateString()}</td>
                     </tr>
                   );

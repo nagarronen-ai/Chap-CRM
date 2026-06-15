@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
@@ -198,9 +198,35 @@ export default function CompanyProfile() {
   useEffect(() => { fetchCompany(); fetchActivity(); fetchTemplates(); fetchMarketingData(); fetchEmailTracking(); fetchMeetings(); fetchDocuments(); }, [id]);
 
   const fetchTeamUsers = async () => {
-    try { const res = await axios.get(`${API}/users`, { headers: getHeaders() }); setTeamUsers(res.data); } catch (err) {}
+    try { const res = await axios.get(`${API}/users/team-list`, { headers: getHeaders() }); setTeamUsers(res.data); } catch (err) {}
   };
   useEffect(() => { fetchTeamUsers(); }, []);
+
+  const userNameById = useMemo(
+    () => Object.fromEntries(teamUsers.map(u => [u.id, u.name])),
+    [teamUsers]
+  );
+  const resolveUuids = (text) => {
+    if (!text) return text;
+    return text
+      .replace(/Assigned To/g, 'Owner')
+      .replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        (uuid) => userNameById[uuid] || uuid
+      );
+  };
+
+  const updateOwner = async (newOwnerId) => {
+    try {
+      const res = await axios.put(
+        `${API}/contacts/companies/${id}/owner`,
+        { owner_id: newOwnerId || null },
+        { headers: getHeaders() }
+      );
+      setCompany(res.data);
+      fetchActivity();
+    } catch (err) { console.error(err); }
+  };
 
   const fetchCompany = async () => {
     try {
@@ -555,7 +581,7 @@ export default function CompanyProfile() {
           <div style={{ ...card, padding: 16 }}>
             <p style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', margin: '0 0 6px' }}>Owner</p>
             {can('company:assign') ? (
-              <select value={company.assigned_to || ''} onChange={e => updateField('assigned_to', e.target.value || null)}
+              <select value={company.assigned_to || ''} onChange={e => updateOwner(e.target.value || null)}
                 style={{ background: p.inputBg, border: `1px solid ${p.inputBorder}`, borderRadius: 6, padding: '4px 8px', fontSize: 13, color: p.text, outline: 'none', width: '100%' }}>
                 <option value="">— Unassigned —</option>
                 {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
@@ -654,12 +680,15 @@ export default function CompanyProfile() {
                 {activity.filter(a => a.action === 'Note Added').slice(0, 3).length > 0 && (
                   <div style={{ marginTop: 14 }}>
                     <p style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 8px' }}>Recent Notes</p>
-                    {activity.filter(a => a.action === 'Note Added').slice(0, 3).map(a => (
+                    {activity.filter(a => a.action === 'Note Added').slice(0, 3).map(a => {
+                      const resolved = resolveUuids(a.details) || '';
+                      return (
                       <div key={a.id} style={{ borderLeft: `2px solid ${p.inputBorder}`, paddingLeft: 10, marginBottom: 8 }}>
-                        <p style={{ color: p.text, fontSize: 13, margin: '0 0 2px', wordBreak: 'break-word' }}>{a.details?.length > 120 ? a.details.substring(0, 120) + '...' : a.details}</p>
+                        <p style={{ color: p.text, fontSize: 13, margin: '0 0 2px', wordBreak: 'break-word' }}>{resolved.length > 120 ? resolved.substring(0, 120) + '...' : resolved}</p>
                         <p style={{ color: p.textMuted, fontSize: 11, margin: 0 }}>{new Date(a.created_at).toLocaleDateString()}</p>
                       </div>
-                    ))}
+                      );
+                    })}
                     <button onClick={() => setActiveTab('activity')} style={{ background: 'none', border: 'none', color: p.primary, fontSize: 12, cursor: 'pointer', padding: 0, marginTop: 4 }}>View all activity →</button>
                   </div>
                 )}
@@ -774,7 +803,9 @@ export default function CompanyProfile() {
                           {a.crm_people && <span style={{ color: p.primary, fontSize: 12 }}>👤 {a.crm_people.first_name} {a.crm_people.last_name}</span>}
                           {!a.person_id && a.action === 'Note Added' && <span style={{ color: p.textSecondary, fontSize: 12 }}>🏢 Company</span>}
                         </div>
-                        <p style={{ color: p.text, fontSize: 14, margin: '0 0 4px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{a.details?.length > 200 ? a.details.substring(0, 200) + '...' : a.details}</p>
+                        {(() => { const r = resolveUuids(a.details) || ''; return (
+                        <p style={{ color: p.text, fontSize: 14, margin: '0 0 4px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{r.length > 200 ? r.substring(0, 200) + '...' : r}</p>
+                        ); })()}
                         <p style={{ color: p.textMuted, fontSize: 11, margin: 0 }}>{new Date(a.created_at).toLocaleString()}</p>
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 12 }}>

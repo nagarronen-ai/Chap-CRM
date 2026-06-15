@@ -98,6 +98,47 @@ router.put('/companies/:id/assign', auth, checkPermission('company:assign'), asy
   res.json(data);
 });
 
+// PUT /api/contacts/companies/:id/owner — change owner; logs clean Owner Changed entry
+router.put('/companies/:id/owner', auth, checkPermission('company:assign'), async (req, res) => {
+  const { owner_id } = req.body;  // accepts owner_id as the canonical name; column on companies is still assigned_to
+  if (owner_id !== null && typeof owner_id !== 'string') {
+    return res.status(400).json({ error: 'owner_id must be a UUID string or null' });
+  }
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('crm_companies')
+    .select('assigned_to')
+    .eq('id', req.params.id)
+    .single();
+  if (fetchErr || !existing) return res.status(404).json({ error: 'Company not found' });
+
+  const ids = [existing.assigned_to, owner_id].filter(Boolean);
+  const { data: users } = ids.length
+    ? await supabase.from('crm_users').select('id, name').in('id', ids)
+    : { data: [] };
+  const nameById = Object.fromEntries((users || []).map(u => [u.id, u.name]));
+  const oldName = existing.assigned_to ? (nameById[existing.assigned_to] || 'unknown user') : 'Unassigned';
+  const newName = owner_id             ? (nameById[owner_id]             || 'unknown user') : 'Unassigned';
+
+  const { data, error } = await supabase
+    .from('crm_companies')
+    .update({ assigned_to: owner_id, updated_at: new Date() })
+    .eq('id', req.params.id)
+    .select('*, crm_users!crm_companies_assigned_to_fkey(id, name)')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  if (oldName !== newName) {
+    await supabase.from('crm_activity_log').insert([{
+      company_id: req.params.id,
+      user_id:    req.user.id,
+      action:     'Owner Changed',
+      details:    `Owner changed from ${oldName} to ${newName}`,
+    }]);
+  }
+  res.json(data);
+});
+
 router.put('/companies/:id/stage', auth, checkPermission('pipeline:move'), async (req, res) => {
   const { stage } = req.body;
   const { data, error } = await supabase
