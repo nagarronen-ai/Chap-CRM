@@ -110,7 +110,7 @@ export default function Clients() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: p.inputBg }}>
-                  {['Business Name', 'Contact', 'Stage', 'Contract', 'Commission', 'City', 'Assigned To', 'Created'].map(h => (
+                  {['Business Name', 'Contact', 'Stage', 'Contract', 'Commission', 'City', 'Owner', 'Created'].map(h => (
                     <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>{h}</th>
                   ))}
                 </tr>

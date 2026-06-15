@@ -512,7 +512,7 @@ export default function ClientProfile() {
             { label: 'Contract', value: client.contract_type === 'Subscription' ? `${client.contract_type} · $${client.contract_amount || 0}/mo` : client.contract_type === 'RevShare' ? `${client.contract_type} · $${client.contract_amount || 0} + ${client.commission_rate}%` : `${client.contract_type} · ${client.commission_rate}%` },
             { label: 'Contact', value: `${client.contact_first_name} ${client.contact_last_name}` },
             { label: 'Location', value: `${client.city || ''}${client.state ? `, ${client.state}` : ''}` || '—' },
-            { label: 'Assigned To', value: client.crm_users?.name || '—' },
+            { label: 'Owner', value: client.crm_users?.name || '—' },
           ].map(({ label, value }) => (
             <div key={label} style={{ ...card, padding: 16 }}>
               <p style={{ color: p.textSecondary, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>{label}</p>

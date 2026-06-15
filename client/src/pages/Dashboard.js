@@ -160,7 +160,7 @@ export default function Dashboard() {
   const teamStats = teamUsers.map(u => ({
     name: u.name, role: u.role,
     companies: companies.filter(c => c.assigned_to === u.id).length,
-    clients: clients.filter(c => c.assigned_to === u.id).length,
+    clients: clients.filter(c => c.owner_id === u.id).length,
   })).filter(t => t.companies > 0 || t.clients > 0);
 
   const stat = (label, value, sub) => (

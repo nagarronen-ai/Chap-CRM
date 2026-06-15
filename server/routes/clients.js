@@ -9,15 +9,15 @@ const { checkPermission } = require('../middleware/rbac');
 
 // List all clients
 router.get('/', auth, async (req, res) => {
-  const { stage, category, assigned_to, search } = req.query;
+  const { stage, category, owner_id, search } = req.query;
   let query = supabase
     .from('crm_clients')
-    .select('*, crm_users!crm_clients_assigned_to_fkey(name)')
+    .select('*, crm_users!crm_clients_owner_id_fkey(name)')
     .order('created_at', { ascending: false });
 
   if (stage) query = query.eq('stage', stage);
   if (category) query = query.eq('category', category);
-  if (assigned_to) query = query.eq('assigned_to', assigned_to);
+  if (owner_id) query = query.eq('owner_id', owner_id);
   if (search) query = query.or(`business_name.ilike.%${search}%,contact_first_name.ilike.%${search}%,contact_last_name.ilike.%${search}%,contact_email.ilike.%${search}%`);
 
   const { data, error } = await query;
@@ -29,7 +29,7 @@ router.get('/', auth, async (req, res) => {
 router.get('/:id', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_clients')
-    .select('*, crm_users!crm_clients_assigned_to_fkey(name)')
+    .select('*, crm_users!crm_clients_owner_id_fkey(name)')
     .eq('id', req.params.id)
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -94,7 +94,7 @@ router.post('/convert/:companyId', auth, checkPermission('company:edit'), async 
     .from('crm_clients')
     .insert([{
       converted_from: companyId,
-      assigned_to: company.assigned_to || req.user.id,
+      owner_id: company.assigned_to || req.user.id,
       business_name: company.company_name,
       contact_first_name: primaryContact?.first_name || '',
       contact_last_name: primaryContact?.last_name || '',

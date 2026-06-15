@@ -553,7 +553,7 @@ export default function CompanyProfile() {
             <span style={{ color: p.textSecondary, fontSize: 12, marginLeft: 8 }}>{company.city}{company.state ? `, ${company.state}` : ''}</span>
           </div>
           <div style={{ ...card, padding: 16 }}>
-            <p style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', margin: '0 0 6px' }}>Assigned To</p>
+            <p style={{ color: p.textSecondary, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', margin: '0 0 6px' }}>Owner</p>
             {can('company:assign') ? (
               <select value={company.assigned_to || ''} onChange={e => updateField('assigned_to', e.target.value || null)}
                 style={{ background: p.inputBg, border: `1px solid ${p.inputBorder}`, borderRadius: 6, padding: '4px 8px', fontSize: 13, color: p.text, outline: 'none', width: '100%' }}>
