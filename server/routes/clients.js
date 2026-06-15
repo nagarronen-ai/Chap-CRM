@@ -29,8 +29,9 @@ router.get('/', auth, async (req, res) => {
 router.get('/:id', auth, async (req, res) => {
   const { data, error } = await supabase
     .from('crm_clients')
-    .select('*, crm_users!crm_clients_owner_id_fkey(name)')
+    .select('*, crm_users!crm_clients_owner_id_fkey(name), crm_people(*)')
     .eq('id', req.params.id)
+    .order('created_at', { ascending: true, foreignTable: 'crm_people' })
     .single();
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'Client not found' });
@@ -98,6 +99,44 @@ router.put('/:id/owner', auth, checkPermission('company:assign'), async (req, re
       details:   `Owner changed from ${oldName} to ${newName}`,
     }]);
   }
+  res.json(data);
+});
+
+// POST /api/clients/:id/people — add a person under a client (NOT company)
+router.post('/:id/people', auth, checkPermission('people:edit'), async (req, res) => {
+  // Duplicate check scoped to this client
+  if (req.body.email) {
+    const { data: existing } = await supabase
+      .from('crm_people')
+      .select('id')
+      .eq('email', req.body.email.toLowerCase().trim())
+      .eq('client_id', req.params.id)
+      .maybeSingle();
+    if (existing) return res.status(409).json({ error: 'duplicate', existing });
+  }
+
+  // Strip any caller-supplied parent FKs — XOR check requires exactly one parent.
+  const { company_id: _ignoredCompany, client_id: _ignoredClient, ...safe } = req.body;
+
+  const { data, error } = await supabase
+    .from('crm_people')
+    .insert([{
+      ...safe,
+      client_id:  req.params.id,
+      company_id: null,
+      user_id:    req.user.id,
+    }])
+    .select('*')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  await supabase.from('crm_activity_log').insert([{
+    client_id: req.params.id,
+    user_id:   req.user.id,
+    action:    'Contact Added',
+    details:   `Added: ${(req.body.first_name || '').trim()} ${(req.body.last_name || '').trim()}`.trim(),
+  }]);
+
   res.json(data);
 });
 

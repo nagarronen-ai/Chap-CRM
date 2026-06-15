@@ -167,14 +167,16 @@ router.post('/companies/:id/people', auth, checkPermission('people:edit'), async
       .select('id')
       .eq('email', req.body.email.toLowerCase().trim())
       .eq('company_id', req.params.id)
-      .single();
+      .maybeSingle();
     if (existing) {
       return res.status(409).json({ error: 'duplicate', existing });
     }
   }
+  // Strip any caller-supplied parent FKs — XOR check requires exactly one parent.
+  const { company_id: _ignoredCompany, client_id: _ignoredClient, ...safe } = req.body;
   const { data, error } = await supabase
     .from('crm_people')
-    .insert([{ ...req.body, company_id: req.params.id, user_id: req.user.id }])
+    .insert([{ ...safe, company_id: req.params.id, client_id: null, user_id: req.user.id }])
     .select('*')
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -188,9 +190,11 @@ router.post('/companies/:id/people', auth, checkPermission('people:edit'), async
 });
 
 router.put('/people/:id', auth, checkPermission('people:edit'), async (req, res) => {
+  // Strip parent FKs — re-parenting must use a dedicated endpoint, not arbitrary PUT.
+  const { company_id: _ignoredCompany, client_id: _ignoredClient, ...safe } = req.body;
   const { data, error } = await supabase
     .from('crm_people')
-    .update(req.body)
+    .update(safe)
     .eq('id', req.params.id)
     .select('*')
     .single();

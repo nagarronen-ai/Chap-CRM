@@ -40,7 +40,7 @@ const FEATURES_OPTIONS = ['Parking', 'Accessibility', 'WiFi', 'A/V Equipment', '
 const SERVICES_OPTIONS = ['Consulting', 'Installation', 'Maintenance', 'Training', 'Support', 'Delivery', 'Custom Work', 'Subscription', 'One-time'];
 const DIVERSITY_OPTIONS = ['Asian-owned', 'Black-owned', 'Hispanic or Latinx-owned', 'LGBTQ+-owned', 'Native American-owned', 'Pacific Islander-owned', 'Veteran-owned', 'Woman-owned'];
 
-function PeopleFromContact({ companyId, getHeaders, p }) {
+function ClientPeople({ clientId, getHeaders, p }) {
   const [people, setPeople] = useState([]);
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -50,15 +50,15 @@ function PeopleFromContact({ companyId, getHeaders, p }) {
 
   const fetchPeople = async () => {
     try {
-      const res = await axios.get(`${API}/contacts/companies/${companyId}`, { headers: getHeaders() });
+      const res = await axios.get(`${API}/clients/${clientId}`, { headers: getHeaders() });
       setPeople(res.data.crm_people || []);
     } catch (err) {}
   };
 
   useEffect(() => {
-    fetchPeople();
+    if (clientId) fetchPeople();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
+  }, [clientId]);
 
   const savePerson = async () => {
     try {
@@ -71,7 +71,7 @@ function PeopleFromContact({ companyId, getHeaders, p }) {
     if (!addForm.first_name) return;
     setSaving(true);
     try {
-      await axios.post(`${API}/contacts/companies/${companyId}/people`, addForm, { headers: getHeaders() });
+      await axios.post(`${API}/clients/${clientId}/people`, addForm, { headers: getHeaders() });
       setAddForm({ first_name: '', last_name: '', title: '', email: '', work_phone: '', mobile_phone: '' });
       setShowAdd(false); fetchPeople();
     } catch (err) { console.error(err); }
@@ -589,7 +589,7 @@ export default function ClientProfile() {
 
         {/* PEOPLE TAB */}
         {activeTab === 'people' && (
-          <PeopleFromContact companyId={client?.converted_from} getHeaders={getHeaders} p={p} />
+          <ClientPeople clientId={id} getHeaders={getHeaders} p={p} />
         )}
 
         {/* OVERVIEW TAB */}
@@ -652,7 +652,8 @@ export default function ClientProfile() {
             </div>
 
             <div style={{ minWidth: 0, overflow: 'hidden' }}>
-              {client.converted_from && <PeopleFromContact companyId={client.converted_from} getHeaders={getHeaders} p={p} />}
+              <ClientPeople clientId={id} getHeaders={getHeaders} p={p} />
+
               <div style={{ ...card, padding: 20, marginBottom: 16 }}>
                 <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>Quick Note</h3>
                 <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note..." rows={3} style={{ ...inputStyle, marginBottom: 8, resize: 'vertical' }} />
