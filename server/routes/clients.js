@@ -25,6 +25,134 @@ router.get('/', auth, async (req, res) => {
   res.json(data);
 });
 
+// ─── DASHBOARD AGGREGATIONS ──────────────────────────────────────────────────
+// IMPORTANT: these MUST be declared before `/:id` so that `/dashboard-stats`,
+// `/services-all`, and `/activity/combined` aren't swallowed by the :id matcher.
+
+// GET /api/clients/dashboard-stats?since=YYYY-MM-DD
+// Single aggregation endpoint for the Dashboard. `since` filters revenue +
+// top_by_revenue; counts and services-* are always current-state.
+router.get('/dashboard-stats', auth, async (req, res) => {
+  const since = req.query.since || null;
+  try {
+    const [
+      companiesRes, clientsCountRes, peopleRes,
+      svcRes, finRes, clientsListRes,
+    ] = await Promise.all([
+      supabase.from('crm_companies').select('id', { count: 'exact', head: true }),
+      supabase.from('crm_clients').select('id', { count: 'exact', head: true }),
+      supabase.from('crm_people').select('id', { count: 'exact', head: true }),
+      supabase.from('crm_customer_services').select('client_id, owner_id, status, contract_amount'),
+      (() => {
+        let q = supabase.from('crm_client_finance').select('client_id, type, status, amount, date');
+        if (since) q = q.gte('date', since);
+        return q;
+      })(),
+      supabase.from('crm_clients').select('id, business_name'),
+    ]);
+
+    const services = svcRes.data || [];
+    const finance  = finRes.data  || [];
+    const nameById = Object.fromEntries((clientsListRes.data || []).map(c => [c.id, c.business_name]));
+
+    const byStatus = { active: 0, prospect: 0, past: 0, lost: 0 };
+    let prospectSum = 0;
+    const activeByOwner = {};
+    const activeByClient = {};
+    for (const s of services) {
+      if (byStatus[s.status] != null) byStatus[s.status]++;
+      if (s.status === 'prospect' && s.contract_amount != null) prospectSum += Number(s.contract_amount);
+      if (s.status === 'active') {
+        if (s.owner_id)  activeByOwner[s.owner_id]   = (activeByOwner[s.owner_id]   || 0) + 1;
+        if (s.client_id) activeByClient[s.client_id] = (activeByClient[s.client_id] || 0) + 1;
+      }
+    }
+    const servicesTotal = byStatus.active + byStatus.prospect + byStatus.past + byStatus.lost;
+
+    // Revenue: inflow (anything not Refund) minus refunds. Paid + Pending tracked separately.
+    let revenuePaid = 0, revenuePending = 0;
+    const revByClient = new Map();
+    for (const r of finance) {
+      const amt = Number(r.amount) || 0;
+      const signed = r.type === 'Refund' ? -amt : amt;
+      if (r.status === 'Paid') {
+        revenuePaid += signed;
+        if (r.client_id) revByClient.set(r.client_id, (revByClient.get(r.client_id) || 0) + signed);
+      } else if (r.status === 'Pending' && r.type !== 'Refund') {
+        revenuePending += amt;
+      }
+    }
+
+    const topByRevenue = [...revByClient.entries()]
+      .map(([id, value]) => ({ id, business_name: nameById[id] || '—', value }))
+      .filter(t => t.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    const topByServices = Object.entries(activeByClient)
+      .map(([id, value]) => ({ id, business_name: nameById[id] || '—', value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    res.json({
+      counts: {
+        companies:         companiesRes.count   || 0,
+        clients:           clientsCountRes.count || 0,
+        people:            peopleRes.count       || 0,
+        services_total:    servicesTotal,
+        services_active:   byStatus.active,
+        services_prospect: byStatus.prospect,
+        services_past:     byStatus.past,
+        services_lost:     byStatus.lost,
+      },
+      revenue:                  { paid: revenuePaid, pending: revenuePending },
+      services_prospect_sum:    prospectSum,
+      active_services_by_owner: activeByOwner,
+      top_by_revenue:           topByRevenue,
+      top_by_services:          topByServices,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/clients/services-all?status=prospect
+// Flat list of customer-service rows across all clients, for drill-down views.
+router.get('/services-all', auth, async (req, res) => {
+  const { status } = req.query;
+  let query = supabase
+    .from('crm_customer_services')
+    .select(`
+      id, client_id, owner_id, status, contract_amount, contract_currency, created_at,
+      crm_clients(id, business_name),
+      crm_services(name_en, name_he, sort_order),
+      crm_users!crm_customer_services_owner_id_fkey(name)
+    `)
+    .order('created_at', { ascending: false });
+  if (status) query = query.eq('status', status);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// GET /api/clients/activity/combined?limit=10
+// Activity log entries from both company and client paths, newest first.
+router.get('/activity/combined', auth, async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+  const { data, error } = await supabase
+    .from('crm_activity_log')
+    .select(`
+      id, action, details, company_id, client_id, person_id, user_id, created_at,
+      crm_companies(company_name),
+      crm_clients(business_name),
+      crm_users(name)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 // Get single client with all related data
 router.get('/:id', auth, async (req, res) => {
   const { data, error } = await supabase
