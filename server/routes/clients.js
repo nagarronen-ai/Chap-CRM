@@ -298,6 +298,143 @@ router.delete('/documents/:docId', auth, checkPermission('company:delete'), asyn
   res.json({ success: true });
 });
 
+// ─── CUSTOMER SERVICES ───────────────────────────────────────────────────────
+
+// Sort: status priority (active=1, prospect=2, past=3, lost=4) then crm_services.sort_order.
+// Postgres lacks a one-liner for that across a join via PostgREST, so we sort in JS.
+const STATUS_PRIORITY = { active: 1, prospect: 2, past: 3, lost: 4 };
+function sortCustomerServices(rows) {
+  return [...(rows || [])].sort((a, b) => {
+    const pa = STATUS_PRIORITY[a.status] ?? 99;
+    const pb = STATUS_PRIORITY[b.status] ?? 99;
+    if (pa !== pb) return pa - pb;
+    const sa = a.crm_services?.sort_order ?? 9999;
+    const sb = b.crm_services?.sort_order ?? 9999;
+    return sa - sb;
+  });
+}
+
+const CUSTOMER_SERVICE_SELECT =
+  '*, crm_services(id, name_en, name_he, sort_order), crm_users!crm_customer_services_owner_id_fkey(id, name)';
+
+// GET /api/clients/:id/services — list services attached to this client
+router.get('/:id/services', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('crm_customer_services')
+    .select(CUSTOMER_SERVICE_SELECT)
+    .eq('client_id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(sortCustomerServices(data));
+});
+
+// POST /api/clients/:id/services — attach a service to a client (idempotent via UNIQUE)
+router.post('/:id/services', auth, checkPermission('company:edit'), async (req, res) => {
+  const {
+    service_id, status, owner_id,
+    contract_amount, contract_currency,
+    commission_rate, start_date, end_date, renewal_date, notes,
+  } = req.body;
+  if (!service_id) return res.status(400).json({ error: 'service_id required' });
+
+  // Pre-check duplicate for friendly 409 (UNIQUE constraint is the real guard)
+  const { data: existing } = await supabase
+    .from('crm_customer_services')
+    .select('id')
+    .eq('client_id', req.params.id)
+    .eq('service_id', service_id)
+    .maybeSingle();
+  if (existing) return res.status(409).json({ error: 'duplicate', existing });
+
+  const { data, error } = await supabase
+    .from('crm_customer_services')
+    .insert([{
+      client_id:         req.params.id,
+      service_id,
+      status:            status || 'active',
+      owner_id:          owner_id || null,
+      contract_amount:   contract_amount ?? null,
+      contract_currency: contract_currency || 'ILS',
+      commission_rate:   commission_rate ?? null,
+      start_date:        start_date || null,
+      end_date:          end_date || null,
+      renewal_date:      renewal_date || null,
+      notes:             notes || null,
+    }])
+    .select(CUSTOMER_SERVICE_SELECT)
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  await supabase.from('crm_activity_log').insert([{
+    client_id: req.params.id,
+    user_id:   req.user.id,
+    action:    'Service Added',
+    details:   `Service added: ${data.crm_services?.name_en || service_id}`,
+  }]);
+
+  res.json(data);
+});
+
+// PUT /api/clients/:id/services/:csId — update one field at a time (cell edits)
+router.put('/:id/services/:csId', auth, checkPermission('company:edit'), async (req, res) => {
+  // Strip immutable / join fields from body
+  const {
+    id: _ignoredId, client_id: _ignoredClient, service_id: _ignoredSvc,
+    crm_services: _ignoredJoin1, crm_users: _ignoredJoin2, created_at: _ignoredCreated,
+    ...safe
+  } = req.body;
+  if (Object.keys(safe).length === 0) {
+    return res.status(400).json({ error: 'No editable fields supplied' });
+  }
+  safe.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('crm_customer_services')
+    .update(safe)
+    .eq('id', req.params.csId)
+    .eq('client_id', req.params.id)
+    .select(CUSTOMER_SERVICE_SELECT)
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'Customer-service row not found' });
+
+  const changedFields = Object.keys(safe).filter(k => k !== 'updated_at');
+  await supabase.from('crm_activity_log').insert([{
+    client_id: req.params.id,
+    user_id:   req.user.id,
+    action:    'Service Updated',
+    details:   `Service updated: ${data.crm_services?.name_en || ''} (${changedFields.join(', ')})`,
+  }]);
+
+  res.json(data);
+});
+
+// DELETE /api/clients/:id/services/:csId — detach service from client
+router.delete('/:id/services/:csId', auth, checkPermission('company:edit'), async (req, res) => {
+  // Fetch the service name for the activity log before we lose the row
+  const { data: existing } = await supabase
+    .from('crm_customer_services')
+    .select('crm_services(name_en)')
+    .eq('id', req.params.csId)
+    .eq('client_id', req.params.id)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from('crm_customer_services')
+    .delete()
+    .eq('id', req.params.csId)
+    .eq('client_id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+
+  await supabase.from('crm_activity_log').insert([{
+    client_id: req.params.id,
+    user_id:   req.user.id,
+    action:    'Service Removed',
+    details:   `Service removed: ${existing?.crm_services?.name_en || req.params.csId}`,
+  }]);
+
+  res.json({ success: true });
+});
+
 // ─── VENDOR PAGE ─────────────────────────────────────────────────────────────
 
 router.get('/:id/vendor-page', auth, async (req, res) => {

@@ -151,6 +151,291 @@ function ClientPeople({ clientId, getHeaders, p }) {
   );
 }
 
+// ─── ClientServices ──────────────────────────────────────────────────────────
+// Two-zone Services tab. Zone 1: catalog checklist (all 5 services as
+// toggleable boxes). Zone 2: table of attached services with inline-edit cells.
+// Parent (ClientProfile) owns `services` + `setServices` so the tab-label count
+// updates on every mutation.
+const SERVICE_STATUSES = [
+  { value: 'active',   label: 'Active / פעיל',         bg: '#D4EDDA', fg: '#155724', dot: '#28a745' },
+  { value: 'prospect', label: 'Prospect / פוטנציאל',   bg: '#FFF3CD', fg: '#856404', dot: '#D4A574' },
+  { value: 'past',     label: 'Past / לשעבר',          bg: '#E0E0E0', fg: '#6C6C6C', dot: '#9E9E9E' },
+  { value: 'lost',     label: 'Lost / לא נסגר',        bg: '#F8D7DA', fg: '#721C24', dot: '#D4183D' },
+];
+const STATUS_BY_VALUE = Object.fromEntries(SERVICE_STATUSES.map(s => [s.value, s]));
+
+function StatusPill({ status }) {
+  const s = STATUS_BY_VALUE[status] || STATUS_BY_VALUE.active;
+  return (
+    <span style={{ background: s.bg, color: s.fg, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
+      {s.label}
+    </span>
+  );
+}
+
+function ClientServices({ clientId, services, setServices, teamUsers, canEdit, getHeaders, p }) {
+  const [catalog, setCatalog] = useState([]);
+  const [pendingIds, setPendingIds] = useState(new Set());
+  const [editingCell, setEditingCell] = useState(null); // { csId, field } | null
+  const [cellDraft, setCellDraft] = useState('');
+
+  useEffect(() => {
+    axios.get(`${API}/services`, { headers: getHeaders() })
+      .then(res => setCatalog(res.data || []))
+      .catch(() => {});
+  }, []);
+
+  const markPending = (id, on) => {
+    setPendingIds(prev => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
+  };
+
+  const userNameById = (uid) => teamUsers.find(u => u.id === uid)?.name || null;
+
+  // Build the smarter remove-confirm message (D1).
+  const removeConfirmMessage = (row) => {
+    const name = row.crm_services?.name_en || 'this service';
+    const populated = [];
+    if (row.owner_id)         populated.push(`Owner: ${userNameById(row.owner_id) || row.owner_id}`);
+    if (row.contract_amount != null) populated.push(`Amount: ₪${Number(row.contract_amount).toLocaleString()}`);
+    if (row.commission_rate != null) populated.push(`Commission: ${row.commission_rate}%`);
+    if (row.start_date)       populated.push(`Start: ${row.start_date}`);
+    if (row.end_date)         populated.push(`End: ${row.end_date}`);
+    if (row.renewal_date)     populated.push(`Renewal: ${row.renewal_date}`);
+    if (row.notes)            populated.push(`Notes`);
+    if (populated.length === 0) return `Remove '${name}' from this customer?`;
+    return `Remove '${name}' from this customer?\n\nThis will delete:\n  • ${populated.join('\n  • ')}\n\nThis cannot be undone.`;
+  };
+
+  const addService = async (serviceId) => {
+    if (!canEdit || pendingIds.has(serviceId)) return;
+    markPending(serviceId, true);
+    try {
+      const res = await axios.post(`${API}/clients/${clientId}/services`, { service_id: serviceId, status: 'active' }, { headers: getHeaders() });
+      setServices(prev => [...prev, res.data]);
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        // Lost a race — refetch to reconcile
+        try {
+          const res = await axios.get(`${API}/clients/${clientId}/services`, { headers: getHeaders() });
+          setServices(res.data || []);
+        } catch {}
+      } else { console.error(err); }
+    }
+    markPending(serviceId, false);
+  };
+
+  const removeService = async (row) => {
+    if (!canEdit || pendingIds.has(row.id)) return;
+    if (!window.confirm(removeConfirmMessage(row))) return;
+    markPending(row.id, true);
+    try {
+      await axios.delete(`${API}/clients/${clientId}/services/${row.id}`, { headers: getHeaders() });
+      setServices(prev => prev.filter(s => s.id !== row.id));
+    } catch (err) { console.error(err); }
+    markPending(row.id, false);
+  };
+
+  const startEdit = (csId, field, currentValue) => {
+    if (!canEdit) return;
+    setEditingCell({ csId, field });
+    setCellDraft(currentValue ?? '');
+  };
+
+  const cancelEdit = () => { setEditingCell(null); setCellDraft(''); };
+
+  const commitEdit = async () => {
+    if (!editingCell) return;
+    const { csId, field } = editingCell;
+    const row = services.find(s => s.id === csId);
+    if (!row) { cancelEdit(); return; }
+    // Normalise the draft based on field type
+    let value = cellDraft;
+    if (field === 'contract_amount' || field === 'commission_rate') {
+      value = value === '' ? null : Number(value);
+      if (Number.isNaN(value)) { cancelEdit(); return; }
+    } else if (field === 'start_date' || field === 'end_date' || field === 'renewal_date') {
+      value = value === '' ? null : value;
+    } else if (field === 'owner_id' || field === 'notes') {
+      value = value === '' ? null : value;
+    }
+    // Skip if unchanged
+    const current = row[field] ?? null;
+    if (current === value || (current == null && (value == null || value === ''))) { cancelEdit(); return; }
+    try {
+      const res = await axios.put(`${API}/clients/${clientId}/services/${csId}`, { [field]: value }, { headers: getHeaders() });
+      setServices(prev => prev.map(s => s.id === csId ? res.data : s));
+    } catch (err) { console.error(err); }
+    cancelEdit();
+  };
+
+  const onCellKeyDown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+  };
+
+  const isEditing = (csId, field) => editingCell && editingCell.csId === csId && editingCell.field === field;
+
+  const cellInputStyle = { width: '100%', background: p.inputBg, border: `1px solid ${p.primary}`, borderRadius: 4, padding: '4px 6px', color: p.text, fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' };
+  const readCellStyle = { padding: '10px 12px', fontSize: 13, color: p.text, cursor: canEdit ? 'pointer' : 'default', verticalAlign: 'middle' };
+
+  return (
+    <div>
+      {/* ZONE 1 — Checklist */}
+      <div style={{ ...cardLike(p), padding: 20, marginBottom: 16 }}>
+        <p style={{ color: p.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 12px' }}>Catalog</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {catalog.length === 0 && <p style={{ color: p.textMuted, fontSize: 12, margin: 0 }}>Loading catalog…</p>}
+          {catalog.map(svc => {
+            const existing = services.find(cs => cs.service_id === svc.id);
+            const checked  = !!existing;
+            const busy     = pendingIds.has(svc.id) || (existing && pendingIds.has(existing.id));
+            const dot      = checked ? (STATUS_BY_VALUE[existing.status]?.dot || '#999') : null;
+            return (
+              <label key={svc.id}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  background: checked ? p.inputBg : p.cardBg,
+                  border: `1px solid ${checked ? p.primary : p.inputBorder}`,
+                  borderRadius: 10, padding: '8px 12px',
+                  cursor: canEdit && !busy ? 'pointer' : 'default',
+                  opacity: busy ? 0.5 : 1,
+                  transition: 'opacity 0.15s',
+                }}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={!canEdit || busy}
+                  onChange={() => checked ? removeService(existing) : addService(svc.id)}
+                  style={{ accentColor: p.primary, cursor: canEdit && !busy ? 'pointer' : 'default' }}
+                />
+                <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                  <span style={{ color: p.text, fontSize: 13, fontWeight: 600 }}>{svc.name_he}</span>
+                  <span style={{ color: p.textSecondary, fontSize: 11 }}>{svc.name_en}</span>
+                </span>
+                {dot && (
+                  <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: dot, marginLeft: 2 }} />
+                )}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ZONE 2 — Table */}
+      {services.length === 0 ? (
+        <div style={{ ...cardLike(p), padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🧰</div>
+          <p style={{ color: p.text, fontSize: 14, fontWeight: 500, margin: '0 0 6px' }}>No services yet</p>
+          <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>Check a service above to add it.</p>
+        </div>
+      ) : (
+        <div style={{ ...cardLike(p), overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '4%' }} />
+            </colgroup>
+            <thead>
+              <tr style={{ background: p.inputBg }}>
+                {['Service', 'Status', 'Owner', 'Amount (₪)', 'Comm %', 'Start', 'Renewal', 'Notes', ''].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {services.map((row, i) => {
+                const rowBg = i % 2 === 0 ? p.cardBg : p.inputBg;
+                return (
+                  <tr key={row.id} style={{ borderTop: `1px solid ${p.cardBorder}`, background: rowBg }}>
+                    {/* Service (read-only) */}
+                    <td style={{ ...readCellStyle, cursor: 'default' }}>
+                      <div style={{ fontWeight: 600, color: p.text }}>{row.crm_services?.name_he || '—'}</div>
+                      <div style={{ color: p.textSecondary, fontSize: 11 }}>{row.crm_services?.name_en || ''}</div>
+                    </td>
+                    {/* Status */}
+                    <td style={readCellStyle} onClick={() => startEdit(row.id, 'status', row.status)}>
+                      {isEditing(row.id, 'status') ? (
+                        <select autoFocus value={cellDraft} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle}>
+                          {SERVICE_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                      ) : <StatusPill status={row.status} />}
+                    </td>
+                    {/* Owner */}
+                    <td style={readCellStyle} onClick={() => startEdit(row.id, 'owner_id', row.owner_id || '')}>
+                      {isEditing(row.id, 'owner_id') ? (
+                        <select autoFocus value={cellDraft} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle}>
+                          <option value="">— Unassigned —</option>
+                          {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        </select>
+                      ) : <span style={{ color: row.crm_users?.name ? p.text : p.textMuted }}>{row.crm_users?.name || '—'}</span>}
+                    </td>
+                    {/* Amount */}
+                    <td style={readCellStyle} onClick={() => startEdit(row.id, 'contract_amount', row.contract_amount ?? '')}>
+                      {isEditing(row.id, 'contract_amount') ? (
+                        <input autoFocus type="number" value={cellDraft} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
+                      ) : (row.contract_amount != null ? `₪${Number(row.contract_amount).toLocaleString()}` : <span style={{ color: p.textMuted }}>—</span>)}
+                    </td>
+                    {/* Commission */}
+                    <td style={readCellStyle} onClick={() => startEdit(row.id, 'commission_rate', row.commission_rate ?? '')}>
+                      {isEditing(row.id, 'commission_rate') ? (
+                        <input autoFocus type="number" step="0.01" value={cellDraft} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
+                      ) : (row.commission_rate != null ? `${row.commission_rate}%` : <span style={{ color: p.textMuted }}>—</span>)}
+                    </td>
+                    {/* Start */}
+                    <td style={readCellStyle} onClick={() => startEdit(row.id, 'start_date', row.start_date || '')}>
+                      {isEditing(row.id, 'start_date') ? (
+                        <input autoFocus type="date" value={cellDraft || ''} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
+                      ) : (row.start_date || <span style={{ color: p.textMuted }}>—</span>)}
+                    </td>
+                    {/* Renewal */}
+                    <td style={readCellStyle} onClick={() => startEdit(row.id, 'renewal_date', row.renewal_date || '')}>
+                      {isEditing(row.id, 'renewal_date') ? (
+                        <input autoFocus type="date" value={cellDraft || ''} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
+                      ) : (row.renewal_date || <span style={{ color: p.textMuted }}>—</span>)}
+                    </td>
+                    {/* Notes */}
+                    <td style={{ ...readCellStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.notes || ''} onClick={() => startEdit(row.id, 'notes', row.notes || '')}>
+                      {isEditing(row.id, 'notes') ? (
+                        <input autoFocus type="text" value={cellDraft} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
+                      ) : (row.notes || <span style={{ color: p.textMuted }}>—</span>)}
+                    </td>
+                    {/* Delete */}
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                      {canEdit && (
+                        <button onClick={() => removeService(row)} disabled={pendingIds.has(row.id)}
+                          style={{ background: 'transparent', border: 'none', cursor: pendingIds.has(row.id) ? 'default' : 'pointer', color: '#D4183D', fontSize: 14, opacity: pendingIds.has(row.id) ? 0.4 : 1 }}
+                          title="Remove from customer">
+                          🗑
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Small helper so ClientServices doesn't depend on the parent's `card` literal.
+function cardLike(p) {
+  return { background: p.cardBg, borderRadius: 12, border: `1px solid ${p.cardBorder}` };
+}
+
 export default function ClientProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -164,6 +449,7 @@ export default function ClientProfile() {
   const [teamUsers, setTeamUsers] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [vendorPage, setVendorPage] = useState({});
+  const [customerServices, setCustomerServices] = useState([]);
   const [finance, setFinance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -320,18 +606,20 @@ export default function ClientProfile() {
 
   const fetchAll = async () => {
     try {
-      const [clientRes, activityRes, docsRes, vpRes, finRes] = await Promise.all([
+      const [clientRes, activityRes, docsRes, vpRes, finRes, csvcRes] = await Promise.all([
         axios.get(`${API}/clients/${id}`, { headers: getHeaders() }),
         axios.get(`${API}/clients/${id}/activity`, { headers: getHeaders() }),
         axios.get(`${API}/documents?client_id=${id}`, { headers: getHeaders() }),
         axios.get(`${API}/clients/${id}/vendor-page`, { headers: getHeaders() }),
         canFinance ? axios.get(`${API}/clients/${id}/finance`, { headers: getHeaders() }) : Promise.resolve({ data: [] }),
+        axios.get(`${API}/clients/${id}/services`, { headers: getHeaders() }),
       ]);
       setClient(clientRes.data);
       setActivity(activityRes.data);
       setDocuments(docsRes.data);
       setVendorPage(vpRes.data || {});
       setFinance(finRes.data);
+      setCustomerServices(csvcRes.data || []);
       if (clientRes.data?.converted_from) {
         fetchEmailHistory(clientRes.data.converted_from);
         try {
@@ -577,7 +865,7 @@ export default function ClientProfile() {
             { key: 'documents', label: `Documents (${documents.length})` },
             { key: 'emails', label: `Emails (${contactEmailHistory.length + contactMarketingHistory.length})` },
             { key: 'people', label: 'People' },
-            { key: 'vendor-page', label: 'Listing Page' },
+            { key: 'services', label: `Services (${customerServices.length})` },
             ...(canFinance ? [{ key: 'finance', label: `Finance (${finance.length})` }] : []),
           ].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -590,6 +878,19 @@ export default function ClientProfile() {
         {/* PEOPLE TAB */}
         {activeTab === 'people' && (
           <ClientPeople clientId={id} getHeaders={getHeaders} p={p} />
+        )}
+
+        {/* SERVICES TAB */}
+        {activeTab === 'services' && (
+          <ClientServices
+            clientId={id}
+            services={customerServices}
+            setServices={setCustomerServices}
+            teamUsers={teamUsers}
+            canEdit={can('company:edit')}
+            getHeaders={getHeaders}
+            p={p}
+          />
         )}
 
         {/* OVERVIEW TAB */}
