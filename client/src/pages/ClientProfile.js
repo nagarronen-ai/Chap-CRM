@@ -247,24 +247,40 @@ function ClientServices({ clientId, services, setServices, teamUsers, canEdit, g
 
   const cancelEdit = () => { setEditingCell(null); setCellDraft(''); };
 
+  // commitEdit: for cells where the user TYPES (text/number/notes). Runs on blur
+  // and reads from cellDraft. Selects + native date pickers don't reliably blur
+  // after a pick on every browser, so they use commitImmediateChange below.
   const commitEdit = async () => {
     if (!editingCell) return;
     const { csId, field } = editingCell;
     const row = services.find(s => s.id === csId);
     if (!row) { cancelEdit(); return; }
-    // Normalise the draft based on field type
     let value = cellDraft;
     if (field === 'contract_amount' || field === 'commission_rate') {
       value = value === '' ? null : Number(value);
       if (Number.isNaN(value)) { cancelEdit(); return; }
-    } else if (field === 'start_date' || field === 'end_date' || field === 'renewal_date') {
-      value = value === '' ? null : value;
-    } else if (field === 'owner_id' || field === 'notes') {
+    } else if (field === 'notes') {
       value = value === '' ? null : value;
     }
-    // Skip if unchanged
     const current = row[field] ?? null;
     if (current === value || (current == null && (value == null || value === ''))) { cancelEdit(); return; }
+    try {
+      const res = await axios.put(`${API}/clients/${clientId}/services/${csId}`, { [field]: value }, { headers: getHeaders() });
+      setServices(prev => prev.map(s => s.id === csId ? res.data : s));
+    } catch (err) { console.error(err); }
+    cancelEdit();
+  };
+
+  // commitImmediateChange: for cells where the user PICKS (selects + date inputs).
+  // Saves on the change event itself — doesn't depend on the input blurring,
+  // which is unreliable for native <select> popups and on some date-picker
+  // implementations.
+  const commitImmediateChange = async (csId, field, rawValue) => {
+    const row = services.find(s => s.id === csId);
+    if (!row) { cancelEdit(); return; }
+    const value = rawValue === '' ? null : rawValue;
+    const current = row[field] ?? null;
+    if (current === value) { cancelEdit(); return; }
     try {
       const res = await axios.put(`${API}/clients/${clientId}/services/${csId}`, { [field]: value }, { headers: getHeaders() });
       setServices(prev => prev.map(s => s.id === csId ? res.data : s));
@@ -366,7 +382,9 @@ function ClientServices({ clientId, services, setServices, teamUsers, canEdit, g
                     {/* Status */}
                     <td style={readCellStyle} onClick={() => startEdit(row.id, 'status', row.status)}>
                       {isEditing(row.id, 'status') ? (
-                        <select autoFocus value={cellDraft} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle}>
+                        <select autoFocus value={row.status}
+                          onChange={e => commitImmediateChange(row.id, 'status', e.target.value)}
+                          onBlur={cancelEdit} onKeyDown={onCellKeyDown} style={cellInputStyle}>
                           {SERVICE_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
                       ) : <StatusPill status={row.status} />}
@@ -374,7 +392,9 @@ function ClientServices({ clientId, services, setServices, teamUsers, canEdit, g
                     {/* Owner */}
                     <td style={readCellStyle} onClick={() => startEdit(row.id, 'owner_id', row.owner_id || '')}>
                       {isEditing(row.id, 'owner_id') ? (
-                        <select autoFocus value={cellDraft} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle}>
+                        <select autoFocus value={row.owner_id || ''}
+                          onChange={e => commitImmediateChange(row.id, 'owner_id', e.target.value)}
+                          onBlur={cancelEdit} onKeyDown={onCellKeyDown} style={cellInputStyle}>
                           <option value="">— Unassigned —</option>
                           {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
@@ -395,13 +415,17 @@ function ClientServices({ clientId, services, setServices, teamUsers, canEdit, g
                     {/* Start */}
                     <td style={readCellStyle} onClick={() => startEdit(row.id, 'start_date', row.start_date || '')}>
                       {isEditing(row.id, 'start_date') ? (
-                        <input autoFocus type="date" value={cellDraft || ''} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
+                        <input autoFocus type="date" value={row.start_date || ''}
+                          onChange={e => commitImmediateChange(row.id, 'start_date', e.target.value)}
+                          onBlur={cancelEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
                       ) : (row.start_date || <span style={{ color: p.textMuted }}>—</span>)}
                     </td>
                     {/* Renewal */}
                     <td style={readCellStyle} onClick={() => startEdit(row.id, 'renewal_date', row.renewal_date || '')}>
                       {isEditing(row.id, 'renewal_date') ? (
-                        <input autoFocus type="date" value={cellDraft || ''} onChange={e => setCellDraft(e.target.value)} onBlur={commitEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
+                        <input autoFocus type="date" value={row.renewal_date || ''}
+                          onChange={e => commitImmediateChange(row.id, 'renewal_date', e.target.value)}
+                          onBlur={cancelEdit} onKeyDown={onCellKeyDown} style={cellInputStyle} />
                       ) : (row.renewal_date || <span style={{ color: p.textMuted }}>—</span>)}
                     </td>
                     {/* Notes */}
@@ -829,7 +853,7 @@ export default function ClientProfile() {
         </div>
 
         {/* Info Bar */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
           {[
             { label: 'Contract', value: client.contract_type === 'Subscription' ? `${client.contract_type} · $${client.contract_amount || 0}/mo` : client.contract_type === 'RevShare' ? `${client.contract_type} · $${client.contract_amount || 0} + ${client.commission_rate}%` : `${client.contract_type} · ${client.commission_rate}%` },
             { label: 'Contact', value: `${client.contact_first_name} ${client.contact_last_name}` },
@@ -840,20 +864,6 @@ export default function ClientProfile() {
               <p style={{ color: p.text, fontSize: 14, fontWeight: 500, margin: 0 }}>{value}</p>
             </div>
           ))}
-          <div style={{ ...card, padding: 16 }}>
-            <p style={{ color: p.textSecondary, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>Owner</p>
-            {can('company:assign') ? (
-              <select
-                value={client.owner_id || ''}
-                onChange={e => updateOwner(e.target.value || null)}
-                style={{ background: p.inputBg, border: `1px solid ${p.inputBorder}`, borderRadius: 6, padding: '4px 8px', fontSize: 13, color: p.text, outline: 'none', width: '100%' }}>
-                <option value="">— Unassigned —</option>
-                {teamUsers.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-              </select>
-            ) : (
-              <p style={{ color: p.text, fontSize: 14, fontWeight: 500, margin: 0 }}>{client.crm_users?.name || '—'}</p>
-            )}
-          </div>
         </div>
 
         {/* Tabs */}
