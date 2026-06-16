@@ -864,7 +864,7 @@ export default function ClientProfile() {
             { key: 'meetings', label: `Meetings (${meetings.length})` },
             { key: 'documents', label: `Documents (${documents.length})` },
             { key: 'emails', label: `Emails (${contactEmailHistory.length + contactMarketingHistory.length})` },
-            { key: 'people', label: 'People' },
+            { key: 'people', label: `People (${client.crm_people?.length || 0})` },
             { key: 'services', label: `Services (${customerServices.length})` },
             ...(canFinance ? [{ key: 'finance', label: `Finance (${finance.length})` }] : []),
           ].map(tab => (
