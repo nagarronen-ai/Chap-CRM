@@ -34,7 +34,8 @@ export default function ServiceProviderProfile() {
   const [loading, setLoading]                 = useState(true);
   const [editingField, setEditingField]       = useState(null);
   const [draft, setDraft]                     = useState('');
-  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  // confirmModal: null | { title, message, confirmLabel, danger, onConfirm }
+  const [confirmModal, setConfirmModal]       = useState(null);
 
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -97,11 +98,55 @@ export default function ServiceProviderProfile() {
     else if (e.key === 'Escape'){ e.preventDefault(); cancelEdit(); }
   };
 
-  const deactivate = async () => {
-    try {
-      await axios.delete(`${API}/service-providers/${id}`, { headers: getHeaders() });
-      navigate('/service-providers');
-    } catch (err) { console.error(err); }
+  // ─── Provider-level actions ────────────────────────────────────────────────
+  // The primary destructive button is "Delete" when the provider has 0 contracts
+  // (hard delete via DELETE /:id) and "Deactivate" when it has 1+ contracts
+  // (soft delete via PUT /:id { is_active: false }).
+  const openDestructiveModal = () => {
+    const count = provider.active_contracts || 0;
+    if (count === 0) {
+      setConfirmModal({
+        title: 'Delete Provider?',
+        message: `"${provider.name}" will be permanently deleted. This cannot be undone.`,
+        confirmLabel: 'Delete',
+        danger: true,
+        onConfirm: async () => {
+          try {
+            await axios.delete(`${API}/service-providers/${id}`, { headers: getHeaders() });
+            navigate('/service-providers');
+          } catch (err) {
+            console.error(err);
+            const msg = err?.response?.data?.message;
+            if (msg) {
+              // Race with another tab that added contracts — surface the server's message.
+              setConfirmModal({
+                title: 'Cannot delete',
+                message: msg,
+                confirmLabel: 'OK',
+                danger: false,
+                onConfirm: () => setConfirmModal(null),
+              });
+              return;
+            }
+          }
+          setConfirmModal(null);
+        },
+      });
+    } else {
+      setConfirmModal({
+        title: 'Deactivate Provider?',
+        message: `"${provider.name}" will be marked inactive. Existing ${count} contract${count === 1 ? '' : 's'} stay attached — they won't be affected. You can reactivate later.`,
+        confirmLabel: 'Deactivate',
+        danger: false,
+        onConfirm: async () => {
+          try {
+            const res = await axios.put(`${API}/service-providers/${id}`, { is_active: false }, { headers: getHeaders() });
+            setProvider(prev => ({ ...prev, is_active: res.data.is_active }));
+          } catch (err) { console.error(err); }
+          setConfirmModal(null);
+        },
+      });
+    }
   };
 
   const reactivate = async () => {
@@ -109,6 +154,29 @@ export default function ServiceProviderProfile() {
       const res = await axios.put(`${API}/service-providers/${id}`, { is_active: true }, { headers: getHeaders() });
       setProvider(prev => ({ ...prev, is_active: res.data.is_active }));
     } catch (err) { console.error(err); }
+  };
+
+  // ─── Row-level actions: remove a single junction row ───────────────────────
+  const openRemoveContractModal = (contract) => {
+    const clientName = contract.crm_customer_services?.crm_clients?.business_name || 'this customer';
+    setConfirmModal({
+      title: 'Remove Contract?',
+      message: `Remove this contract for ${clientName} from ${provider.name}? This cannot be undone.`,
+      confirmLabel: 'Remove Contract',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await axios.delete(`${API}/service-providers/${id}/contracts/${contract.id}`, { headers: getHeaders() });
+          setProvider(prev => ({
+            ...prev,
+            contracts:        (prev.contracts || []).filter(c => c.id !== contract.id),
+            active_contracts: Math.max(0, (prev.active_contracts || 1) - 1),
+            total_po_amount:  Math.max(0, (prev.total_po_amount  || 0) - (Number(contract.po_amount) || 0)),
+          }));
+        } catch (err) { console.error(err); }
+        setConfirmModal(null);
+      },
+    });
   };
 
   if (loading) {
@@ -185,9 +253,9 @@ export default function ServiceProviderProfile() {
                 <span style={{ background: '#E0E0E0', color: '#6C6C6C', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 600 }}>Inactive</span>
               )}
               {canEdit && provider.is_active && (
-                <button onClick={() => setConfirmDeactivate(true)}
+                <button onClick={openDestructiveModal}
                   style={{ background: 'transparent', color: '#D4183D', border: `1px solid ${p.cardBorder}`, borderRadius: 8, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
-                  Deactivate
+                  {(provider.active_contracts || 0) === 0 ? 'Delete' : 'Deactivate'}
                 </button>
               )}
               {canEdit && !provider.is_active && (
@@ -270,84 +338,141 @@ export default function ServiceProviderProfile() {
           </div>
         </div>
 
-        {/* Contracts table (read-only — Session 2 wires editing from the Services tab) */}
-        <div style={{ ...card, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${p.cardBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-            <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: 0 }}>Contracts ({(provider.contracts || []).length})</h3>
-            <p style={{ color: p.textSecondary, fontSize: 11, margin: 0 }}>Read-only · attach providers from each client's Services tab (Session 2)</p>
-          </div>
-          {(provider.contracts || []).length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center' }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-              <p style={{ color: p.textMuted, fontSize: 13, margin: 0 }}>No contracts yet — this provider isn't attached to any customer services.</p>
-            </div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: p.inputBg }}>
-                  {['Customer', 'Service', 'PO Number', 'PO Amount', 'Commission', 'Service Status'].map(h => (
-                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(provider.contracts || []).map((c, i) => {
-                  const cs      = c.crm_customer_services;
-                  const client  = cs?.crm_clients;
-                  const service = cs?.crm_services;
-                  const status  = cs?.status || 'active';
-                  const sc      = SERVICE_STATUS[status] || SERVICE_STATUS.active;
-                  return (
-                    <tr key={c.id} onClick={() => client?.id && navigate(`/clients/${client.id}`)}
-                      style={{ borderTop: `1px solid ${p.cardBorder}`, background: i % 2 === 0 ? p.cardBg : p.inputBg, cursor: client?.id ? 'pointer' : 'default' }}
-                      onMouseOver={e => e.currentTarget.style.background = p.backgroundSecondary}
-                      onMouseOut={e  => e.currentTarget.style.background = i % 2 === 0 ? p.cardBg : p.inputBg}>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: p.text, fontWeight: 500 }}>{client?.business_name || '—'}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ color: p.text, fontSize: 13 }}>{service?.name_he || '—'}</div>
-                        <div style={{ color: p.textSecondary, fontSize: 11 }}>{service?.name_en || ''}</div>
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: p.textSecondary }}>{c.po_number || '—'}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: p.primary, fontWeight: 600 }}>
-                        {c.po_amount != null ? formatILS(c.po_amount) : <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: p.text }}>
-                        {c.commission_rate != null ? `${c.commission_rate}%` : <span style={{ color: p.textMuted }}>—</span>}
-                        {c.commission_source && (
-                          <span style={{ color: p.textSecondary, fontSize: 11, marginLeft: 6 }}>({COMMISSION_SOURCE_LABELS[c.commission_source]})</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ background: sc.bg, color: sc.fg, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{sc.label}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {/* Contracts — split into Active (with PO) and Pending (no PO yet) */}
+        {(() => {
+          const all     = provider.contracts || [];
+          const active  = all.filter(c =>  c.po_number);
+          const pending = all.filter(c => !c.po_number);
+          const sumActive  = active.reduce((a, c)  => a + (Number(c.po_amount) || 0), 0);
+          const sumPending = pending.reduce((a, c) => a + (Number(c.po_amount) || 0), 0);
 
-        {/* Confirm Deactivate Modal */}
-        {confirmDeactivate && (
+          const renderRow = (c, i, isPending) => {
+            const cs      = c.crm_customer_services;
+            const client  = cs?.crm_clients;
+            const service = cs?.crm_services;
+            return (
+              <tr key={c.id} onClick={() => client?.id && navigate(`/clients/${client.id}`)}
+                style={{ borderTop: `1px solid ${p.cardBorder}`, background: i % 2 === 0 ? p.cardBg : p.inputBg, cursor: client?.id ? 'pointer' : 'default' }}
+                onMouseOver={e => e.currentTarget.style.background = p.backgroundSecondary}
+                onMouseOut={e  => e.currentTarget.style.background = i % 2 === 0 ? p.cardBg : p.inputBg}>
+                {/* Description (notes), with a small client · service subtitle for context */}
+                <td style={{ padding: '12px 16px' }}>
+                  <div style={{ color: c.notes ? p.text : p.textMuted, fontSize: 13, fontWeight: 500 }}>{c.notes || '—'}</div>
+                  <div style={{ color: p.textSecondary, fontSize: 10, marginTop: 2 }}>
+                    {client?.business_name || '—'}{service?.name_en ? ` · ${service.name_en}` : ''}
+                  </div>
+                </td>
+                {!isPending && (
+                  <td style={{ padding: '12px 16px', fontSize: 13, color: p.textSecondary }}>{c.po_number || '—'}</td>
+                )}
+                <td style={{ padding: '12px 16px', fontSize: 13, color: p.primary, fontWeight: 600 }}>
+                  {c.po_amount != null ? formatILS(c.po_amount) : <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>}
+                </td>
+                <td style={{ padding: '12px 16px', fontSize: 13, color: p.text }}>
+                  {c.commission_rate != null ? `${c.commission_rate}%` : <span style={{ color: p.textMuted }}>—</span>}
+                  {c.commission_source && (
+                    <span style={{ color: p.textSecondary, fontSize: 11, marginLeft: 6 }}>({COMMISSION_SOURCE_LABELS[c.commission_source]})</span>
+                  )}
+                </td>
+                {isPending && (
+                  <td style={{ padding: '12px 16px' }}>
+                    <button onClick={e => { e.stopPropagation(); /* Pipeline integration: Session 3 */ }}
+                      style={{ background: 'transparent', color: p.primary, border: `1px solid ${p.cardBorder}`, borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      Move to Opportunity →
+                    </button>
+                  </td>
+                )}
+                <td style={{ padding: '12px 8px', textAlign: 'center', width: 40 }}>
+                  {canEdit && (
+                    <button onClick={e => { e.stopPropagation(); openRemoveContractModal(c); }}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#D4183D', fontSize: 14, padding: 4 }}
+                      title="Remove contract">
+                      🗑
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          };
+
+          return (
+            <>
+              {/* SECTION A — Active Contracts */}
+              <div style={{ ...card, overflow: 'hidden', marginBottom: 20 }}>
+                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${p.cardBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: 0 }}>
+                    Active Contracts ({active.length})
+                  </h3>
+                  {active.length > 0 && (
+                    <p style={{ color: p.primary, fontSize: 12, fontWeight: 600, margin: 0 }}>{formatILS(sumActive)} total</p>
+                  )}
+                </div>
+                {active.length === 0 ? (
+                  <div style={{ padding: 32, textAlign: 'center' }}>
+                    <p style={{ color: p.textMuted, fontSize: 13, margin: 0 }}>No active contracts yet</p>
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: p.inputBg }}>
+                        {['Description', 'PO Number', 'Amount', 'Commission', ''].map(h => (
+                          <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>{active.map((c, i) => renderRow(c, i, false))}</tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* SECTION B — Pending (no PO yet) */}
+              <div style={{ ...card, overflow: 'hidden', marginBottom: 20 }}>
+                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${p.cardBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div>
+                    <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: 0 }}>
+                      Pending — Awaiting PO ({pending.length})
+                    </h3>
+                    <p style={{ color: p.textSecondary, fontSize: 11, margin: '2px 0 0' }}>Quotes/opportunities not yet converted to a PO</p>
+                  </div>
+                  {pending.length > 0 && sumPending > 0 && (
+                    <p style={{ color: '#856404', fontSize: 12, fontWeight: 600, margin: 0 }}>{formatILS(sumPending)} pipeline</p>
+                  )}
+                </div>
+                {pending.length === 0 ? (
+                  <div style={{ padding: 32, textAlign: 'center' }}>
+                    <p style={{ color: p.textMuted, fontSize: 13, margin: 0 }}>No pending quotes</p>
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: p.inputBg }}>
+                        {['Description', 'Amount', 'Commission', '', ''].map((h, idx) => (
+                          <th key={idx} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>{pending.map((c, i) => renderRow(c, i, true))}</tbody>
+                  </table>
+                )}
+              </div>
+            </>
+          );
+        })()}
+
+        {/* Unified Confirm Modal — used for Delete/Deactivate provider AND row remove */}
+        {confirmModal && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-            onClick={() => setConfirmDeactivate(false)}>
+            onClick={() => setConfirmModal(null)}>
             <div onClick={e => e.stopPropagation()}
               style={{ background: p.cardBg, borderRadius: 16, padding: 28, width: 460, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', border: `1px solid ${p.cardBorder}` }}>
-              <h2 style={{ color: p.text, fontSize: 18, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 8px' }}>Deactivate Provider?</h2>
-              <p style={{ color: p.textSecondary, fontSize: 13, margin: '0 0 20px', lineHeight: 1.5 }}>
-                "{provider.name}" will be marked inactive.{' '}
-                {provider.active_contracts > 0
-                  ? `Existing ${provider.active_contracts} contract${provider.active_contracts === 1 ? '' : 's'} stay attached — they won't be affected.`
-                  : ''}
-                {' '}You can reactivate later.
-              </p>
+              <h2 style={{ color: p.text, fontSize: 18, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 8px' }}>{confirmModal.title}</h2>
+              <p style={{ color: p.textSecondary, fontSize: 13, margin: '0 0 20px', lineHeight: 1.5 }}>{confirmModal.message}</p>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={deactivate}
-                  style={{ flex: 1, background: '#D4183D', color: '#fff', border: 'none', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
-                  Deactivate
+                <button onClick={confirmModal.onConfirm}
+                  style={{ flex: 1, background: confirmModal.danger ? '#D4183D' : p.primary, color: '#fff', border: 'none', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                  {confirmModal.confirmLabel}
                 </button>
-                <button onClick={() => setConfirmDeactivate(false)}
+                <button onClick={() => setConfirmModal(null)}
                   style={{ flex: 1, background: p.inputBg, color: p.text, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer' }}>
                   Cancel
                 </button>

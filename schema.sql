@@ -237,8 +237,9 @@ CREATE TABLE IF NOT EXISTS crm_customer_service_providers (
   notes               text,
   created_by          uuid REFERENCES crm_users(id) ON DELETE SET NULL,
   created_at          timestamptz DEFAULT now(),
-  updated_at          timestamptz DEFAULT now(),
-  UNIQUE (customer_service_id, service_provider_id)
+  updated_at          timestamptz DEFAULT now()
+  -- NOTE: no UNIQUE on (customer_service_id, service_provider_id) — multiple
+  -- POs per provider on the same customer-service is valid.
 );
 CREATE INDEX IF NOT EXISTS crm_customer_service_providers_cs_idx
   ON crm_customer_service_providers(customer_service_id);

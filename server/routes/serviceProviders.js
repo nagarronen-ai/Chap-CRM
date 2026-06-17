@@ -179,25 +179,71 @@ router.put('/:id', auth, checkPermission('company:edit'), async (req, res) => {
 });
 
 // ─── DELETE /api/service-providers/:id ───────────────────────────────────────
-// Soft delete — sets is_active=false. crm_customer_service_providers FK is
-// ON DELETE RESTRICT, so hard-delete would fail if any junction rows exist.
-// Soft-delete preserves audit trail and existing junction relationships.
+// HARD delete — only allowed when the provider has zero junction rows.
+// Soft-delete (deactivate) is now done via PUT { is_active: false }.
 router.delete('/:id', auth, checkPermission('company:edit'), async (req, res) => {
-  const { data: existing, error: fetchErr } = await supabase
-    .from('crm_service_providers')
-    .select('id, name')
-    .eq('id', req.params.id)
-    .maybeSingle();
-  if (fetchErr) return res.status(500).json({ error: fetchErr.message });
-  if (!existing) return res.status(404).json({ error: 'Provider not found' });
+  // Fetch provider name + count junction rows in parallel.
+  const [providerRes, countRes] = await Promise.all([
+    supabase.from('crm_service_providers').select('id, name').eq('id', req.params.id).maybeSingle(),
+    supabase.from('crm_customer_service_providers').select('id', { count: 'exact', head: true }).eq('service_provider_id', req.params.id),
+  ]);
+  if (providerRes.error) return res.status(500).json({ error: providerRes.error.message });
+  if (!providerRes.data)  return res.status(404).json({ error: 'Provider not found' });
+
+  const contractCount = countRes.count || 0;
+  if (contractCount > 0) {
+    return res.status(409).json({
+      error: 'has_contracts',
+      contract_count: contractCount,
+      message: `Cannot delete ${providerRes.data.name} — they have ${contractCount} active contract${contractCount === 1 ? '' : 's'}. Remove all contracts first, then delete the provider.`,
+    });
+  }
 
   const { error } = await supabase
     .from('crm_service_providers')
-    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .delete()
     .eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
 
-  await logProviderActivity(req.user.id, 'Provider Deactivated', `Provider ${existing.name} deactivated`);
+  await logProviderActivity(req.user.id, 'Provider Deleted', `Provider ${providerRes.data.name} deleted`);
+  res.json({ success: true });
+});
+
+// ─── DELETE /api/service-providers/:id/contracts/:contractId ─────────────────
+// Removes a single junction row. Verifies it belongs to this provider before
+// deleting so a caller can't delete arbitrary contracts via path tampering.
+router.delete('/:id/contracts/:contractId', auth, checkPermission('company:edit'), async (req, res) => {
+  const { data: junction, error: fetchErr } = await supabase
+    .from('crm_customer_service_providers')
+    .select(`
+      id, service_provider_id,
+      crm_service_providers(name),
+      crm_customer_services(crm_clients(business_name))
+    `)
+    .eq('id', req.params.contractId)
+    .maybeSingle();
+  if (fetchErr)  return res.status(500).json({ error: fetchErr.message });
+  if (!junction) return res.status(404).json({ error: 'Contract not found' });
+
+  // Security check — the contract must belong to the provider in the URL.
+  if (junction.service_provider_id !== req.params.id) {
+    return res.status(403).json({ error: 'Contract does not belong to this provider' });
+  }
+
+  const { error } = await supabase
+    .from('crm_customer_service_providers')
+    .delete()
+    .eq('id', req.params.contractId);
+  if (error) return res.status(500).json({ error: error.message });
+
+  const clientName   = junction.crm_customer_services?.crm_clients?.business_name || 'unknown client';
+  const providerName = junction.crm_service_providers?.name                       || 'unknown provider';
+  await logProviderActivity(
+    req.user.id,
+    'Provider Contract Removed',
+    `Removed contract for ${clientName} from provider ${providerName}`,
+  );
+
   res.json({ success: true });
 });
 
