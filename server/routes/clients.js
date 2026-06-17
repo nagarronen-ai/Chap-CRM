@@ -445,14 +445,47 @@ function sortCustomerServices(rows) {
 const CUSTOMER_SERVICE_SELECT =
   '*, crm_services(id, name_en, name_he, sort_order), crm_users!crm_customer_services_owner_id_fkey(id, name)';
 
-// GET /api/clients/:id/services — list services attached to this client
+// GET /api/clients/:id/services — list services with their attached providers.
+// 2 DB calls (services + junction). Bucket-aggregated in JS by customer_service_id.
 router.get('/:id/services', auth, async (req, res) => {
-  const { data, error } = await supabase
+  const { data: services, error: svcErr } = await supabase
     .from('crm_customer_services')
     .select(CUSTOMER_SERVICE_SELECT)
     .eq('client_id', req.params.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(sortCustomerServices(data));
+  if (svcErr) return res.status(500).json({ error: svcErr.message });
+
+  const svcIds = (services || []).map(s => s.id);
+  let junction = [];
+  if (svcIds.length > 0) {
+    const { data, error: jErr } = await supabase
+      .from('crm_customer_service_providers')
+      .select(`
+        id, customer_service_id, service_provider_id,
+        po_number, po_amount, commission_rate, commission_source, notes,
+        crm_service_providers(name)
+      `)
+      .in('customer_service_id', svcIds);
+    if (jErr) return res.status(500).json({ error: jErr.message });
+    junction = data || [];
+  }
+
+  const providersBySvc = {};
+  for (const j of junction) {
+    const bucket = providersBySvc[j.customer_service_id] || (providersBySvc[j.customer_service_id] = []);
+    bucket.push({
+      id:                  j.id,
+      service_provider_id: j.service_provider_id,
+      provider_name:       j.crm_service_providers?.name || '—',
+      po_number:           j.po_number,
+      po_amount:           j.po_amount,
+      commission_rate:     j.commission_rate,
+      commission_source:   j.commission_source,
+      notes:               j.notes,
+    });
+  }
+
+  const enriched = (services || []).map(s => ({ ...s, providers: providersBySvc[s.id] || [] }));
+  res.json(sortCustomerServices(enriched));
 });
 
 // POST /api/clients/:id/services — attach a service to a client (idempotent via UNIQUE)
@@ -558,6 +591,148 @@ router.delete('/:id/services/:csId', auth, checkPermission('company:edit'), asyn
     user_id:   req.user.id,
     action:    'Service Removed',
     details:   `Service removed: ${existing?.crm_services?.name_en || req.params.csId}`,
+  }]);
+
+  res.json({ success: true });
+});
+
+// ─── PROVIDERS UNDER A SERVICE (junction CRUD scoped to the client) ──────────
+// Shared select shape — returns junction row + provider_name via single-level
+// FK join. Maps the nested join into a flat `provider_name` field for the caller.
+const flattenJunction = (j) => {
+  if (!j) return j;
+  const { crm_service_providers, ...rest } = j;
+  return { ...rest, provider_name: crm_service_providers?.name || '—' };
+};
+
+// POST /api/clients/:id/services/:serviceId/providers — attach a provider
+router.post('/:id/services/:serviceId/providers', auth, checkPermission('company:edit'), async (req, res) => {
+  const { service_provider_id, po_number, po_amount, commission_rate, commission_source, notes } = req.body;
+  if (!service_provider_id) return res.status(400).json({ error: 'service_provider_id is required' });
+
+  // Security #1: customer-service must belong to this client
+  const { data: cs } = await supabase
+    .from('crm_customer_services')
+    .select('id, crm_services(name_en)')
+    .eq('id', req.params.serviceId)
+    .eq('client_id', req.params.id)
+    .maybeSingle();
+  if (!cs) return res.status(404).json({ error: 'Service not found on this client' });
+
+  // Security #2: provider must exist
+  const { data: prov } = await supabase
+    .from('crm_service_providers')
+    .select('id, name')
+    .eq('id', service_provider_id)
+    .maybeSingle();
+  if (!prov) return res.status(400).json({ error: 'service_provider_id does not exist' });
+
+  const { data, error } = await supabase
+    .from('crm_customer_service_providers')
+    .insert([{
+      customer_service_id: req.params.serviceId,
+      service_provider_id,
+      po_number:         po_number       || null,
+      po_amount:         po_amount       ?? null,
+      commission_rate:   commission_rate ?? null,
+      commission_source: commission_source || null,
+      notes:             notes           || null,
+      created_by:        req.user.id,
+    }])
+    .select('*, crm_service_providers(name)')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  await supabase.from('crm_activity_log').insert([{
+    client_id: req.params.id,
+    user_id:   req.user.id,
+    action:    'Provider Added to Service',
+    details:   `Added ${prov.name} to service ${cs.crm_services?.name_en || 'unknown'}`,
+  }]);
+
+  res.json(flattenJunction(data));
+});
+
+// PUT /api/clients/:id/services/:serviceId/providers/:junctionId — update fields
+router.put('/:id/services/:serviceId/providers/:junctionId', auth, checkPermission('company:edit'), async (req, res) => {
+  // Strip immutable / join fields
+  const {
+    id: _i, customer_service_id: _cs, service_provider_id: _sp,
+    crm_service_providers: _join, provider_name: _pn, created_at: _ca, created_by: _cb,
+    ...safe
+  } = req.body;
+  if (Object.keys(safe).length === 0) return res.status(400).json({ error: 'No editable fields supplied' });
+  safe.updated_at = new Date().toISOString();
+
+  // Security #1: junction must belong to this service
+  const { data: junction } = await supabase
+    .from('crm_customer_service_providers')
+    .select('id, customer_service_id, crm_service_providers(name)')
+    .eq('id', req.params.junctionId)
+    .maybeSingle();
+  if (!junction) return res.status(404).json({ error: 'Junction row not found' });
+  if (junction.customer_service_id !== req.params.serviceId) {
+    return res.status(403).json({ error: 'Junction does not belong to this service' });
+  }
+
+  // Security #2: service must belong to this client
+  const { data: cs } = await supabase
+    .from('crm_customer_services')
+    .select('id, crm_services(name_en)')
+    .eq('id', req.params.serviceId)
+    .eq('client_id', req.params.id)
+    .maybeSingle();
+  if (!cs) return res.status(404).json({ error: 'Service not found on this client' });
+
+  const { data, error } = await supabase
+    .from('crm_customer_service_providers')
+    .update(safe)
+    .eq('id', req.params.junctionId)
+    .select('*, crm_service_providers(name)')
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  const changedFields = Object.keys(safe).filter(k => k !== 'updated_at');
+  await supabase.from('crm_activity_log').insert([{
+    client_id: req.params.id,
+    user_id:   req.user.id,
+    action:    'Provider Contract Updated',
+    details:   `${junction.crm_service_providers?.name || 'Provider'} on ${cs.crm_services?.name_en || 'service'} updated: ${changedFields.join(', ')}`,
+  }]);
+
+  res.json(flattenJunction(data));
+});
+
+// DELETE /api/clients/:id/services/:serviceId/providers/:junctionId — detach
+router.delete('/:id/services/:serviceId/providers/:junctionId', auth, checkPermission('company:edit'), async (req, res) => {
+  const { data: junction } = await supabase
+    .from('crm_customer_service_providers')
+    .select('id, customer_service_id, crm_service_providers(name)')
+    .eq('id', req.params.junctionId)
+    .maybeSingle();
+  if (!junction) return res.status(404).json({ error: 'Junction row not found' });
+  if (junction.customer_service_id !== req.params.serviceId) {
+    return res.status(403).json({ error: 'Junction does not belong to this service' });
+  }
+  const { data: cs } = await supabase
+    .from('crm_customer_services')
+    .select('id, crm_services(name_en)')
+    .eq('id', req.params.serviceId)
+    .eq('client_id', req.params.id)
+    .maybeSingle();
+  if (!cs) return res.status(404).json({ error: 'Service not found on this client' });
+
+  const { error } = await supabase
+    .from('crm_customer_service_providers')
+    .delete()
+    .eq('id', req.params.junctionId);
+  if (error) return res.status(500).json({ error: error.message });
+
+  await supabase.from('crm_activity_log').insert([{
+    client_id: req.params.id,
+    user_id:   req.user.id,
+    action:    'Provider Removed from Service',
+    details:   `Removed ${junction.crm_service_providers?.name || 'provider'} from service ${cs.crm_services?.name_en || 'unknown'}`,
   }]);
 
   res.json({ success: true });

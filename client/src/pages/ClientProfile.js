@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
@@ -179,9 +179,26 @@ function ClientServices({ clientId, services, setServices, teamUsers, canEdit, g
   const [editingCell, setEditingCell] = useState(null); // { csId, field } | null
   const [cellDraft, setCellDraft] = useState('');
 
+  // Provider sub-rows: expanded service ids + provider dropdown options + add-form state
+  const [expandedServiceIds, setExpandedServiceIds]   = useState(new Set());
+  const [providerCatalog, setProviderCatalog]         = useState([]);
+  const [providerFormOpenId, setProviderFormOpenId]   = useState(null);
+  const [providerFormDraft, setProviderFormDraft]     = useState({ service_provider_id: '', po_number: '', po_amount: '', commission_rate: '17' });
+  const [providerFormSaving, setProviderFormSaving]   = useState(false);
+  const [providerFormError, setProviderFormError]     = useState('');
+  // Inline edit state for provider sub-row cells (po_number, po_amount)
+  const [editingProviderCell, setEditingProviderCell] = useState(null); // { junctionId, field } | null
+  const [providerCellDraft, setProviderCellDraft]     = useState('');
+
   useEffect(() => {
     axios.get(`${API}/services`, { headers: getHeaders() })
       .then(res => setCatalog(res.data || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    axios.get(`${API}/service-providers?is_active=true`, { headers: getHeaders() })
+      .then(res => setProviderCatalog(res.data || []))
       .catch(() => {});
   }, []);
 
@@ -295,8 +312,117 @@ function ClientServices({ clientId, services, setServices, teamUsers, canEdit, g
 
   const isEditing = (csId, field) => editingCell && editingCell.csId === csId && editingCell.field === field;
 
+  // ─── Provider sub-row handlers ─────────────────────────────────────────────
+  const toggleExpand = (csId) => {
+    setExpandedServiceIds(prev => {
+      const next = new Set(prev);
+      if (next.has(csId)) next.delete(csId); else next.add(csId);
+      return next;
+    });
+  };
+
+  const findProviderRow = (junctionId) => {
+    for (const s of services) {
+      const pv = (s.providers || []).find(p => p.id === junctionId);
+      if (pv) return { csId: s.id, pv };
+    }
+    return null;
+  };
+
+  const isEditingProvider = (junctionId, field) =>
+    editingProviderCell && editingProviderCell.junctionId === junctionId && editingProviderCell.field === field;
+
+  const startProviderEdit = (junctionId, field, currentValue) => {
+    if (!canEdit) return;
+    setEditingProviderCell({ junctionId, field });
+    setProviderCellDraft(currentValue ?? '');
+  };
+
+  const cancelProviderEdit = () => { setEditingProviderCell(null); setProviderCellDraft(''); };
+
+  const commitProviderEdit = async () => {
+    if (!editingProviderCell) return;
+    const { junctionId, field } = editingProviderCell;
+    const found = findProviderRow(junctionId);
+    if (!found) { cancelProviderEdit(); return; }
+    const { csId, pv } = found;
+
+    let value = providerCellDraft;
+    if (field === 'po_amount') {
+      value = value === '' ? null : Number(value);
+      if (Number.isNaN(value)) { cancelProviderEdit(); return; }
+    } else {
+      value = value === '' ? null : value;
+    }
+    const current = pv[field] ?? null;
+    if (value === current || (current == null && (value == null || value === ''))) { cancelProviderEdit(); return; }
+
+    try {
+      const res = await axios.put(
+        `${API}/clients/${clientId}/services/${csId}/providers/${junctionId}`,
+        { [field]: value },
+        { headers: getHeaders() }
+      );
+      setServices(prev => prev.map(s => s.id === csId
+        ? { ...s, providers: (s.providers || []).map(p2 => p2.id === junctionId ? { ...p2, ...res.data } : p2) }
+        : s));
+    } catch (err) { console.error(err); }
+    cancelProviderEdit();
+  };
+
+  const onProviderCellKeyDown = (e) => {
+    if (e.key === 'Enter')      { e.preventDefault(); commitProviderEdit(); }
+    else if (e.key === 'Escape'){ e.preventDefault(); cancelProviderEdit(); }
+  };
+
+  const openProviderForm = (csId) => {
+    setProviderFormOpenId(csId);
+    setProviderFormDraft({ service_provider_id: '', po_number: '', po_amount: '', commission_rate: '17' });
+    setProviderFormError('');
+    setExpandedServiceIds(prev => { const next = new Set(prev); next.add(csId); return next; });
+  };
+
+  const cancelProviderForm = () => { setProviderFormOpenId(null); setProviderFormError(''); };
+
+  const submitProviderForm = async (csId) => {
+    if (!providerFormDraft.service_provider_id) return;
+    setProviderFormSaving(true);
+    setProviderFormError('');
+    try {
+      const body = {
+        service_provider_id: providerFormDraft.service_provider_id,
+        po_number:           providerFormDraft.po_number       || null,
+        po_amount:           providerFormDraft.po_amount === '' ? null : Number(providerFormDraft.po_amount),
+        commission_rate:     providerFormDraft.commission_rate === '' ? null : Number(providerFormDraft.commission_rate),
+      };
+      const res = await axios.post(`${API}/clients/${clientId}/services/${csId}/providers`, body, { headers: getHeaders() });
+      setServices(prev => prev.map(s => s.id === csId
+        ? { ...s, providers: [...(s.providers || []), res.data] }
+        : s));
+      cancelProviderForm();
+    } catch (err) {
+      console.error(err);
+      setProviderFormError(err?.response?.data?.error || 'Failed to add provider');
+    }
+    setProviderFormSaving(false);
+  };
+
+  const removeProvider = async (csId, pv) => {
+    if (!canEdit) return;
+    if (!window.confirm(`Remove ${pv.provider_name} from this service?`)) return;
+    try {
+      await axios.delete(`${API}/clients/${clientId}/services/${csId}/providers/${pv.id}`, { headers: getHeaders() });
+      setServices(prev => prev.map(s => s.id === csId
+        ? { ...s, providers: (s.providers || []).filter(p2 => p2.id !== pv.id) }
+        : s));
+    } catch (err) { console.error(err); }
+  };
+
+  const formatILS = (n) => `₪${Number(n).toLocaleString()}`;
+
   const cellInputStyle = { width: '100%', background: p.inputBg, border: `1px solid ${p.primary}`, borderRadius: 4, padding: '4px 6px', color: p.text, fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' };
   const readCellStyle = { padding: '10px 12px', fontSize: 13, color: p.text, cursor: canEdit ? 'pointer' : 'default', verticalAlign: 'middle' };
+  const subCellInputStyle = { width: '100%', background: p.cardBg, border: `1px solid ${p.primary}`, borderRadius: 4, padding: '3px 6px', color: p.text, fontSize: 11, outline: 'none', boxSizing: 'border-box', fontFamily: 'Inter, sans-serif' };
 
   return (
     <div>
@@ -371,13 +497,33 @@ function ClientServices({ clientId, services, setServices, teamUsers, canEdit, g
             </thead>
             <tbody>
               {services.map((row, i) => {
-                const rowBg = i % 2 === 0 ? p.cardBg : p.inputBg;
+                const rowBg       = i % 2 === 0 ? p.cardBg : p.inputBg;
+                const subRowBg    = p.inputBg;
+                const providers   = row.providers || [];
+                const expanded    = expandedServiceIds.has(row.id);
                 return (
-                  <tr key={row.id} style={{ borderTop: `1px solid ${p.cardBorder}`, background: rowBg }}>
-                    {/* Service (read-only) */}
+                  <Fragment key={row.id}>
+                  <tr style={{ borderTop: `1px solid ${p.cardBorder}`, background: rowBg }}>
+                    {/* Service (read-only, with expand chevron + provider count badge) */}
                     <td style={{ ...readCellStyle, cursor: 'default' }}>
-                      <div style={{ fontWeight: 600, color: p.text }}>{row.crm_services?.name_he || '—'}</div>
-                      <div style={{ color: p.textSecondary, fontSize: 11 }}>{row.crm_services?.name_en || ''}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button onClick={() => toggleExpand(row.id)}
+                          style={{ background: 'transparent', border: 'none', color: p.textSecondary, fontSize: 9, cursor: 'pointer', padding: 0, width: 12, textAlign: 'center' }}
+                          title={expanded ? 'Collapse providers' : 'Expand providers'}>
+                          {expanded ? '▼' : '▶'}
+                        </button>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: p.text }}>{row.crm_services?.name_he || '—'}</div>
+                          <div style={{ color: p.textSecondary, fontSize: 11 }}>{row.crm_services?.name_en || ''}</div>
+                        </div>
+                        {providers.length > 0 && (
+                          <span onClick={() => toggleExpand(row.id)}
+                            style={{ background: p.cardBg, color: p.textSecondary, borderRadius: 20, padding: '1px 8px', fontSize: 9, fontWeight: 600, cursor: 'pointer', border: `1px solid ${p.cardBorder}` }}
+                            title="Toggle providers">
+                            {providers.length} {providers.length === 1 ? 'provider' : 'providers'}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {/* Status */}
                     <td style={readCellStyle} onClick={() => startEdit(row.id, 'status', row.status)}>
@@ -445,6 +591,139 @@ function ClientServices({ clientId, services, setServices, teamUsers, canEdit, g
                       )}
                     </td>
                   </tr>
+                  {/* Provider sub-section */}
+                  {expanded && (
+                    <tr style={{ background: subRowBg, borderTop: 'none' }}>
+                      <td colSpan={9} style={{ padding: 0 }}>
+                        <div style={{ paddingLeft: 36, paddingRight: 12, paddingTop: 10, paddingBottom: 14 }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ borderBottom: `1px solid ${p.cardBorder}` }}>
+                                {['Provider', 'PO Number', 'Amount (₪)', 'Commission', 'Notes', ''].map((h, idx) => (
+                                  <th key={idx} style={{ padding: '4px 8px', textAlign: 'left', fontSize: 9, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {providers.length === 0 && providerFormOpenId !== row.id && (
+                                <tr>
+                                  <td colSpan={6} style={{ padding: '14px 8px', textAlign: 'center', color: p.textMuted, fontSize: 11 }}>
+                                    No providers attached yet
+                                  </td>
+                                </tr>
+                              )}
+                              {providers.map(pv => {
+                                const commTxt = pv.commission_rate != null
+                                  ? `${pv.commission_rate}%${pv.commission_source ? ` (${pv.commission_source})` : ''}`
+                                  : null;
+                                const notesTrimmed = pv.notes && pv.notes.length > 40 ? pv.notes.slice(0, 40) + '…' : (pv.notes || '');
+                                return (
+                                  <tr key={pv.id} style={{ borderTop: `1px solid ${p.cardBorder}` }}>
+                                    <td style={{ padding: '8px 8px', fontSize: 12, color: p.text, fontWeight: 500 }}>{pv.provider_name}</td>
+                                    {/* PO Number — editable. Empty shows "Pending" pill. */}
+                                    <td style={{ padding: '8px 8px' }} onClick={() => startProviderEdit(pv.id, 'po_number', pv.po_number || '')}>
+                                      {isEditingProvider(pv.id, 'po_number') ? (
+                                        <input autoFocus type="text" value={providerCellDraft}
+                                          onChange={e => setProviderCellDraft(e.target.value)}
+                                          onBlur={commitProviderEdit} onKeyDown={onProviderCellKeyDown}
+                                          placeholder="SOAG..." style={subCellInputStyle} />
+                                      ) : pv.po_number ? (
+                                        <span style={{ color: p.text, fontSize: 12, cursor: canEdit ? 'pointer' : 'default' }}>{pv.po_number}</span>
+                                      ) : (
+                                        <span style={{ background: '#FFF3CD', color: '#856404', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 600, cursor: canEdit ? 'pointer' : 'default' }}>Pending</span>
+                                      )}
+                                    </td>
+                                    {/* Amount — editable */}
+                                    <td style={{ padding: '8px 8px' }} onClick={() => startProviderEdit(pv.id, 'po_amount', pv.po_amount ?? '')}>
+                                      {isEditingProvider(pv.id, 'po_amount') ? (
+                                        <input autoFocus type="number" value={providerCellDraft}
+                                          onChange={e => setProviderCellDraft(e.target.value)}
+                                          onBlur={commitProviderEdit} onKeyDown={onProviderCellKeyDown}
+                                          style={subCellInputStyle} />
+                                      ) : pv.po_amount != null ? (
+                                        <span style={{ color: p.primary, fontSize: 12, fontWeight: 600, cursor: canEdit ? 'pointer' : 'default' }}>{formatILS(pv.po_amount)}</span>
+                                      ) : (
+                                        <span style={{ color: p.textMuted, fontSize: 12, cursor: canEdit ? 'pointer' : 'default' }}>—</span>
+                                      )}
+                                    </td>
+                                    {/* Commission (display-only in sub-row) */}
+                                    <td style={{ padding: '8px 8px', fontSize: 12, color: commTxt ? p.text : p.textMuted }}>{commTxt || '—'}</td>
+                                    {/* Notes (display-only, truncated) */}
+                                    <td style={{ padding: '8px 8px', fontSize: 11, color: pv.notes ? p.textSecondary : p.textMuted, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pv.notes || ''}>
+                                      {notesTrimmed || '—'}
+                                    </td>
+                                    {/* Delete */}
+                                    <td style={{ padding: '8px 4px', textAlign: 'center', width: 32 }}>
+                                      {canEdit && (
+                                        <button onClick={() => removeProvider(row.id, pv)}
+                                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#D4183D', fontSize: 12 }}
+                                          title="Remove provider">🗑</button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {/* Inline add form */}
+                              {providerFormOpenId === row.id && (
+                                <tr style={{ background: p.cardBg, borderTop: `1px solid ${p.cardBorder}` }}>
+                                  <td style={{ padding: '8px 6px' }}>
+                                    <select autoFocus value={providerFormDraft.service_provider_id}
+                                      onChange={e => setProviderFormDraft(prev => ({ ...prev, service_provider_id: e.target.value }))}
+                                      disabled={providerCatalog.length === 0}
+                                      style={subCellInputStyle}>
+                                      <option value="">
+                                        {providerCatalog.length === 0 ? 'No active providers — add one on /service-providers' : '— Select a provider —'}
+                                      </option>
+                                      {providerCatalog.map(p2 => <option key={p2.id} value={p2.id}>{p2.name}</option>)}
+                                    </select>
+                                  </td>
+                                  <td style={{ padding: '8px 6px' }}>
+                                    <input type="text" value={providerFormDraft.po_number}
+                                      onChange={e => setProviderFormDraft(prev => ({ ...prev, po_number: e.target.value }))}
+                                      placeholder="SOAG..." style={subCellInputStyle} />
+                                  </td>
+                                  <td style={{ padding: '8px 6px' }}>
+                                    <input type="number" value={providerFormDraft.po_amount}
+                                      onChange={e => setProviderFormDraft(prev => ({ ...prev, po_amount: e.target.value }))}
+                                      style={subCellInputStyle} />
+                                  </td>
+                                  <td style={{ padding: '8px 6px' }}>
+                                    <input type="number" value={providerFormDraft.commission_rate}
+                                      onChange={e => setProviderFormDraft(prev => ({ ...prev, commission_rate: e.target.value }))}
+                                      style={subCellInputStyle} />
+                                  </td>
+                                  <td colSpan={2} style={{ padding: '8px 6px' }}>
+                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                      <button onClick={() => submitProviderForm(row.id)}
+                                        disabled={!providerFormDraft.service_provider_id || providerFormSaving}
+                                        style={{ background: providerFormDraft.service_provider_id && !providerFormSaving ? p.primary : p.textMuted, color: '#fff', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 11, cursor: providerFormDraft.service_provider_id && !providerFormSaving ? 'pointer' : 'default', fontWeight: 600 }}>
+                                        {providerFormSaving ? 'Adding…' : 'Add'}
+                                      </button>
+                                      <button onClick={cancelProviderForm}
+                                        style={{ background: 'transparent', color: p.textSecondary, border: `1px solid ${p.cardBorder}`, borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+                                        Cancel
+                                      </button>
+                                      {providerFormError && (
+                                        <span style={{ color: '#D4183D', fontSize: 10, marginLeft: 6 }}>{providerFormError}</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                          {/* + Add Provider button (when form not open) */}
+                          {canEdit && providerFormOpenId !== row.id && (
+                            <button onClick={() => openProviderForm(row.id)}
+                              style={{ marginTop: 10, background: 'transparent', color: p.primary, border: `1px dashed ${p.cardBorder}`, borderRadius: 6, padding: '6px 12px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                              + Add Provider
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
