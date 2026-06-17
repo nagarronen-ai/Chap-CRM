@@ -12,6 +12,7 @@ import Clients from './pages/Clients';
 import ClientProfile from './pages/ClientProfile';
 import ServiceProviders from './pages/ServiceProviders';
 import ServiceProviderProfile from './pages/ServiceProviderProfile';
+import Opportunities from './pages/Opportunities';
 import Settings from './pages/Settings';
 import EmailInbox from './pages/EmailInbox';
 import CalendarPage from './pages/Calendar';
@@ -50,6 +51,7 @@ function AuthenticatedApp() {
         <Route path="/clients/:id" element={<ClientProfile />} />
         <Route path="/service-providers" element={<ServiceProviders />} />
         <Route path="/service-providers/:id" element={<ServiceProviderProfile />} />
+        <Route path="/opportunities" element={<Opportunities />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/inbox" element={<EmailInbox />} />
         <Route path="/calendar" element={<CalendarPage />} />

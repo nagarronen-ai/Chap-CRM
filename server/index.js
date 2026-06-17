@@ -48,6 +48,7 @@ app.use('/api/documents', require('./routes/documents'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/services', require('./routes/services'));
 app.use('/api/service-providers', require('./routes/serviceProviders'));
+app.use('/api/opportunities', require('./routes/opportunities'));
 
 
 
