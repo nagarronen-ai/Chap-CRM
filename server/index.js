@@ -47,6 +47,7 @@ app.use('/api/insights', require('./routes/insights'));
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/services', require('./routes/services'));
+app.use('/api/service-providers', require('./routes/serviceProviders'));
 
 
 

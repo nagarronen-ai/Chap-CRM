@@ -167,6 +167,84 @@ CREATE TABLE IF NOT EXISTS crm_client_finance (
   created_at  timestamptz DEFAULT now()
 );
 
+-- ─── SERVICES CATALOG ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS crm_services (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name_he      text NOT NULL,
+  name_en      text NOT NULL UNIQUE,
+  description  text,
+  is_active    boolean DEFAULT true,
+  sort_order   integer DEFAULT 0,
+  created_at   timestamptz DEFAULT now(),
+  updated_at   timestamptz DEFAULT now()
+);
+
+-- ─── CUSTOMER × SERVICE JUNCTION ─────────────────────────────
+CREATE TABLE IF NOT EXISTS crm_customer_services (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id           uuid NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE,
+  service_id          uuid NOT NULL REFERENCES crm_services(id) ON DELETE RESTRICT,
+  status              text NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active', 'prospect', 'past', 'lost')),
+  owner_id            uuid REFERENCES crm_users(id) ON DELETE SET NULL,
+  contract_amount     numeric,
+  contract_currency   text DEFAULT 'ILS',
+  commission_rate     numeric,            -- percent (0-100)
+  start_date          date,
+  end_date            date,
+  renewal_date        date,
+  notes               text,
+  created_at          timestamptz DEFAULT now(),
+  updated_at          timestamptz DEFAULT now(),
+  UNIQUE (client_id, service_id)
+);
+CREATE INDEX IF NOT EXISTS crm_customer_services_client_idx  ON crm_customer_services(client_id);
+CREATE INDEX IF NOT EXISTS crm_customer_services_service_idx ON crm_customer_services(service_id);
+CREATE INDEX IF NOT EXISTS crm_customer_services_owner_idx   ON crm_customer_services(owner_id);
+CREATE INDEX IF NOT EXISTS crm_customer_services_status_idx  ON crm_customer_services(status);
+
+-- ─── SERVICE PROVIDERS ───────────────────────────────────────
+-- External partners we use to deliver customer services (e.g. Cellcom, Bezeq).
+CREATE TABLE IF NOT EXISTS crm_service_providers (
+  id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                        text NOT NULL,
+  contact_name                text,
+  contact_email               text,
+  contact_phone               text,
+  commission_rate_default     numeric,            -- percent (0-100); nullable
+  commission_source_default   text
+    CHECK (commission_source_default IN ('customer', 'provider', 'both')),
+  notes                       text,
+  is_active                   boolean DEFAULT true,
+  created_by                  uuid REFERENCES crm_users(id) ON DELETE SET NULL,
+  created_at                  timestamptz DEFAULT now(),
+  updated_at                  timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS crm_service_providers_active_idx ON crm_service_providers(is_active);
+CREATE INDEX IF NOT EXISTS crm_service_providers_name_idx   ON crm_service_providers(name);
+
+-- ─── CUSTOMER-SERVICE × PROVIDER JUNCTION ────────────────────
+-- A single customer_service row can have 0, 1, or N providers attached.
+CREATE TABLE IF NOT EXISTS crm_customer_service_providers (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_service_id uuid NOT NULL REFERENCES crm_customer_services(id) ON DELETE CASCADE,
+  service_provider_id uuid NOT NULL REFERENCES crm_service_providers(id) ON DELETE RESTRICT,
+  po_number           text,
+  po_amount           numeric,            -- ILS (no per-row currency for now)
+  commission_rate     numeric,            -- percent (0-100); overrides provider default if set
+  commission_source   text
+    CHECK (commission_source IN ('customer', 'provider', 'both')),
+  notes               text,
+  created_by          uuid REFERENCES crm_users(id) ON DELETE SET NULL,
+  created_at          timestamptz DEFAULT now(),
+  updated_at          timestamptz DEFAULT now(),
+  UNIQUE (customer_service_id, service_provider_id)
+);
+CREATE INDEX IF NOT EXISTS crm_customer_service_providers_cs_idx
+  ON crm_customer_service_providers(customer_service_id);
+CREATE INDEX IF NOT EXISTS crm_customer_service_providers_sp_idx
+  ON crm_customer_service_providers(service_provider_id);
+
 -- ─── ACTIVITY LOG ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS crm_activity_log (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
