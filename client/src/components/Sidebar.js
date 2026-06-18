@@ -52,7 +52,6 @@ export default function Sidebar() {
     {
       key: 'crm', label: 'CRM',
       items: [
-        { path: '/contacts',          label: 'Contacts',          icon: '🏢', show: true },
         { path: '/clients',           label: 'Clients',           icon: '🤝', show: true },
         { path: '/service-providers', label: 'Service Providers', icon: '🔗', show: true },
         { path: '/opportunities',     label: 'Opportunities',     icon: '🎯', show: true },
