@@ -2,10 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
-import { useRole } from '../hooks/useRole';
 import { useApp } from '../context/AppContext';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
@@ -17,6 +14,13 @@ const STATUS_PILL = {
   lost:     { dot: '#D4183D', bg: '#F8D7DA', fg: '#721C24', label: 'Lost'     },
 };
 
+// Color tokens for the Opportunities Pipeline rows — match Opportunities page TYPE_PILL fg
+const OPP_TYPE_ROW = {
+  new_customer: { label: 'New Customers', color: '#4A90D9' },
+  new_service:  { label: 'New Services',  color: STATUS_PILL.active.dot },
+  upsell:       { label: 'Upsells',       color: STATUS_PILL.prospect.dot },
+};
+
 const formatILS = (n) => `₪${Math.round(Number(n) || 0).toLocaleString()}`;
 
 const TIMEFRAME_LABEL = { month: 'this month', quarter: 'this quarter', year: 'this year', all: 'all time' };
@@ -24,8 +28,6 @@ const TIMEFRAME_LABEL = { month: 'this month', quarter: 'this quarter', year: 't
 export default function Dashboard() {
   const [clients, setClients] = useState([]);
   const [activity, setActivity] = useState([]);
-  const [emailStats, setEmailStats] = useState({ total: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 });
-  const [marketingStats, setMarketingStats] = useState(null);
   const [financeStats, setFinanceStats] = useState(null);
   const [teamUsers, setTeamUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,26 +36,22 @@ export default function Dashboard() {
   const [needsCompletion, setNeedsCompletion] = useState([]);
   const [completingMeeting, setCompletingMeeting] = useState(null);
   const [completionNotes, setCompletionNotes] = useState('');
-  const [campaignStats, setCampaignStats] = useState([]);
   const [savingCompletion, setSavingCompletion] = useState(false);
-  const [teamInsight, setTeamInsight] = useState(null);
-  const [generatingInsight, setGeneratingInsight] = useState(false);
   const [recurringData, setRecurringData] = useState(null);
   const [markPaidModal, setMarkPaidModal] = useState(null);
   const [markPaidParsing, setMarkPaidParsing] = useState(false);
   const [markPaidSaving, setMarkPaidSaving] = useState(false);
   const [markPaidForm, setMarkPaidForm] = useState({ amount: '', receipt_url: '' });
 
-  // Sensecom-specific state
+  // QPoint dashboard state
   const [dashStats, setDashStats] = useState(null);
+  const [opportunities, setOpportunities] = useState(null); // null = loading, [] = loaded empty
+  const [providers, setProviders] = useState(null);         // null = loading, [] = loaded empty
   const [timeframe, setTimeframe] = useState('month');
-  const [topToggle, setTopToggle] = useState('revenue');
-  const [prospectModalOpen, setProspectModalOpen] = useState(false);
-  const [prospectList, setProspectList] = useState([]);
-  const [prospectLoading, setProspectLoading] = useState(false);
+  // Default: "services" — crm_client_finance is empty so revenue toggle has nothing to show
+  const [topToggle, setTopToggle] = useState('services');
 
   const navigate = useNavigate();
-  const { role } = useRole();
   const { palette: p } = useApp();
   const getHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -87,25 +85,13 @@ export default function Dashboard() {
       setClients(clientsRes.data);
       setActivity(activityRes.data);
     } catch (err) { console.error(err); }
-    try { const res = await axios.get(`${API}/insights/latest`,             { headers: getHeaders() }); setTeamInsight(res.data); }      catch (err) {}
-    try { const res = await axios.get(`${API}/finance/expenses/recurring`,  { headers: getHeaders() }); setRecurringData(res.data); }    catch (err) {}
-    try {
-      const res = await axios.get(`${API}/emails/sent`, { headers: getHeaders() });
-      const emails = res.data.filter(e => e.status === 'sent');
-      setEmailStats({
-        total: emails.length,
-        delivered: emails.filter(e => ['delivered', 'opened', 'clicked'].includes(e.email_status)).length,
-        opened:    emails.filter(e => ['opened', 'clicked'].includes(e.email_status)).length,
-        clicked:   emails.filter(e => e.email_status === 'clicked').length,
-        bounced:   emails.filter(e => e.email_status === 'bounced').length,
-      });
-    } catch (err) {}
-    try { const res = await axios.get(`${API}/marketing/stats`,             { headers: getHeaders() }); setMarketingStats(res.data); }   catch (err) {}
-    try { const res = await axios.get(`${API}/finance/expenses/summary`,    { headers: getHeaders() }); setFinanceStats(res.data); }     catch (err) {}
-    try { const res = await axios.get(`${API}/users/team-list`,             { headers: getHeaders() }); setTeamUsers(res.data); }        catch (err) {}
-    try { const res = await axios.get(`${API}/calendar/upcoming`,           { headers: getHeaders() }); setUpcomingMeetings(res.data); } catch (err) {}
-    try { const res = await axios.get(`${API}/marketing/campaigns`,         { headers: getHeaders() }); setCampaignStats(res.data.filter(c => c.status === 'sent').slice(0, 5)); } catch (err) {}
-    try { const res = await axios.get(`${API}/calendar/needs-completion`,   { headers: getHeaders() }); setNeedsCompletion(res.data); }  catch (err) {}
+    try { const res = await axios.get(`${API}/opportunities`,               { headers: getHeaders() }); setOpportunities(res.data || []); } catch (err) { setOpportunities([]); }
+    try { const res = await axios.get(`${API}/service-providers`,           { headers: getHeaders() }); setProviders(res.data || []); }     catch (err) { setProviders([]); }
+    try { const res = await axios.get(`${API}/finance/expenses/recurring`,  { headers: getHeaders() }); setRecurringData(res.data); }       catch (err) {}
+    try { const res = await axios.get(`${API}/finance/expenses/summary`,    { headers: getHeaders() }); setFinanceStats(res.data); }        catch (err) {}
+    try { const res = await axios.get(`${API}/users/team-list`,             { headers: getHeaders() }); setTeamUsers(res.data); }           catch (err) {}
+    try { const res = await axios.get(`${API}/calendar/upcoming`,           { headers: getHeaders() }); setUpcomingMeetings(res.data); }    catch (err) {}
+    try { const res = await axios.get(`${API}/calendar/needs-completion`,   { headers: getHeaders() }); setNeedsCompletion(res.data); }     catch (err) {}
     setLoading(false);
   };
 
@@ -129,18 +115,6 @@ export default function Dashboard() {
     } catch (err) { console.error(err); }
   };
 
-  const openProspectModal = async () => {
-    setProspectModalOpen(true);
-    setProspectLoading(true);
-    try {
-      const res = await axios.get(`${API}/clients/services-all?status=prospect`, { headers: getHeaders() });
-      setProspectList(res.data || []);
-    } catch (err) { console.error(err); }
-    setProspectLoading(false);
-  };
-
-  const openRate    = emailStats.total > 0 ? Math.round((emailStats.opened  / emailStats.total) * 100) : 0;
-  const clickRate   = emailStats.total > 0 ? Math.round((emailStats.clicked / emailStats.total) * 100) : 0;
   const pagedActivity = activity.slice(activityPage * 5, (activityPage + 1) * 5);
   const totalPages    = Math.ceil(activity.length / 5);
 
@@ -173,6 +147,38 @@ export default function Dashboard() {
   ].filter(Boolean);
 
   const topList = topToggle === 'revenue' ? (dashStats?.top_by_revenue || []) : (dashStats?.top_by_services || []);
+
+  // Opportunities Pipeline aggregations — bucket by type, sum non-null po_amount
+  const oppAgg = opportunities ? opportunities.reduce(
+    (acc, o) => {
+      const bucket = acc[o.opportunity_type];
+      if (!bucket) return acc;
+      bucket.count += 1;
+      if (o.po_amount != null) bucket.sum += Number(o.po_amount) || 0;
+      return acc;
+    },
+    { new_customer: { count: 0, sum: 0 }, new_service: { count: 0, sum: 0 }, upsell: { count: 0, sum: 0 } }
+  ) : null;
+  const oppTotalCount = oppAgg ? oppAgg.new_customer.count + oppAgg.new_service.count + oppAgg.upsell.count : 0;
+  // Total pipeline value excludes new_customer (po_amount is always null there)
+  const oppTotalValue = oppAgg ? oppAgg.new_service.sum + oppAgg.upsell.sum : 0;
+
+  // Provider Contracts — provider endpoint counts ALL junction rows (pending included).
+  // Subtract new_service opportunities (= junction rows with po_number IS NULL) to get
+  // truly-active contracts (PO assigned).
+  const providerTotals = providers ? providers.reduce(
+    (acc, pr) => ({
+      contractsAll: acc.contractsAll + (Number(pr.active_contracts) || 0),
+      valueAll:     acc.valueAll     + (Number(pr.total_po_amount)  || 0),
+    }),
+    { contractsAll: 0, valueAll: 0 }
+  ) : null;
+  const pendingCount      = oppAgg?.new_service.count || 0;
+  const pendingValue      = oppAgg?.new_service.sum   || 0;
+  const activeOrdersCount = providerTotals ? Math.max(0, providerTotals.contractsAll - pendingCount) : 0;
+  const activeOrdersValue = providerTotals ? Math.max(0, providerTotals.valueAll     - pendingValue) : 0;
+  const providersReady    = providers != null && oppAgg != null;
+  const hasAnyProviderContracts = providers && providers.some(pr => (pr.active_contracts || 0) > 0);
 
   const card = { background: p.cardBg, borderRadius: 12, padding: 24, border: `1px solid ${p.cardBorder}` };
 
@@ -215,7 +221,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Row 1 — Revenue (with timeframe) | Services Prospect Pipeline | Clients status */}
+        {/* Row 1 — Revenue (with timeframe) | Opportunities Pipeline | Clients status */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 20 }}>
 
           <div style={card}>
@@ -240,21 +246,56 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div style={{ ...card, cursor: 'pointer' }} onClick={openProspectModal}
-            onMouseOver={e => e.currentTarget.style.borderColor = p.primary}
-            onMouseOut={e => e.currentTarget.style.borderColor = p.cardBorder}>
+          {/* Opportunities Pipeline */}
+          <div style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: 0 }}>Services Prospect Pipeline</h3>
-              <span style={{ color: p.primary, fontSize: 11 }}>view all →</span>
+              <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: 0 }}>Opportunities Pipeline</h3>
+              <button onClick={() => navigate('/opportunities')} style={{ background: 'none', border: 'none', color: p.primary, fontSize: 12, cursor: 'pointer', padding: 0 }}>view all →</button>
             </div>
-            <p style={{ color: p.text, fontSize: 32, fontWeight: 700, margin: '8px 0 4px', fontFamily: "'Playfair Display', Georgia, serif" }}>
-              {counts.services_prospect ?? 0}
-            </p>
-            <p style={{ color: p.textSecondary, fontSize: 11, margin: 0 }}>prospect opportunities</p>
-            {(dashStats?.services_prospect_sum || 0) > 0 && (
-              <p style={{ color: STATUS_PILL.prospect.fg, fontSize: 12, margin: '10px 0 0', fontWeight: 500 }}>
-                {formatILS(dashStats.services_prospect_sum)} potential
-              </p>
+            {!oppAgg ? (
+              [0, 1, 2].map(i => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${p.cardBorder}` }}>
+                  <span style={{ color: p.textMuted, fontSize: 13 }}>—</span>
+                  <span style={{ color: p.textMuted, fontSize: 13 }}>—</span>
+                </div>
+              ))
+            ) : oppTotalCount === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20 }}>
+                <p style={{ color: p.textMuted, fontSize: 12, margin: '0 0 8px' }}>No opportunities yet</p>
+                <button onClick={() => navigate('/opportunities')} style={{ background: 'none', border: 'none', color: p.primary, fontSize: 12, cursor: 'pointer', padding: 0, fontWeight: 600 }}>Open Opportunities →</button>
+              </div>
+            ) : (
+              <>
+                {['new_customer', 'new_service', 'upsell'].map(type => {
+                  const { label, color } = OPP_TYPE_ROW[type];
+                  const { count, sum }   = oppAgg[type];
+                  return (
+                    <div key={type}
+                      onClick={() => navigate(`/opportunities?type=${type}`)}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 4px', borderBottom: `1px solid ${p.cardBorder}`, cursor: 'pointer', borderRadius: 6 }}
+                      onMouseOver={e => e.currentTarget.style.background = p.inputBg}
+                      onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ color: p.text, fontSize: 13, fontWeight: 500 }}>{label}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                        <span style={{ color: p.text, fontSize: 13, fontWeight: 600, minWidth: 24, textAlign: 'right' }}>{count}</span>
+                        <span style={{ color: type === 'new_customer' ? p.textMuted : p.primary, fontSize: 13, fontWeight: 600, minWidth: 90, textAlign: 'right' }}>
+                          {type === 'new_customer' ? '—' : formatILS(sum)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 4px 0' }}>
+                  <span style={{ color: p.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>Total</span>
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <span style={{ color: p.text, fontSize: 13, fontWeight: 700, minWidth: 24, textAlign: 'right' }}>{oppTotalCount}</span>
+                    <span style={{ color: p.primary, fontSize: 13, fontWeight: 700, minWidth: 90, textAlign: 'right' }}>{formatILS(oppTotalValue)}</span>
+                  </div>
+                </div>
+              </>
             )}
           </div>
 
@@ -279,14 +320,14 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Row 2 — Top Customers | Email Performance | Operator Expenses */}
+        {/* Row 2 — Top Customers | Provider Contracts | Operator Expenses */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 20 }}>
 
           <div style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: 0 }}>Top Customers</h3>
               <div style={{ display: 'flex', gap: 4, background: p.inputBg, borderRadius: 20, padding: 2 }}>
-                {[{ key: 'revenue', label: 'Revenue' }, { key: 'services', label: 'Services' }].map(t => (
+                {[{ key: 'services', label: 'Services' }, { key: 'revenue', label: 'Revenue' }].map(t => (
                   <button key={t.key} onClick={() => setTopToggle(t.key)}
                     style={{ background: topToggle === t.key ? p.primary : 'transparent', color: topToggle === t.key ? '#fff' : p.textSecondary, border: 'none', borderRadius: 20, padding: '3px 12px', fontSize: 10, cursor: 'pointer', fontWeight: 600 }}>
                     {t.label}
@@ -310,35 +351,48 @@ export default function Dashboard() {
             ))}
           </div>
 
+          {/* Provider Contracts */}
           <div style={card}>
-            <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: '0 0 12px' }}>Email Performance</h3>
-            <div style={{ display: 'flex', gap: 16 }}>
-              {[
-                { label: 'Sent',       value: emailStats.total },
-                { label: 'Open Rate',  value: `${openRate}%`, good: openRate >= 30 },
-                { label: 'Click Rate', value: `${clickRate}%`, good: clickRate >= 3 },
-                { label: 'Bounced',    value: emailStats.bounced, bad: emailStats.bounced > 0 },
-              ].map(({ label, value, good, bad }) => (
-                <div key={label} style={{ flex: 1, textAlign: 'center' }}>
-                  <p style={{ color: bad ? '#D4183D' : good ? '#4CAF50' : p.text, fontSize: 18, fontWeight: 700, margin: '0 0 2px' }}>{value}</p>
-                  <p style={{ color: p.textSecondary, fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>
-                </div>
-              ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h3 style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: 0 }}>Provider Contracts</h3>
+              <button onClick={() => navigate('/service-providers')} style={{ background: 'none', border: 'none', color: p.primary, fontSize: 12, cursor: 'pointer', padding: 0 }}>view all →</button>
             </div>
-            {marketingStats && (
-              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${p.cardBorder}`, display: 'flex', gap: 16 }}>
-                {[
-                  { label: 'Campaigns', value: marketingStats.total_campaigns },
-                  { label: 'Avg Open',  value: `${marketingStats.avg_open_rate || 0}%` },
-                  { label: 'Avg CTR',   value: `${marketingStats.avg_ctr || 0}%` },
-                  { label: 'Unsubs',    value: marketingStats.total_unsubscribed || 0 },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ flex: 1, textAlign: 'center' }}>
-                    <p style={{ color: p.text, fontSize: 14, fontWeight: 600, margin: '0 0 2px' }}>{value}</p>
-                    <p style={{ color: p.textSecondary, fontSize: 10, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>
+            {!providersReady ? (
+              <>
+                <div style={{ marginBottom: 14, padding: '6px 8px' }}>
+                  <p style={{ color: p.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px' }}>Active Orders (SOAG)</p>
+                  <p style={{ color: p.textMuted, fontSize: 18, fontWeight: 700, margin: 0, fontFamily: "'Playfair Display', Georgia, serif" }}>—</p>
+                </div>
+                <div style={{ padding: '6px 8px' }}>
+                  <p style={{ color: p.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px' }}>Pending Quotes</p>
+                  <p style={{ color: p.textMuted, fontSize: 18, fontWeight: 700, margin: 0, fontFamily: "'Playfair Display', Georgia, serif" }}>—</p>
+                </div>
+              </>
+            ) : (!hasAnyProviderContracts && pendingCount === 0) ? (
+              <p style={{ color: p.textMuted, fontSize: 12, textAlign: 'center', padding: 20 }}>No provider contracts yet</p>
+            ) : (
+              <>
+                <div onClick={() => navigate('/service-providers')}
+                  style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer' }}
+                  onMouseOver={e => e.currentTarget.style.background = p.inputBg}
+                  onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                  <p style={{ color: p.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 6px' }}>Active Orders (SOAG)</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ color: p.text, fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', Georgia, serif" }}>{activeOrdersCount} contracts</span>
+                    <span style={{ color: p.primary, fontSize: 14, fontWeight: 600 }}>{formatILS(activeOrdersValue)}</span>
                   </div>
-                ))}
-              </div>
+                </div>
+                <div onClick={() => navigate('/opportunities?type=new_service')}
+                  style={{ padding: '8px 10px', borderRadius: 8, cursor: 'pointer' }}
+                  onMouseOver={e => e.currentTarget.style.background = p.inputBg}
+                  onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                  <p style={{ color: p.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 6px' }}>Pending Quotes</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ color: p.text, fontSize: 18, fontWeight: 700, fontFamily: "'Playfair Display', Georgia, serif" }}>{pendingCount} quotes</span>
+                    <span style={{ color: STATUS_PILL.prospect.fg, fontSize: 14, fontWeight: 600 }}>{formatILS(pendingValue)}</span>
+                  </div>
+                </div>
+              </>
             )}
           </div>
 
@@ -502,51 +556,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Team Superbrain */}
-        <div style={{ background: `linear-gradient(135deg, ${p.sidebar} 0%, ${p.sidebar}CC 100%)`, borderRadius: 12, padding: 24, border: `1px solid ${p.cardBorder}`, marginBottom: 20, position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', top: -20, right: -20, fontSize: 80, opacity: 0.06 }}>🧠</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 16 }}>🧠</span>
-                <h3 style={{ color: '#fff', fontSize: 14, fontWeight: 600, margin: 0 }}>Team Superbrain</h3>
-                {teamInsight && (
-                  <span style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', fontSize: 10, borderRadius: 20, padding: '2px 8px' }}>
-                    {new Date(teamInsight.generated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
-                )}
-              </div>
-              {teamInsight && <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, margin: 0 }}>From {teamInsight.thought_count} thoughts · {teamInsight.user_count} {teamInsight.user_count === 1 ? 'contributor' : 'contributors'}</p>}
-            </div>
-            {role === 'admin' && (
-              <button onClick={async () => {
-                setGeneratingInsight(true);
-                try { const res = await axios.post(`${API}/insights/generate`, {}, { headers: getHeaders() }); setTeamInsight(res.data); } catch (err) { console.error(err); }
-                setGeneratingInsight(false);
-              }} disabled={generatingInsight} style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '6px 14px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>
-                {generatingInsight ? '⏳ Generating...' : '✨ Generate Now'}
-              </button>
-            )}
-          </div>
-          {teamInsight ? (
-            <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}
-                components={{
-                  h2: ({ node, ...props }) => <h2 style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.9)', margin: '14px 0 6px', textTransform: 'uppercase', letterSpacing: 0.8, borderBottom: '1px solid rgba(255,255,255,0.15)', paddingBottom: 4 }} {...props} />,
-                  h3: ({ node, ...props }) => <h3 style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.9)', margin: '10px 0 4px' }} {...props} />,
-                  p:  ({ node, ...props }) => <p  style={{ margin: '0 0 8px', color: 'rgba(255,255,255,0.85)' }} {...props} />,
-                  ul: ({ node, ...props }) => <ul style={{ paddingLeft: 18, margin: '4px 0 8px', listStyle: 'none', padding: 0 }} {...props} />,
-                  li: ({ node, ...props }) => <li style={{ marginBottom: 4, color: 'rgba(255,255,255,0.85)' }} {...props} />,
-                  strong: ({ node, ...props }) => <strong style={{ fontWeight: 600, color: '#fff' }} {...props} />,
-                }}>
-                {teamInsight.insight}
-              </ReactMarkdown>
-            </div>
-          ) : (
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, margin: 0, fontStyle: 'italic' }}>No insight yet — add thoughts in My Thoughts and click Generate Now to surface team patterns.</p>
-          )}
-        </div>
-
         {/* Bottom Row — Recent Activity | Upcoming Meetings | Team */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
 
@@ -638,61 +647,6 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
-
-        {/* Prospect Drill-down Modal */}
-        {prospectModalOpen && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-            onClick={() => setProspectModalOpen(false)}>
-            <div onClick={e => e.stopPropagation()}
-              style={{ background: p.cardBg, borderRadius: 16, padding: 28, width: 780, maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', border: `1px solid ${p.cardBorder}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div>
-                  <h2 style={{ color: p.text, fontSize: 20, fontWeight: 600, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 4px' }}>Prospect Services</h2>
-                  <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>{prospectList.length} opportunities across customers</p>
-                </div>
-                <button onClick={() => setProspectModalOpen(false)}
-                  style={{ background: 'none', border: 'none', color: p.textSecondary, fontSize: 20, cursor: 'pointer', padding: 4 }}>✕</button>
-              </div>
-              {prospectLoading ? (
-                <p style={{ color: p.textMuted, fontSize: 12, textAlign: 'center', padding: 24 }}>Loading…</p>
-              ) : prospectList.length === 0 ? (
-                <p style={{ color: p.textMuted, fontSize: 12, textAlign: 'center', padding: 24 }}>No prospect services yet — flag a service as <em>Prospect</em> on a client's Services tab.</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: p.inputBg }}>
-                      {['Customer', 'Service', 'Amount', 'Owner', 'Added'].map(h => (
-                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {prospectList.map(row => {
-                      const daysOld = Math.floor((Date.now() - new Date(row.created_at)) / 86400000);
-                      return (
-                        <tr key={row.id} onClick={() => { setProspectModalOpen(false); navigate(`/clients/${row.client_id}`); }}
-                          style={{ borderTop: `1px solid ${p.cardBorder}`, cursor: 'pointer' }}
-                          onMouseOver={e => e.currentTarget.style.background = p.inputBg}
-                          onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                          <td style={{ padding: '10px 12px', fontSize: 13, color: p.text, fontWeight: 500 }}>{row.crm_clients?.business_name || '—'}</td>
-                          <td style={{ padding: '10px 12px', fontSize: 13, color: p.text }}>
-                            <div>{row.crm_services?.name_he || '—'}</div>
-                            <div style={{ color: p.textSecondary, fontSize: 11 }}>{row.crm_services?.name_en || ''}</div>
-                          </td>
-                          <td style={{ padding: '10px 12px', fontSize: 13, color: p.primary, fontWeight: 600 }}>
-                            {row.contract_amount != null ? formatILS(row.contract_amount) : <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>}
-                          </td>
-                          <td style={{ padding: '10px 12px', fontSize: 12, color: row.crm_users?.name ? p.text : p.textMuted }}>{row.crm_users?.name || '—'}</td>
-                          <td style={{ padding: '10px 12px', fontSize: 12, color: p.textSecondary }}>{daysOld === 0 ? 'Today' : `${daysOld}d ago`}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        )}
 
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useApp } from '../context/AppContext';
@@ -27,8 +27,12 @@ const SEGMENTS = [
 export default function Opportunities() {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading]             = useState(true);
+  const [searchParams]                    = useSearchParams();
   const [search, setSearch]               = useState('');
-  const [typeFilter, setTypeFilter]       = useState('');
+  const [typeFilter, setTypeFilter]       = useState(() => {
+    const t = searchParams.get('type');
+    return ['new_customer', 'new_service', 'upsell'].includes(t) ? t : '';
+  });
   const [ownerFilter, setOwnerFilter]     = useState('');
 
   // Catalogs for the Add modal dropdowns
@@ -79,6 +83,12 @@ export default function Opportunities() {
     axios.get(`${API}/service-providers?is_active=true`,  { headers: getHeaders() }).then(r => setProviderCatalog(r.data || [])).catch(() => {});
     axios.get(`${API}/services`,                          { headers: getHeaders() }).then(r => setServicesCatalog(r.data || [])).catch(() => {});
   }, []);
+
+  // Re-sync typeFilter when URL ?type= changes (e.g. user navigates from Dashboard tiles)
+  useEffect(() => {
+    const t = searchParams.get('type');
+    setTypeFilter(['new_customer', 'new_service', 'upsell'].includes(t) ? t : '');
+  }, [searchParams]);
 
   const fetchOpportunities = async () => {
     try {
