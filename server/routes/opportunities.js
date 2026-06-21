@@ -13,9 +13,20 @@ const { checkPermission } = require('../middleware/rbac');
 
 const CLOSED_STAGES = ['Closed Won', 'Closed Lost', 'Not Interested', 'Converted'];
 
+// Validate optional probability input (0-100). Returns { value } on success, { error } on bad input.
+// Missing / null / '' all coerce to null so callers can decide whether to write or skip.
+function parseProbability(raw) {
+  if (raw === undefined || raw === null || raw === '') return { value: null };
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 100) {
+    return { error: 'probability must be a number between 0 and 100' };
+  }
+  return { value: n };
+}
+
 // Type 2: junction-row select shape
 const OPP_SELECT = `
-  id, customer_service_id, service_provider_id, po_amount, commission_rate, commission_source, notes, created_at,
+  id, customer_service_id, service_provider_id, po_amount, probability, commission_rate, commission_source, notes, created_at,
   crm_service_providers(name),
   crm_customer_services(
     owner_id,
@@ -39,6 +50,7 @@ const mapNewCustomer = (c) => ({
   owner_id:            c.assigned_to,
   owner_name:          c.crm_users?.name || null,
   po_amount:           null,
+  probability:         c.probability,
   commission_rate:     null,
   commission_source:   null,
   notes:               c.next_action,
@@ -60,6 +72,7 @@ const mapNewService = (j) => ({
   owner_id:            j.crm_customer_services?.crm_users?.id            || null,
   owner_name:          j.crm_customer_services?.crm_users?.name          || null,
   po_amount:           j.po_amount,
+  probability:         j.probability,
   commission_rate:     j.commission_rate,
   commission_source:   j.commission_source,
   notes:               j.notes,
@@ -81,6 +94,7 @@ const mapUpsell = (cs) => ({
   owner_id:            cs.owner_id,
   owner_name:          cs.crm_users?.name || null,
   po_amount:           cs.contract_amount,
+  probability:         cs.probability,
   commission_rate:     cs.commission_rate,
   commission_source:   null,
   notes:               cs.notes,
@@ -93,7 +107,7 @@ router.get('/', auth, async (req, res) => {
   try {
     const [companiesRes, junctionRes, upsellRes] = await Promise.all([
       supabase.from('crm_companies')
-        .select('id, company_name, next_action, assigned_to, stage, created_at, crm_users!crm_companies_assigned_to_fkey(id, name)')
+        .select('id, company_name, next_action, assigned_to, stage, probability, created_at, crm_users!crm_companies_assigned_to_fkey(id, name)')
         .order('created_at', { ascending: false }),
       supabase.from('crm_customer_service_providers')
         .select(OPP_SELECT)
@@ -101,7 +115,7 @@ router.get('/', auth, async (req, res) => {
         .order('created_at', { ascending: false }),
       supabase.from('crm_customer_services')
         .select(`
-          id, client_id, service_id, contract_amount, commission_rate, notes, owner_id, created_at,
+          id, client_id, service_id, contract_amount, commission_rate, probability, notes, owner_id, created_at,
           crm_clients(id, business_name),
           crm_services(name_en, name_he),
           crm_users!crm_customer_services_owner_id_fkey(id, name)
@@ -138,8 +152,11 @@ router.post('/', auth, checkPermission('company:edit'), async (req, res) => {
 });
 
 async function createNewCustomer(req, res) {
-  const { name, contact_name, contact_email, contact_phone, segment, interested_services, owner_id, notes } = req.body;
+  const { name, contact_name, contact_email, contact_phone, segment, interested_services, owner_id, notes, probability } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'name is required' });
+
+  const prob = parseProbability(probability);
+  if (prob.error) return res.status(400).json({ error: prob.error });
 
   // Build the company's next_action text: notes + interested services list.
   let nextAction = notes || null;
@@ -161,6 +178,7 @@ async function createNewCustomer(req, res) {
       assigned_to:  owner_id || null,
       user_id:      req.user.id,
       next_action:  nextAction,
+      probability:  prob.value,
     }])
     .select('*, crm_users!crm_companies_assigned_to_fkey(id, name)')
     .single();
@@ -190,10 +208,13 @@ async function createNewCustomer(req, res) {
 }
 
 async function createNewService(req, res) {
-  const { client_id, service_id, service_provider_id, notes, po_amount, commission_rate, commission_source, owner_id } = req.body;
+  const { client_id, service_id, service_provider_id, notes, po_amount, commission_rate, commission_source, owner_id, probability } = req.body;
   if (!client_id)           return res.status(400).json({ error: 'client_id is required' });
   if (!service_id)          return res.status(400).json({ error: 'service_id is required' });
   if (!service_provider_id) return res.status(400).json({ error: 'service_provider_id is required' });
+
+  const prob = parseProbability(probability);
+  if (prob.error) return res.status(400).json({ error: prob.error });
 
   const { data: client }   = await supabase.from('crm_clients').select('id, business_name').eq('id', client_id).maybeSingle();
   if (!client)   return res.status(404).json({ error: 'Client not found' });
@@ -227,6 +248,7 @@ async function createNewService(req, res) {
       service_provider_id,
       po_number:         null,
       po_amount:         po_amount       ?? null,
+      probability:       prob.value,
       commission_rate:   commission_rate ?? null,
       commission_source: commission_source || null,
       notes:             notes || null,
@@ -247,9 +269,12 @@ async function createNewService(req, res) {
 }
 
 async function createUpsell(req, res) {
-  const { client_id, service_id, notes, po_amount, commission_rate, owner_id } = req.body;
+  const { client_id, service_id, notes, po_amount, commission_rate, owner_id, probability } = req.body;
   if (!client_id)  return res.status(400).json({ error: 'client_id is required' });
   if (!service_id) return res.status(400).json({ error: 'service_id is required' });
+
+  const prob = parseProbability(probability);
+  if (prob.error) return res.status(400).json({ error: prob.error });
 
   const { data: client }  = await supabase.from('crm_clients').select('id, business_name').eq('id', client_id).maybeSingle();
   if (!client)  return res.status(404).json({ error: 'Client not found' });
@@ -276,12 +301,13 @@ async function createUpsell(req, res) {
       status:            'prospect',
       contract_currency: 'ILS',
       contract_amount:   po_amount       ?? null,
+      probability:       prob.value,
       commission_rate:   commission_rate ?? null,
       notes:             notes || null,
       owner_id:          owner_id || null,
     }])
     .select(`
-      id, client_id, service_id, contract_amount, commission_rate, notes, owner_id, created_at,
+      id, client_id, service_id, contract_amount, commission_rate, probability, notes, owner_id, created_at,
       crm_clients(id, business_name),
       crm_services(name_en, name_he),
       crm_users!crm_customer_services_owner_id_fkey(id, name)
@@ -309,12 +335,17 @@ router.put('/:id', auth, checkPermission('company:edit'), async (req, res) => {
 });
 
 async function updateNewCustomer(req, res) {
-  const { stage, notes, assigned_to, category } = req.body;
+  const { stage, notes, assigned_to, category, probability } = req.body;
   const safe = {};
   if (stage       !== undefined) safe.stage       = stage;
   if (notes       !== undefined) safe.next_action = notes;
   if (assigned_to !== undefined) safe.assigned_to = assigned_to || null;
   if (category    !== undefined) safe.category    = category || null;
+  if (probability !== undefined) {
+    const prob = parseProbability(probability);
+    if (prob.error) return res.status(400).json({ error: prob.error });
+    safe.probability = prob.value;
+  }
   if (Object.keys(safe).length === 0) return res.status(400).json({ error: 'No editable fields supplied' });
   safe.updated_at = new Date();
 
@@ -328,12 +359,17 @@ async function updateNewCustomer(req, res) {
 }
 
 async function updateNewService(req, res) {
-  const { po_number, po_amount, commission_rate, notes } = req.body;
+  const { po_number, po_amount, commission_rate, notes, probability } = req.body;
   const safe = {};
   if (po_number       !== undefined) safe.po_number       = po_number       || null;
   if (po_amount       !== undefined) safe.po_amount       = po_amount       ?? null;
   if (commission_rate !== undefined) safe.commission_rate = commission_rate ?? null;
   if (notes           !== undefined) safe.notes           = notes           || null;
+  if (probability     !== undefined) {
+    const prob = parseProbability(probability);
+    if (prob.error) return res.status(400).json({ error: prob.error });
+    safe.probability = prob.value;
+  }
   if (Object.keys(safe).length === 0) return res.status(400).json({ error: 'No editable fields supplied' });
   safe.updated_at = new Date().toISOString();
 
@@ -366,13 +402,18 @@ async function updateNewService(req, res) {
 }
 
 async function updateUpsell(req, res) {
-  const { status, contract_amount, commission_rate, notes, owner_id } = req.body;
+  const { status, contract_amount, commission_rate, notes, owner_id, probability } = req.body;
   const safe = {};
   if (status          !== undefined) safe.status          = status;
   if (contract_amount !== undefined) safe.contract_amount = contract_amount ?? null;
   if (commission_rate !== undefined) safe.commission_rate = commission_rate ?? null;
   if (notes           !== undefined) safe.notes           = notes || null;
   if (owner_id        !== undefined) safe.owner_id        = owner_id || null;
+  if (probability     !== undefined) {
+    const prob = parseProbability(probability);
+    if (prob.error) return res.status(400).json({ error: prob.error });
+    safe.probability = prob.value;
+  }
   if (Object.keys(safe).length === 0) return res.status(400).json({ error: 'No editable fields supplied' });
   safe.updated_at = new Date().toISOString();
 
@@ -384,7 +425,7 @@ async function updateUpsell(req, res) {
   const { data: updated, error } = await supabase
     .from('crm_customer_services').update(safe).eq('id', req.params.id)
     .select(`
-      id, client_id, service_id, contract_amount, commission_rate, notes, owner_id, created_at,
+      id, client_id, service_id, contract_amount, commission_rate, probability, notes, owner_id, created_at,
       crm_clients(id, business_name),
       crm_services(name_en, name_he),
       crm_users!crm_customer_services_owner_id_fkey(id, name)

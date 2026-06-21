@@ -148,20 +148,33 @@ export default function Dashboard() {
 
   const topList = topToggle === 'revenue' ? (dashStats?.top_by_revenue || []) : (dashStats?.top_by_services || []);
 
-  // Opportunities Pipeline aggregations — bucket by type, sum non-null po_amount
+  // Opportunities Pipeline aggregations — bucket by type. Tracks raw count, total ₪, and
+  // weighted ₪ (po_amount × probability / 100, summed only over rows where BOTH are set).
+  // `weightedHas` flags whether ANY row in the bucket qualified — lets us distinguish
+  // "no data" (render —) from "genuinely ₪0" later.
   const oppAgg = opportunities ? opportunities.reduce(
     (acc, o) => {
       const bucket = acc[o.opportunity_type];
       if (!bucket) return acc;
       bucket.count += 1;
       if (o.po_amount != null) bucket.sum += Number(o.po_amount) || 0;
+      if (o.po_amount != null && o.probability != null) {
+        bucket.weighted    += Number(o.po_amount) * Number(o.probability) / 100;
+        bucket.weightedHas  = true;
+      }
       return acc;
     },
-    { new_customer: { count: 0, sum: 0 }, new_service: { count: 0, sum: 0 }, upsell: { count: 0, sum: 0 } }
+    {
+      new_customer: { count: 0, sum: 0, weighted: 0, weightedHas: false },
+      new_service:  { count: 0, sum: 0, weighted: 0, weightedHas: false },
+      upsell:       { count: 0, sum: 0, weighted: 0, weightedHas: false },
+    }
   ) : null;
   const oppTotalCount = oppAgg ? oppAgg.new_customer.count + oppAgg.new_service.count + oppAgg.upsell.count : 0;
   // Total pipeline value excludes new_customer (po_amount is always null there)
   const oppTotalValue = oppAgg ? oppAgg.new_service.sum + oppAgg.upsell.sum : 0;
+  const oppTotalWeighted    = oppAgg ? oppAgg.new_customer.weighted + oppAgg.new_service.weighted + oppAgg.upsell.weighted : 0;
+  const oppTotalWeightedHas = oppAgg ? (oppAgg.new_customer.weightedHas || oppAgg.new_service.weightedHas || oppAgg.upsell.weightedHas) : false;
 
   // Provider Contracts — provider endpoint counts ALL junction rows (pending included).
   // Subtract new_service opportunities (= junction rows with po_number IS NULL) to get
@@ -266,9 +279,15 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
+                {/* Column header line */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 14, padding: '0 4px 6px' }}>
+                  <span style={{ color: p.textMuted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, minWidth: 24, textAlign: 'right' }}>#</span>
+                  <span style={{ color: p.textMuted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, minWidth: 80, textAlign: 'right' }}>Total</span>
+                  <span style={{ color: p.textMuted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.6, minWidth: 80, textAlign: 'right' }}>Weighted</span>
+                </div>
                 {['new_customer', 'new_service', 'upsell'].map(type => {
-                  const { label, color } = OPP_TYPE_ROW[type];
-                  const { count, sum }   = oppAgg[type];
+                  const { label, color }              = OPP_TYPE_ROW[type];
+                  const { count, sum, weighted, weightedHas } = oppAgg[type];
                   return (
                     <div key={type}
                       onClick={() => navigate(`/opportunities?type=${type}`)}
@@ -281,8 +300,11 @@ export default function Dashboard() {
                       </div>
                       <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                         <span style={{ color: p.text, fontSize: 13, fontWeight: 600, minWidth: 24, textAlign: 'right' }}>{count}</span>
-                        <span style={{ color: type === 'new_customer' ? p.textMuted : p.primary, fontSize: 13, fontWeight: 600, minWidth: 90, textAlign: 'right' }}>
+                        <span style={{ color: type === 'new_customer' ? p.textMuted : p.primary, fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: 'right' }}>
                           {type === 'new_customer' ? '—' : formatILS(sum)}
+                        </span>
+                        <span style={{ color: weightedHas ? '#155724' : p.textMuted, fontSize: 13, fontWeight: 600, minWidth: 80, textAlign: 'right' }}>
+                          {weightedHas ? `${formatILS(weighted)} est.` : '—'}
                         </span>
                       </div>
                     </div>
@@ -292,7 +314,10 @@ export default function Dashboard() {
                   <span style={{ color: p.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 600 }}>Total</span>
                   <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                     <span style={{ color: p.text, fontSize: 13, fontWeight: 700, minWidth: 24, textAlign: 'right' }}>{oppTotalCount}</span>
-                    <span style={{ color: p.primary, fontSize: 13, fontWeight: 700, minWidth: 90, textAlign: 'right' }}>{formatILS(oppTotalValue)}</span>
+                    <span style={{ color: p.primary, fontSize: 13, fontWeight: 700, minWidth: 80, textAlign: 'right' }}>{formatILS(oppTotalValue)}</span>
+                    <span style={{ color: oppTotalWeightedHas ? '#155724' : p.textMuted, fontSize: 13, fontWeight: 700, minWidth: 80, textAlign: 'right' }}>
+                      {oppTotalWeightedHas ? `${formatILS(oppTotalWeighted)} wtd.` : '—'}
+                    </span>
                   </div>
                 </div>
               </>

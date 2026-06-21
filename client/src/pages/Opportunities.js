@@ -69,6 +69,10 @@ export default function Opportunities() {
   const [editingPoId, setEditingPoId] = useState(null);
   const [poDraft, setPoDraft]         = useState('');
 
+  // Inline probability edit (all 3 types)
+  const [editingProbId, setEditingProbId] = useState(null);
+  const [probDraft, setProbDraft]         = useState('');
+
   const navigate = useNavigate();
   const { palette: p } = useApp();
   const { can } = useRole();
@@ -188,6 +192,45 @@ export default function Opportunities() {
     else if (e.key === 'Escape'){ e.preventDefault(); cancelPoEdit(); }
   };
 
+  // ─── Inline probability edit (all 3 types) ───────────────────────────────
+  const startProbEdit = (opp) => {
+    if (!canEdit) return;
+    setEditingProbId(opp.id);
+    setProbDraft(opp.probability != null ? String(opp.probability) : '');
+  };
+  const cancelProbEdit = () => { setEditingProbId(null); setProbDraft(''); };
+  const commitProbEdit = async (opp) => {
+    const t = probDraft.trim();
+    if (t === '') { cancelProbEdit(); return; }
+    const n = Number(t);
+    if (!Number.isFinite(n) || n < 0 || n > 100) { cancelProbEdit(); return; }
+    try {
+      const res = await axios.put(
+        `${API}/opportunities/${opp.id}`,
+        { opportunity_type: opp.opportunity_type, probability: n },
+        { headers: getHeaders() },
+      );
+      setOpportunities(prev => prev.map(o => o.id === opp.id ? { ...o, probability: res.data?.probability ?? n } : o));
+    } catch (err) { console.error(err); }
+    cancelProbEdit();
+  };
+  const onProbKeyDown = (e, opp) => {
+    if (e.key === 'Enter')       { e.preventDefault(); commitProbEdit(opp); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelProbEdit(); }
+  };
+
+  // Color tier for probability % display
+  const probColor = (n) => {
+    if (n == null) return p.textMuted;
+    if (n <= 30)   return '#D4183D';     // red
+    if (n <= 60)   return '#D4A574';     // amber
+    if (n <= 90)   return '#155724';     // green
+    return '#0B5D2A';                    // bold green (91-100)
+  };
+  const weightedFor = (o) => (o.po_amount != null && o.probability != null)
+    ? Number(o.po_amount) * Number(o.probability) / 100
+    : null;
+
   // ─── Mark Won (upsell only) ──────────────────────────────────────────────
   const markUpsellWon = async (opp) => {
     if (!canEdit) return;
@@ -237,11 +280,22 @@ export default function Opportunities() {
   // ─── Stats ───────────────────────────────────────────────────────────────
   const totalCount    = opportunities.length;
   const pipelineValue = opportunities.reduce((a, o) => a + (Number(o.po_amount) || 0), 0);
+  // Weighted revenue: sum of po_amount × probability / 100 across rows where BOTH are set.
+  const weightedRevenue = opportunities.reduce((a, o) => {
+    const w = weightedFor(o);
+    return a + (w == null ? 0 : w);
+  }, 0);
   const byTypeCount = {
     new_customer: opportunities.filter(o => o.opportunity_type === 'new_customer').length,
     new_service:  opportunities.filter(o => o.opportunity_type === 'new_service').length,
     upsell:       opportunities.filter(o => o.opportunity_type === 'upsell').length,
   };
+  // Filtered totals for the footer summary — respects search + type + owner filters.
+  const filteredPipelineValue = filtered.reduce((a, o) => a + (Number(o.po_amount) || 0), 0);
+  const filteredWeighted      = filtered.reduce((a, o) => {
+    const w = weightedFor(o);
+    return a + (w == null ? 0 : w);
+  }, 0);
 
   // ─── Customer combobox (used in new_service + upsell forms) ──────────────
   const activeForm = selectedType === 'new_service' ? newServiceForm : selectedType === 'upsell' ? upsellForm : null;
@@ -299,7 +353,7 @@ export default function Opportunities() {
         </div>
 
         {/* Stat tiles */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
           <div style={{ background: p.cardBg, borderRadius: 12, padding: 20, border: `1px solid ${p.cardBorder}` }}>
             <p style={{ color: p.text, fontSize: 24, fontWeight: 700, margin: 0, fontFamily: 'Playfair Display, Georgia, serif' }}>{totalCount}</p>
             <p style={{ color: p.text, fontSize: 11, margin: '4px 0 2px', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.8 }}>Total Opportunities</p>
@@ -309,7 +363,13 @@ export default function Opportunities() {
           </div>
           <div style={{ background: p.cardBg, borderRadius: 12, padding: 20, border: `1px solid ${p.cardBorder}` }}>
             <p style={{ color: p.primary, fontSize: 24, fontWeight: 700, margin: 0, fontFamily: 'Playfair Display, Georgia, serif' }}>{formatILS(pipelineValue)}</p>
-            <p style={{ color: p.text, fontSize: 11, margin: '4px 0 0', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.8 }}>Pipeline Value</p>
+            <p style={{ color: p.text, fontSize: 11, margin: '4px 0 2px', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.8 }}>Pipeline Value</p>
+            <p style={{ color: p.textSecondary, fontSize: 11, margin: 0 }}>total potential</p>
+          </div>
+          <div style={{ background: p.cardBg, borderRadius: 12, padding: 20, border: `1px solid ${p.cardBorder}` }}>
+            <p style={{ color: '#155724', fontSize: 24, fontWeight: 700, margin: 0, fontFamily: 'Playfair Display, Georgia, serif' }}>{formatILS(weightedRevenue)}</p>
+            <p style={{ color: p.text, fontSize: 11, margin: '4px 0 2px', textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.8 }}>Weighted Revenue</p>
+            <p style={{ color: p.textSecondary, fontSize: 11, margin: 0 }}>estimated revenue</p>
           </div>
         </div>
 
@@ -348,21 +408,23 @@ export default function Opportunities() {
           <div style={{ background: p.cardBg, borderRadius: 12, border: `1px solid ${p.cardBorder}`, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <colgroup>
+                <col style={{ width: '9%' }} />
                 <col style={{ width: '11%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '8%' }} />
+                <col style={{ width: '9%' }} />
                 <col style={{ width: '9%' }} />
                 <col style={{ width: '9%' }} />
                 <col style={{ width: '7%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '4%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '9%' }} />
+                <col style={{ width: '3%' }} />
               </colgroup>
               <thead>
                 <tr style={{ background: p.inputBg }}>
-                  {['Type', 'Description', 'Customer', 'Service', 'Provider', 'Amount', 'Owner', 'Added', 'Stage', 'PO / Action', ''].map(h => (
+                  {['Type', 'Description', 'Customer', 'Service', 'Provider', 'Amount', 'Weighted', 'Prob %', 'Owner', 'Added', 'Stage', 'PO / Action', ''].map(h => (
                     <th key={h} style={{ padding: '12px 10px', textAlign: 'left', fontSize: 10, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</th>
                   ))}
                 </tr>
@@ -409,6 +471,29 @@ export default function Opportunities() {
                       </td>
                       <td style={{ padding: '10px 10px', fontSize: 12, color: p.primary, fontWeight: 600 }}>
                         {o.po_amount != null ? formatILS(o.po_amount) : <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>}
+                      </td>
+                      <td style={{ padding: '10px 10px', fontSize: 12, color: p.text, fontWeight: 500 }}>
+                        {(() => {
+                          const w = weightedFor(o);
+                          return w == null
+                            ? <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>
+                            : formatILS(w);
+                        })()}
+                      </td>
+                      <td style={{ padding: '10px 8px', fontSize: 12 }}>
+                        {editingProbId === o.id ? (
+                          <input autoFocus type="number" min="0" max="100" value={probDraft}
+                            onChange={e => setProbDraft(e.target.value)}
+                            onBlur={() => commitProbEdit(o)}
+                            onKeyDown={e => onProbKeyDown(e, o)}
+                            style={{ width: '100%', maxWidth: 70, background: p.inputBg, border: `1px solid ${p.primary}`, borderRadius: 4, padding: '4px 6px', color: p.text, fontSize: 11, outline: 'none', fontFamily: 'Inter, sans-serif' }} />
+                        ) : (
+                          <span onClick={() => startProbEdit(o)}
+                            title={canEdit ? 'Click to set probability' : ''}
+                            style={{ color: probColor(o.probability), fontWeight: o.probability != null && o.probability > 90 ? 700 : 600, cursor: canEdit ? 'pointer' : 'default', fontSize: 12 }}>
+                            {o.probability != null ? `${o.probability}%` : <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>}
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '10px 10px', fontSize: 11, color: o.owner_name ? p.textSecondary : p.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.owner_name || ''}>
                         {o.owner_name || '—'}
@@ -458,6 +543,11 @@ export default function Opportunities() {
                 })}
               </tbody>
             </table>
+            {/* Footer summary — recalculates from filtered rows */}
+            <div style={{ padding: '10px 16px', background: p.inputBg, borderTop: `1px solid ${p.cardBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: p.textSecondary }}>
+              <span>Total pipeline: <strong style={{ color: p.text, fontWeight: 600 }}>{formatILS(filteredPipelineValue)}</strong></span>
+              <span>Weighted: <strong style={{ color: p.text, fontWeight: 600 }}>{formatILS(filteredWeighted)}</strong> est.</span>
+            </div>
           </div>
         )}
 
