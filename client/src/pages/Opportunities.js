@@ -10,9 +10,9 @@ const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 const formatILS = (n) => `₪${Math.round(Number(n) || 0).toLocaleString()}`;
 
 const TYPE_PILL = {
-  new_customer: { label: 'New Customer / לקוח חדש', bg: '#EBF4FF', fg: '#1a6fad' },
-  new_service:  { label: 'New Service / שירות חדש', bg: '#D4EDDA', fg: '#155724' },
-  upsell:       { label: 'Upsell / שדרוג',           bg: '#FFF3CD', fg: '#856404' },
+  new_customer: { label: 'New Client',  bg: '#EBF4FF', fg: '#1a6fad' },
+  new_service:  { label: 'New Service', bg: '#D4EDDA', fg: '#155724' },
+  upsell:       { label: 'Upsell',      bg: '#FFF3CD', fg: '#856404' },
 };
 
 const SEGMENTS = [
@@ -408,58 +408,88 @@ export default function Opportunities() {
           <div style={{ background: p.cardBg, borderRadius: 12, border: `1px solid ${p.cardBorder}`, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '7%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '7%' }} />
-                <col style={{ width: '7%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '3%' }} />
+                <col style={{ width: '8%'  }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '9%'  }} />
+                <col style={{ width: '6%'  }} />
+                <col style={{ width: '9%'  }} />
+                <col style={{ width: '9%'  }} />
+                <col style={{ width: '8%'  }} />
+                <col style={{ width: '3%'  }} />
               </colgroup>
               <thead>
                 <tr style={{ background: p.inputBg }}>
-                  {['Type', 'Description', 'Customer', 'Service', 'Provider', 'Amount', 'Weighted', 'Prob %', 'Owner', 'Added', 'Stage', 'PO / Action', ''].map(h => (
-                    <th key={h} style={{ padding: '12px 10px', textAlign: 'left', fontSize: 10, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h}</th>
+                  {[
+                    { label: 'Type' },
+                    { label: 'Description' },
+                    { label: 'Customer / Service' },
+                    { label: 'Provider' },
+                    { label: 'Amount',   align: 'right' },
+                    { label: 'Prob %' },
+                    { label: 'Weighted', align: 'right' },
+                    { label: 'Owner' },
+                    { label: 'PO / Action' },
+                    { label: '' },
+                  ].map(h => (
+                    <th key={h.label} style={{ padding: '12px 10px', textAlign: h.align || 'left', fontSize: 10, color: p.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>{h.label}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((o, i) => {
-                  const rowBg = i % 2 === 0 ? p.cardBg : p.inputBg;
+                  const rowBg     = i % 2 === 0 ? p.cardBg : p.inputBg;
                   const isCustomer = o.opportunity_type === 'new_customer';
                   const isService  = o.opportunity_type === 'new_service';
                   const isUpsell   = o.opportunity_type === 'upsell';
-                  const editingPo = editingPoId === o.id;
+                  const editingPo   = editingPoId === o.id;
+                  const editingProb = editingProbId === o.id;
+                  const weighted    = weightedFor(o);
+                  // new_customer notes are stored as "<notes>\n\nInterested in: <csv>" by the create handler
+                  const interestedMatch = isCustomer ? (o.notes || '').match(/Interested in:\s*(.+)/i) : null;
+                  const interestedSvc   = interestedMatch ? interestedMatch[1].trim() : '';
+                  const ownerFirst = o.owner_name ? o.owner_name.split(/\s+/)[0] : '';
                   return (
-                    <tr key={`${o.opportunity_type}-${o.id}`} style={{ borderTop: `1px solid ${p.cardBorder}`, background: rowBg }}>
+                    <tr key={`${o.opportunity_type}-${o.id}`} style={{ borderTop: `1px solid ${p.cardBorder}`, background: rowBg, verticalAlign: 'top' }}>
                       <td style={{ padding: '10px 8px' }}>{typePill(o.opportunity_type)}</td>
-                      <td style={{ padding: '10px 10px', fontSize: 12, color: p.text, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.description || o.notes || ''}>
+                      <td style={{ padding: '10px 10px', fontSize: 12, color: p.text, fontWeight: 500 }} title={o.description || o.notes || ''}>
+                        <div style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.35 }}>
+                          {isCustomer ? (
+                            <span onClick={() => navigate(`/companies/${o.id}`)} style={{ color: p.primary, cursor: 'pointer' }}>
+                              {o.description || '—'}
+                            </span>
+                          ) : (o.description || o.notes || <span style={{ color: p.textMuted }}>—</span>)}
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 10px', fontSize: 12 }}>
                         {isCustomer ? (
-                          <span onClick={() => navigate(`/companies/${o.id}`)} style={{ color: p.primary, cursor: 'pointer' }}>
-                            {o.description || '—'}
-                          </span>
-                        ) : (o.description || o.notes || <span style={{ color: p.textMuted }}>—</span>)}
-                      </td>
-                      <td style={{ padding: '10px 10px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {o.customer_id ? (
-                          <span onClick={() => navigate(`/clients/${o.customer_id}`)} style={{ color: p.primary, cursor: 'pointer', fontWeight: 500 }} title={o.customer_name}>
-                            {o.customer_name}
-                          </span>
-                        ) : <span style={{ color: p.textMuted }}>—</span>}
-                      </td>
-                      <td style={{ padding: '10px 10px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {o.service_name_he ? (
                           <>
-                            <div style={{ color: p.text }}>{o.service_name_he}</div>
-                            <div style={{ color: p.textSecondary, fontSize: 10 }}>{o.service_name_en}</div>
+                            <div style={{ color: p.textMuted }}>—</div>
+                            {interestedSvc && (
+                              <div style={{ color: p.textSecondary, fontSize: 10, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={interestedSvc}>
+                                {interestedSvc}
+                              </div>
+                            )}
                           </>
-                        ) : <span style={{ color: p.textMuted }}>—</span>}
+                        ) : (
+                          <>
+                            {o.customer_id ? (
+                              <div onClick={() => navigate(`/clients/${o.customer_id}`)}
+                                style={{ color: p.primary, cursor: 'pointer', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.customer_name}>
+                                {o.customer_name}
+                              </div>
+                            ) : (
+                              <div style={{ color: p.textMuted }}>—</div>
+                            )}
+                            {o.service_name_he && (
+                              <div style={{ color: p.textSecondary, fontSize: 10, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                title={`${o.service_name_he} · ${o.service_name_en}`}>
+                                {o.service_name_he} · {o.service_name_en}
+                              </div>
+                            )}
+                          </>
+                        )}
                       </td>
                       <td style={{ padding: '10px 10px', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {o.provider_name ? (
@@ -469,44 +499,33 @@ export default function Opportunities() {
                           </span>
                         ) : <span style={{ color: p.textMuted }}>—</span>}
                       </td>
-                      <td style={{ padding: '10px 10px', fontSize: 12, color: p.primary, fontWeight: 600 }}>
-                        {o.po_amount != null ? formatILS(o.po_amount) : <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>}
+                      <td style={{ padding: '10px 10px', fontSize: 12, color: p.primary, fontWeight: 600, textAlign: 'right' }}>
+                        {o.po_amount != null ? formatILS(o.po_amount) : ''}
                       </td>
-                      <td style={{ padding: '10px 10px', fontSize: 12, color: p.text, fontWeight: 500 }}>
-                        {(() => {
-                          const w = weightedFor(o);
-                          return w == null
-                            ? <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>
-                            : formatILS(w);
-                        })()}
-                      </td>
-                      <td style={{ padding: '10px 8px', fontSize: 12 }}>
-                        {editingProbId === o.id ? (
+                      <td onClick={editingProb ? undefined : () => startProbEdit(o)}
+                        title={!editingProb && canEdit ? 'Click to set probability' : ''}
+                        style={{ padding: '10px 8px', fontSize: 12, cursor: !editingProb && canEdit ? 'pointer' : 'default' }}>
+                        {editingProb ? (
                           <input autoFocus type="number" min="0" max="100" value={probDraft}
                             onChange={e => setProbDraft(e.target.value)}
                             onBlur={() => commitProbEdit(o)}
                             onKeyDown={e => onProbKeyDown(e, o)}
                             style={{ width: '100%', maxWidth: 70, background: p.inputBg, border: `1px solid ${p.primary}`, borderRadius: 4, padding: '4px 6px', color: p.text, fontSize: 11, outline: 'none', fontFamily: 'Inter, sans-serif' }} />
-                        ) : (
-                          <span onClick={() => startProbEdit(o)}
-                            title={canEdit ? 'Click to set probability' : ''}
-                            style={{ color: probColor(o.probability), fontWeight: o.probability != null && o.probability > 90 ? 700 : 600, cursor: canEdit ? 'pointer' : 'default', fontSize: 12 }}>
-                            {o.probability != null ? `${o.probability}%` : <span style={{ color: p.textMuted, fontWeight: 400 }}>—</span>}
+                        ) : o.probability != null ? (
+                          <span style={{ color: probColor(o.probability), fontWeight: o.probability > 90 ? 700 : 600 }}>
+                            {o.probability}%
                           </span>
+                        ) : (
+                          <span style={{ color: p.textMuted, fontWeight: 400, fontStyle: 'italic', fontSize: 11 }}>set %</span>
                         )}
                       </td>
-                      <td style={{ padding: '10px 10px', fontSize: 11, color: o.owner_name ? p.textSecondary : p.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.owner_name || ''}>
-                        {o.owner_name || '—'}
+                      <td style={{ padding: '10px 10px', fontSize: 12, color: p.text, fontWeight: 500, textAlign: 'right' }}>
+                        {weighted == null
+                          ? <span style={{ color: p.cardBorder, fontWeight: 400 }}>—</span>
+                          : formatILS(weighted)}
                       </td>
-                      <td style={{ padding: '10px 10px', fontSize: 11, color: p.textMuted }}>
-                        {new Date(o.created_at).toLocaleDateString()}
-                      </td>
-                      <td style={{ padding: '10px 8px', fontSize: 11 }}>
-                        {isCustomer && o.stage ? (
-                          <span style={{ background: p.inputBg, color: p.text, borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 600 }}>{o.stage}</span>
-                        ) : isUpsell ? (
-                          <span style={{ background: '#FFF3CD', color: '#856404', borderRadius: 20, padding: '2px 8px', fontSize: 10, fontWeight: 600 }}>Prospect</span>
-                        ) : <span style={{ color: p.textMuted }}>—</span>}
+                      <td style={{ padding: '10px 10px', fontSize: 11, color: ownerFirst ? p.textSecondary : p.textMuted }} title={o.owner_name || ''}>
+                        {ownerFirst || '—'}
                       </td>
                       <td style={{ padding: '10px 8px', fontSize: 11 }}>
                         {isService && (editingPo ? (
