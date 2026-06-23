@@ -376,7 +376,28 @@ export default function ServiceProviderProfile() {
                 </td>
                 {isPending && (
                   <td style={{ padding: '12px 16px' }}>
-                    <button onClick={e => { e.stopPropagation(); /* Pipeline integration: Session 3 */ }}
+                    <button onClick={e => {
+                      e.stopPropagation();
+                      navigate('/opportunities', {
+                        state: {
+                          openModal: true,
+                          prefill: {
+                            type:                'new_service',
+                            client_id:           cs?.client_id     || null,
+                            client_name:         client?.business_name || '',
+                            service_provider_id: provider.id,
+                            provider_name:       provider.name,
+                            service_id:          cs?.service_id    || null,
+                            service_name_he:     service?.name_he  || '',
+                            service_name_en:     service?.name_en  || '',
+                            po_amount:           c.po_amount,
+                            commission_rate:     c.commission_rate,
+                            commission_source:   c.commission_source,
+                            notes:               c.notes || '',
+                          },
+                        },
+                      });
+                    }}
                       style={{ background: 'transparent', color: p.primary, border: `1px solid ${p.cardBorder}`, borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       Move to Opportunity →
                     </button>

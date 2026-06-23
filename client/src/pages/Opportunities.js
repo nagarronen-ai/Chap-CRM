@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import axios from 'axios';
 import { useApp } from '../context/AppContext';
@@ -74,6 +74,7 @@ export default function Opportunities() {
   const [probDraft, setProbDraft]         = useState('');
 
   const navigate = useNavigate();
+  const location = useLocation();
   const { palette: p } = useApp();
   const { can } = useRole();
   const canEdit = can('company:edit');
@@ -93,6 +94,31 @@ export default function Opportunities() {
     const t = searchParams.get('type');
     setTypeFilter(['new_customer', 'new_service', 'upsell'].includes(t) ? t : '');
   }, [searchParams]);
+
+  // Handle deep-link prefill from ServiceProviderProfile "Move to Opportunity →"
+  // Clears location.state after consuming so back/forward nav doesn't re-trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const s = location.state;
+    if (!s || !s.openModal || !s.prefill) return;
+    const pf = s.prefill;
+    if (pf.type === 'new_service') {
+      setSelectedType('new_service');
+      setNewServiceForm({
+        client_id:           pf.client_id           || '',
+        service_id:          pf.service_id          || '',
+        service_provider_id: pf.service_provider_id || '',
+        notes:               pf.notes               || '',
+        po_amount:           pf.po_amount       != null ? String(pf.po_amount)       : '',
+        commission_rate:     pf.commission_rate != null ? String(pf.commission_rate) : '',
+        commission_source:   pf.commission_source   || '',
+        owner_id:            '',
+      });
+      setModalStep('form');
+      setShowAddModal(true);
+    }
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state]);
 
   const fetchOpportunities = async () => {
     try {

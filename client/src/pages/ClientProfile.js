@@ -13,6 +13,11 @@ import CategoryComboBox from '../components/CategoryComboBox';
 
 const API = process.env.REACT_APP_API || 'http://localhost:5000/api';
 
+// Safe person-name renderer — joins non-empty parts so missing fields don't
+// produce "null null". Fallback used when both first and last are blank.
+const fullName = (first, last, fallback = '—') =>
+  [first, last].filter(Boolean).join(' ') || fallback;
+
 const CLIENT_STAGES = ['Onboarding', 'Active', 'Paused', 'Churned'];
 const STAGE_COLORS = {
   'Onboarding': { bg: '#FFF3CD', color: '#856404' },
@@ -132,7 +137,7 @@ function ClientPeople({ clientId, getHeaders, p }) {
           ) : (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p style={{ color: p.text, fontWeight: 600, margin: '0 0 2px', fontSize: 13 }}>{person.first_name} {person.last_name}</p>
+                <p style={{ color: p.text, fontWeight: 600, margin: '0 0 2px', fontSize: 13 }}>{fullName(person.first_name, person.last_name)}</p>
                 {person.title && <p style={{ color: p.textSecondary, fontSize: 12, margin: '0 0 4px' }}>{person.title}</p>}
                 {person.email && <p style={{ color: p.primary, fontSize: 12, margin: '0 0 2px', wordBreak: 'break-all' }}>✉️ {person.email}</p>}
                 {person.work_phone && <p style={{ color: p.textSecondary, fontSize: 12, margin: '0 0 2px' }}>📞 {person.work_phone}</p>}
@@ -785,7 +790,7 @@ export default function ClientProfile() {
         company_id: client.converted_from || null, person_id: null, template_id: selectedTemplate?.id || null,
         subject: resolveTags(emailForm.subject), body_html: resolvedBody,
         recipient_email: emailRecipient?.email || client.contact_email,
-        recipient_name: emailRecipient?.name || `${client.contact_first_name} ${client.contact_last_name}`,
+        recipient_name: emailRecipient?.name || fullName(client.contact_first_name, client.contact_last_name, ''),
       }, { headers: getHeaders() });
       await axios.post(`${API}/clients/${id}/note`, { note: `Email sent to ${emailRecipient?.email || client.contact_email}: "${emailForm.subject}"` }, { headers: getHeaders() });
       setEmailSuccess(true);
@@ -835,6 +840,21 @@ export default function ClientProfile() {
             {client.converted_from && (
               <button onClick={() => navigate(`/companies/${client.converted_from}`)} style={{ background: p.inputBg, color: p.textSecondary, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '8px 14px', fontSize: 12, cursor: 'pointer' }}>📋 View Original Contact</button>
             )}
+            {isAdmin && (
+              <button onClick={async () => {
+                if (!window.confirm(`Permanently delete "${client.business_name}"?\n\nAll associated services, people, finance, documents, meetings, and activity will be removed. This cannot be undone.`)) return;
+                try {
+                  await axios.delete(`${API}/clients/${client.id}`, { headers: getHeaders() });
+                  navigate('/clients');
+                } catch (err) {
+                  console.error(err);
+                  alert(err?.response?.data?.error || 'Failed to delete client.');
+                }
+              }}
+                style={{ background: 'transparent', color: '#D4183D', border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '8px 14px', fontSize: 12, cursor: 'pointer' }}>
+                🗑 Delete Client
+              </button>
+            )}
           </div>
         </div>
 
@@ -856,7 +876,7 @@ export default function ClientProfile() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
           {[
             { label: 'Contract', value: client.contract_type === 'Subscription' ? `${client.contract_type} · $${client.contract_amount || 0}/mo` : client.contract_type === 'RevShare' ? `${client.contract_type} · $${client.contract_amount || 0} + ${client.commission_rate}%` : `${client.contract_type} · ${client.commission_rate}%` },
-            { label: 'Contact', value: `${client.contact_first_name} ${client.contact_last_name}` },
+            { label: 'Contact', value: fullName(client.contact_first_name, client.contact_last_name) },
             { label: 'Location', value: `${client.city || ''}${client.state ? `, ${client.state}` : ''}` || '—' },
           ].map(({ label, value }) => (
             <div key={label} style={{ ...card, padding: 16 }}>
@@ -998,7 +1018,7 @@ export default function ClientProfile() {
                 </div>
                 {clientPeople.filter(per => per.marketing_unsubscribed).map(per => (
                   <div key={per.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid rgba(133,100,4,0.15)' }}>
-                    <span style={{ color: '#856404', fontSize: 12 }}>{per.first_name} {per.last_name} — {per.email}</span>
+                    <span style={{ color: '#856404', fontSize: 12 }}>{fullName(per.first_name, per.last_name)} — {per.email}</span>
                     <button onClick={async () => {
                       try {
                         await axios.post(`${API}/marketing/resubscribe/${per.id}`, {}, { headers: getHeaders() });
@@ -1029,7 +1049,7 @@ export default function ClientProfile() {
                       <tr key={`direct-${e.id}`} style={{ borderTop: `1px solid ${p.cardBorder}`, background: i % 2 === 0 ? p.cardBg : p.inputBg }}>
                         <td style={{ padding: '12px 16px' }}><span style={{ background: '#EBF4FF', color: '#1a6fad', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>Direct</span></td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: p.text, fontWeight: 500 }}>{e.subject || '(no subject)'}</td>
-                        <td style={{ padding: '12px 16px', fontSize: 12, color: p.textSecondary }}>{e.crm_people ? `${e.crm_people.first_name} ${e.crm_people.last_name}` : '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: p.textSecondary }}>{e.crm_people ? fullName(e.crm_people.first_name, e.crm_people.last_name) : '—'}</td>
                         <td style={{ padding: '12px 16px', fontSize: 12, color: p.textSecondary }}>{e.sent_at ? new Date(e.sent_at).toLocaleDateString() : '—'}</td>
                         <td style={{ padding: '12px 16px' }}>
                           <span style={{ background: ['opened', 'clicked'].includes(e.email_status) ? '#E8F5E9' : e.email_status === 'bounced' ? '#FFEBEE' : e.email_status === 'delivered' ? '#E3F2FD' : p.inputBg, color: ['opened', 'clicked'].includes(e.email_status) ? '#2E7D32' : e.email_status === 'bounced' ? '#C62828' : e.email_status === 'delivered' ? '#1565C0' : p.textSecondary, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{e.email_status || e.status || 'sent'}</span>
@@ -1042,7 +1062,7 @@ export default function ClientProfile() {
                       <tr key={`campaign-${r.id}`} style={{ borderTop: `1px solid ${p.cardBorder}`, background: (contactEmailHistory.length + i) % 2 === 0 ? p.cardBg : p.inputBg }}>
                         <td style={{ padding: '12px 16px' }}><span style={{ background: '#F3E8FF', color: '#7C3AED', fontSize: 10, borderRadius: 20, padding: '2px 8px', fontWeight: 600 }}>Campaign</span></td>
                         <td style={{ padding: '12px 16px', fontSize: 13, color: p.text, fontWeight: 500 }}>{r.crm_campaigns?.name || '—'}</td>
-                        <td style={{ padding: '12px 16px', fontSize: 12, color: p.textSecondary }}>{r.crm_people ? `${r.crm_people.first_name} ${r.crm_people.last_name}` : r.email || '—'}</td>
+                        <td style={{ padding: '12px 16px', fontSize: 12, color: p.textSecondary }}>{r.crm_people ? fullName(r.crm_people.first_name, r.crm_people.last_name) : r.email || '—'}</td>
                         <td style={{ padding: '12px 16px', fontSize: 12, color: p.textSecondary }}>{r.crm_campaigns?.sent_at ? new Date(r.crm_campaigns.sent_at).toLocaleDateString() : '—'}</td>
                         <td style={{ padding: '12px 16px' }}>
                           <span style={{ background: ['opened', 'clicked'].includes(r.status) ? '#D4EDDA' : r.status === 'bounced' ? '#F8D7DA' : p.inputBg, color: ['opened', 'clicked'].includes(r.status) ? '#155724' : r.status === 'bounced' ? '#721C24' : p.textSecondary, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{r.status}</span>
@@ -1067,7 +1087,7 @@ export default function ClientProfile() {
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <select value={notePersonId} onChange={e => setNotePersonId(e.target.value)} style={{ ...inputStyle, width: 220 }}>
                   <option value="">🏢 Company note</option>
-                  {(clientPeople || []).map(per => <option key={per.id} value={per.id}>👤 {per.first_name} {per.last_name}</option>)}
+                  {(clientPeople || []).map(per => <option key={per.id} value={per.id}>👤 {fullName(per.first_name, per.last_name)}</option>)}
                 </select>
                 <button onClick={addNote} disabled={!note.trim()}
                   style={{ background: note.trim() ? p.primary : p.textMuted, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, cursor: note.trim() ? 'pointer' : 'default' }}>
@@ -1083,7 +1103,7 @@ export default function ClientProfile() {
                 { key: 'documents', label: '📄 Documents', color: '#94B0BC' },
                 { key: 'emails', label: '📧 Emails', color: p.primary },
                 { key: 'notes', label: '📌 Notes', color: p.primary },
-                ...(clientPeople || []).map(per => ({ key: `person_${per.id}`, label: `👤 ${per.first_name} ${per.last_name}`, color: p.primary })),
+                ...(clientPeople || []).map(per => ({ key: `person_${per.id}`, label: `👤 ${fullName(per.first_name, per.last_name)}`, color: p.primary })),
               ].map(f => (
                 <button key={f.key} onClick={() => setActivityFilter(f.key)}
                   style={{ background: activityFilter === f.key ? f.color : p.inputBg, color: activityFilter === f.key ? '#fff' : p.textSecondary, border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>
@@ -1607,11 +1627,11 @@ export default function ClientProfile() {
               <p style={{ color: p.textSecondary, fontSize: 13, margin: '0 0 24px' }}>To: <strong>{client.business_name}</strong></p>
               <div style={{ marginBottom: 20 }}>
                 <label style={labelStyle}>Send To</label>
-                <select value={emailRecipient ? JSON.stringify(emailRecipient) : ''} onChange={e => { if (e.target.value) setEmailRecipient(JSON.parse(e.target.value)); else setEmailRecipient({ email: client.contact_email, name: `${client.contact_first_name} ${client.contact_last_name}` }); }} style={inputStyle}>
-                  <option value="">👤 {client.contact_first_name} {client.contact_last_name} — {client.contact_email} (Primary)</option>
+                <select value={emailRecipient ? JSON.stringify(emailRecipient) : ''} onChange={e => { if (e.target.value) setEmailRecipient(JSON.parse(e.target.value)); else setEmailRecipient({ email: client.contact_email, name: fullName(client.contact_first_name, client.contact_last_name, '') }); }} style={inputStyle}>
+                  <option value="">👤 {fullName(client.contact_first_name, client.contact_last_name)} — {client.contact_email} (Primary)</option>
                   {clientPeople.filter(per => per.email && per.email !== client.contact_email).map(per => (
-                    <option key={per.id} value={JSON.stringify({ email: per.email, name: `${per.first_name} ${per.last_name}`, person_id: per.id })}>
-                      👤 {per.first_name} {per.last_name} — {per.email}
+                    <option key={per.id} value={JSON.stringify({ email: per.email, name: fullName(per.first_name, per.last_name, ''), person_id: per.id })}>
+                      👤 {fullName(per.first_name, per.last_name)} — {per.email}
                     </option>
                   ))}
                 </select>
@@ -1649,7 +1669,7 @@ export default function ClientProfile() {
               <div style={{ padding: '20px 28px', borderBottom: `1px solid ${p.cardBorder}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
                 <div>
                   <h2 style={{ color: p.text, fontSize: 20, fontStyle: 'italic', fontFamily: 'Playfair Display, Georgia, serif', margin: '0 0 2px' }}>Compose Email</h2>
-                  <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>To: <strong>{client.business_name}</strong> · {emailRecipient?.name || `${client.contact_first_name} ${client.contact_last_name}`}</p>
+                  <p style={{ color: p.textSecondary, fontSize: 12, margin: 0 }}>To: <strong>{client.business_name}</strong> · {emailRecipient?.name || fullName(client.contact_first_name, client.contact_last_name)}</p>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => { setShowEmailStep2(false); setShowEmailStep1(true); }} style={{ background: p.inputBg, color: p.text, border: `1px solid ${p.inputBorder}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>← Back</button>
@@ -1724,7 +1744,7 @@ export default function ClientProfile() {
           state={client?.state}
           people={clientPeople}
           contactEmail={client?.contact_email}
-          contactName={`${client?.contact_first_name} ${client?.contact_last_name}`}
+          contactName={fullName(client?.contact_first_name, client?.contact_last_name, '')}
         />
       </div>
     </div>

@@ -269,11 +269,21 @@ router.post('/:id/people', auth, checkPermission('people:edit'), async (req, res
 });
 
 // Delete client (admin only)
+// crm_people.client_id was added via an undocumented migration whose ON DELETE
+// behavior is unknown, so we delete child people manually. All other documented
+// FKs from crm_clients use ON DELETE CASCADE in schema.sql.
 router.delete('/:id', auth, checkPermission('company:delete'), async (req, res) => {
+  const clientId = req.params.id;
+  const { error: peopleErr } = await supabase
+    .from('crm_people')
+    .delete()
+    .eq('client_id', clientId);
+  if (peopleErr) return res.status(500).json({ error: peopleErr.message });
+
   const { error } = await supabase
     .from('crm_clients')
     .delete()
-    .eq('id', req.params.id);
+    .eq('id', clientId);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
